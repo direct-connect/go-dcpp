@@ -97,9 +97,9 @@ func (h *Hash) UnmarshalText(text []byte) error {
 	return h.FromBase32(string(text))
 }
 
-func (h *Hash) UnmarshalAdc(s string) error {
-	return h.FromBase32(s)
+func (h *Hash) UnmarshalAdc(s []byte) error {
+	return h.FromBase32(string(s))
 }
-func (h Hash) MarshalAdc() (string, error) {
-	return h.Base32(), nil
+func (h Hash) MarshalAdc() ([]byte, error) {
+	return []byte(h.Base32()), nil
 }
