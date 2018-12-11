@@ -1,9 +1,12 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -189,6 +192,18 @@ type Conn struct {
 		// only keeps online users
 		bySID map[adc.SID]*Peer
 	}
+
+	revConn struct {
+		sync.Mutex
+		tokens map[string]revConnToken
+	}
+}
+
+type revConnToken struct {
+	cid    adc.CID
+	cancel <-chan struct{}
+	addr   chan string
+	errc   chan error
 }
 
 // PID returns Private ID associated with this connection.
@@ -217,6 +232,34 @@ func (c *Conn) Close() error {
 	return err
 }
 
+func (c *Conn) writeCommand(cmd adc.ClientCommand) error {
+	cmd.SetSID(c.SID())
+	if err := c.conn.WriteCmd(cmd); err != nil {
+		return err
+	}
+	return c.conn.Flush()
+}
+
+func (c *Conn) revConnToken(ctx context.Context, cid adc.CID) (token string, addr <-chan string, _ <-chan error) {
+	ch := make(chan string, 1)
+	errc := make(chan error, 1)
+	for {
+		tok := strconv.Itoa(rand.Int())
+		c.revConn.Lock()
+		_, ok := c.revConn.tokens[tok]
+		if !ok {
+			if c.revConn.tokens == nil {
+				c.revConn.tokens = make(map[string]revConnToken)
+			}
+			c.revConn.tokens[tok] = revConnToken{cancel: ctx.Done(), cid: cid, addr: ch, errc: errc}
+			c.revConn.Unlock()
+			return tok, ch, errc
+		}
+		c.revConn.Unlock()
+		// collision, pick another token
+	}
+}
+
 func (c *Conn) readLoop() {
 	defer close(c.closed)
 	for {
@@ -241,6 +284,17 @@ func (c *Conn) readLoop() {
 				log.Println(err)
 				return
 			}
+		case adc.DirectCmd:
+			// TODO: ADC flaw: why ever send the client his own SID? hub should append it instead
+			//		 same for the sending party
+			if cmd.Targ != c.SID() {
+				log.Println("direct command to a wrong destination:", cmd.Targ)
+				return
+			}
+			if err := c.handleDirect(cmd); err != nil {
+				log.Println(err)
+				return
+			}
 		default:
 			log.Printf("unhandled command: %T", cmd)
 		}
@@ -255,6 +309,7 @@ func (c *Conn) handleBroadcast(cmd adc.Broadcast) error {
 		p := c.peerBySID(cmd.Id)
 		go c.handleSearch(p, cmd.Raw)
 		return nil
+	// TODO: MSG
 	default:
 		log.Printf("unhandled broadcast command: %v", cmd.Name)
 		return nil
@@ -304,6 +359,51 @@ func (c *Conn) handleFeature(cmd adc.FeatureCmd) error {
 	return c.handleBroadcast(adc.Broadcast{
 		Name: cmd.Name, Id: cmd.Id, Raw: cmd.Raw,
 	})
+}
+
+func (c *Conn) handleDirect(cmd adc.DirectCmd) error {
+	switch cmd.Name {
+	case adc.CmdConnectToMe:
+		var s adc.RCMResponse
+		if err := adc.Unmarshal(cmd.Raw, &s); err != nil {
+			return err
+		}
+		c.revConn.Lock()
+		tok, ok := c.revConn.tokens[s.Token]
+		delete(c.revConn.tokens, s.Token)
+		c.revConn.Unlock()
+		if !ok {
+			// FIXME: this is actually a direct connection attempt from a new peer
+			return fmt.Errorf("invalid reverse connect token: %q", s.Token)
+		}
+		p := c.peerBySID(cmd.Id)
+		go c.handleConnReq(p, tok, s)
+		return nil
+	default:
+		log.Printf("unhandled direct command: %v", cmd.Name)
+		return nil
+	}
+}
+
+func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adc.RCMResponse) {
+	if p == nil {
+		tok.errc <- ErrPeerOffline
+		return
+	}
+	if s.Proto != adc.ProtoADC {
+		tok.errc <- fmt.Errorf("unsupported protocol: %q", s.Proto)
+		return
+	}
+	if s.Port == 0 {
+		tok.errc <- errors.New("no port to connect to")
+		return
+	}
+	addr := p.Info().Ip4
+	if addr == "" {
+		tok.errc <- errors.New("no address to connect to")
+		return
+	}
+	tok.addr <- addr + ":" + strconv.Itoa(s.Port)
 }
 
 func (c *Conn) handleSearch(p *Peer, data []byte) {

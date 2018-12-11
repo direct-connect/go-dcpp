@@ -140,11 +140,16 @@ func (f *ModFeatures) UnmarshalAdc(s []byte) error {
 	if err := Unmarshal(s, &out); err != nil {
 		return err
 	}
+	m := *f
+	if m == nil {
+		m = make(ModFeatures)
+		*f = m
+	}
 	for _, name := range out.Rm {
-		(*f)[name] = false
+		m[name] = false
 	}
 	for _, name := range out.Add {
-		(*f)[name] = true
+		m[name] = true
 	}
 	return nil
 }

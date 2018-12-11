@@ -265,6 +265,11 @@ type Command interface {
 	Marshaller
 }
 
+type ClientCommand interface {
+	Command
+	SetSID(sid SID)
+}
+
 type CmdName [3]byte
 
 func (s CmdName) String() string { return string(s[:]) }
@@ -361,6 +366,8 @@ func (cmd HubCmd) MarshalAdc() ([]byte, error) {
 	return buf, nil
 }
 
+var _ ClientCommand = (*DirectCmd)(nil)
+
 type DirectCmd struct {
 	Name CmdName
 	Id   SID
@@ -370,6 +377,9 @@ type DirectCmd struct {
 
 func (cmd DirectCmd) GetName() CmdName { return cmd.Name }
 func (cmd DirectCmd) Data() []byte     { return cmd.Raw }
+func (cmd *DirectCmd) SetSID(sid SID) {
+	cmd.Id = sid
+}
 func (cmd DirectCmd) MarshalAdc() ([]byte, error) {
 	n := 14
 	if len(cmd.Raw) > 0 {
