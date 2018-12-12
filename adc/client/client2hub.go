@@ -63,7 +63,7 @@ func HubHandshake(conn *adc.Conn, conf *Config) (*Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	c.ext = make(map[string]struct{})
+	c.ext = make(map[adc.Feature]struct{})
 	for _, ext := range c.user.Features {
 		c.ext[ext] = struct{}{}
 	}
@@ -117,10 +117,10 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 
 	// check mutual features
 	mutual := ourFeatures.Intersect(hubFeatures)
-	if !mutual.IsSet(adc.FeaBASE) && mutual.IsSet("BAS0") {
-		return adc.SID{}, nil, fmt.Errorf("hub does not support for BASE")
+	if !mutual.IsSet(adc.FeaBASE) && mutual.IsSet(adc.FeaBAS0) {
+		return adc.SID{}, nil, fmt.Errorf("hub does not support BASE")
 	} else if !mutual.IsSet(adc.FeaTIGR) {
-		return adc.SID{}, nil, fmt.Errorf("hub does not support for TIGR")
+		return adc.SID{}, nil, fmt.Errorf("hub does not support TIGR")
 	}
 
 	// next, we expect a SID that will assign a Session ID
@@ -155,7 +155,7 @@ func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
 		user.Application = "go-dcpp"
 		user.Version = "0.1"
 	}
-	for _, f := range []string{"SEGA", "TCP4"} {
+	for _, f := range []adc.Feature{adc.FeaSEGA, adc.FeaTCP4} {
 		if !user.Features.Has(f) {
 			user.Features = append(user.Features, f)
 		}
@@ -182,7 +182,7 @@ type Conn struct {
 	pid  adc.PID
 	sid  adc.SID
 	user adc.User
-	ext  map[string]struct{}
+	ext  map[adc.Feature]struct{}
 
 	hub adc.HubInfo
 

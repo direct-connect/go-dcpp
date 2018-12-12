@@ -123,7 +123,26 @@ func (f String) MarshalAdc() ([]byte, error) {
 	return escape(string(f)), nil
 }
 
-type ModFeatures map[string]bool
+type Feature [4]byte
+
+func (f Feature) String() string {
+	return string(f[:])
+}
+
+func (f *Feature) UnmarshalAdc(s []byte) error {
+	if len(s) != 4 {
+		return fmt.Errorf("malformed feature [%d]", len(s))
+	}
+	var v Feature
+	copy(v[:], s)
+	*f = v
+	return nil
+}
+func (f Feature) MarshalAdc() ([]byte, error) {
+	return f[:], nil
+}
+
+type ModFeatures map[Feature]bool
 
 func (f ModFeatures) Clone() ModFeatures {
 	mf := make(ModFeatures, len(f))
@@ -133,6 +152,8 @@ func (f ModFeatures) Clone() ModFeatures {
 	return mf
 }
 func (f *ModFeatures) UnmarshalAdc(s []byte) error {
+	// TODO: will parse strings of any length; should limit to 4 bytes
+	// TODO: use bytes, or Feature in slices
 	var out struct {
 		Add []string `adc:"AD"`
 		Rm  []string `adc:"RM"`
@@ -146,17 +167,25 @@ func (f *ModFeatures) UnmarshalAdc(s []byte) error {
 		*f = m
 	}
 	for _, name := range out.Rm {
-		m[name] = false
+		var fea Feature
+		if err := fea.UnmarshalAdc([]byte(name)); err != nil {
+			return err
+		}
+		m[fea] = false
 	}
 	for _, name := range out.Add {
-		m[name] = true
+		var fea Feature
+		if err := fea.UnmarshalAdc([]byte(name)); err != nil {
+			return err
+		}
+		m[fea] = true
 	}
 	return nil
 }
 func (f ModFeatures) MarshalAdc() ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	first := true
-	for name, st := range f {
+	for fea, st := range f {
 		if !first {
 			buf.WriteRune(' ')
 		} else {
@@ -167,11 +196,11 @@ func (f ModFeatures) MarshalAdc() ([]byte, error) {
 		} else {
 			buf.WriteString("RM")
 		}
-		buf.WriteString(name)
+		buf.WriteString(fea.String())
 	}
 	return buf.Bytes(), nil
 }
-func (f ModFeatures) IsSet(s string) bool {
+func (f ModFeatures) IsSet(s Feature) bool {
 	if f == nil {
 		return false
 	}
@@ -206,7 +235,7 @@ func (f ModFeatures) Join() string {
 	var arr []string
 	for name, add := range f {
 		if add {
-			arr = append(arr, name)
+			arr = append(arr, name.String())
 		}
 	}
 	return strings.Join(arr, ",")
@@ -290,9 +319,9 @@ var (
 	_ Unmarshaller = (*ExtFeatures)(nil)
 )
 
-type ExtFeatures []string
+type ExtFeatures []Feature
 
-func (f ExtFeatures) Has(s string) bool {
+func (f ExtFeatures) Has(s Feature) bool {
 	for _, sf := range f {
 		if sf == s {
 			return true
@@ -301,11 +330,28 @@ func (f ExtFeatures) Has(s string) bool {
 	return false
 }
 func (f *ExtFeatures) UnmarshalAdc(s []byte) error {
-	*f = strings.Split(string(s), `,`)
+	sub := bytes.Split(s, []byte(","))
+	arr := make(ExtFeatures, 0, len(sub))
+	for _, s := range sub {
+		var fea Feature
+		if err := fea.UnmarshalAdc(s); err != nil {
+			return err
+		}
+		arr = append(arr, fea)
+	}
+	*f = arr
 	return nil
 }
 func (f ExtFeatures) MarshalAdc() ([]byte, error) {
-	return []byte(strings.Join([]string(f), ",")), nil
+	sub := make([][]byte, 0, len(f))
+	for _, fea := range f {
+		s, err := fea.MarshalAdc()
+		if err != nil {
+			return nil, err
+		}
+		sub = append(sub, s)
+	}
+	return bytes.Join(sub, []byte(",")), nil
 }
 
 type BoolInt bool

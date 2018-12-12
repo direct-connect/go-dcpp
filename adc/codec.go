@@ -434,7 +434,7 @@ func (cmd EchoCmd) MarshalAdc() ([]byte, error) {
 type FeatureCmd struct {
 	Name     CmdName
 	Id       SID
-	Features map[string]bool
+	Features map[Feature]bool
 	Raw      []byte
 }
 
@@ -462,8 +462,8 @@ func (cmd FeatureCmd) MarshalAdc() ([]byte, error) {
 		} else {
 			buf[off+1] = '-'
 		}
-		copy(buf[off+2:], k)
-		off += 2 + len(k)
+		n := copy(buf[off+2:], k[:])
+		off += 2 + n
 	}
 	if len(cmd.Raw) > 0 {
 		buf[off] = ' '
@@ -509,7 +509,7 @@ func NewInfoCmd(name CmdName, o interface{}) InfoCmd {
 	return InfoCmd{Name: name, Raw: []byte(MustMarshal(o))}
 }
 
-func NewFeatureCmd(name CmdName, sid SID, fm map[string]bool, o interface{}) FeatureCmd {
+func NewFeatureCmd(name CmdName, sid SID, fm map[Feature]bool, o interface{}) FeatureCmd {
 	return FeatureCmd{Name: name, Id: sid, Features: fm, Raw: []byte(MustMarshal(o))}
 }
 
@@ -612,7 +612,7 @@ func DecodeCmd(p []byte) (Command, error) {
 		} else if len(raw) > 4 && raw[4] != ' ' {
 			return nil, fmt.Errorf("separator expected: '%s'", string(raw[:5]))
 		}
-		cmd := FeatureCmd{Name: cname, Features: make(map[string]bool)}
+		cmd := FeatureCmd{Name: cname, Features: make(map[Feature]bool)}
 		if err := cmd.Id.UnmarshalAdc(raw[0:4]); err != nil {
 			return nil, err
 		}
@@ -626,13 +626,17 @@ func DecodeCmd(p []byte) (Command, error) {
 				if f := raw[i:]; len(f) < 5 {
 					return nil, fmt.Errorf("short feature: '%s'", string(raw[i:i+5]))
 				}
-				cmd.Features[string(raw[i+1:i+5])] = true
+				var fea Feature
+				copy(fea[:], raw[i+1:i+5])
+				cmd.Features[fea] = true
 				i += 4
 			} else if raw[i] == '-' {
 				if f := raw[i:]; len(f) < 5 {
 					return nil, fmt.Errorf("short feature: '%s'", string(raw[i:i+5]))
 				}
-				cmd.Features[string(raw[i+1:i+5])] = false
+				var fea Feature
+				copy(fea[:], raw[i+1:i+5])
+				cmd.Features[fea] = false
 				i += 4
 			} else if raw[i] == ' ' {
 				raw = raw[i:]

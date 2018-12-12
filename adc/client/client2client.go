@@ -16,7 +16,7 @@ var (
 
 func (p *Peer) CanDial() bool {
 	// online and active
-	return p.Online() && p.Info().Features.Has("TCP4")
+	return p.Online() && p.Info().Features.Has(adc.FeaTCP4)
 }
 
 // Dial tries to dial the peer either in passive or active mode.
@@ -29,7 +29,7 @@ func (p *Peer) Dial(ctx context.Context) (*PeerConn, error) {
 }
 
 func (p *Peer) dialPassive(ctx context.Context) (*PeerConn, error) {
-	if !p.Info().Features.Has("TCP4") {
+	if !p.Info().Features.Has(adc.FeaTCP4) {
 		return nil, ErrPeerPassive
 	}
 	sid := p.getSID()

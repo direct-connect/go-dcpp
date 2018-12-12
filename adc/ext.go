@@ -1,40 +1,41 @@
 package adc
 
-const (
-	FeaBASE = "BASE" // Base protocol ( http://adc.sourceforge.net/ADC.html )
+var (
+	// FeaBASE indicates base ADC protocol support.
+	//
+	// See: https://adc.dcbase.org/Protocol, http://adc.sourceforge.net/ADC.html
+	FeaBASE = Feature{'B', 'A', 'S', 'E'}
+	FeaBAS0 = Feature{'B', 'A', 'S', '0'} // TODO: clarify
 
+	// https://adc.dcbase.org/Extensions
 	// http://adc.sourceforge.net/ADC-EXT.html
 
-	FeaTIGR = "TIGR" // Tiger hash support
-	FeaPING = "PING" // Send additional field in hub's info message
-	extONID = "ONID" // Online services identification
-	extBZIP = "BZIP" // bzip2 compression of filelist
-	extTS   = "TS"   // Timestamps in messages
-	extZLIF = "ZLIF" // Compressed communication (Full)
-	extZLIG = "ZLIG" // Compressed communication (Get)
-	extPING = "PING" // Pinger extension (additional info about hub)
-	extSEGA = "SEGA" // Grouping of file extensions in search
-	extUCMD = "UCMD" // User commands
-	extADCS = "ADCS" // ADC over TLS
+	FeaTIGR = Feature{'T', 'I', 'G', 'R'} // Tiger hash support
+	FeaPING = Feature{'P', 'I', 'N', 'G'} // Send additional field in hub's info message
+	extONID = Feature{'O', 'N', 'I', 'D'} // Online services identification
+	FeaBZIP = Feature{'B', 'Z', 'I', 'P'} // bzip2 compression of filelist, adds virtual files.xml.bz2 file
+	FeaTS   = Feature{'T', 'S', '0', '0'} // Unix timestamps in messages
+	extZLIF = Feature{'Z', 'L', 'I', 'F'} // Compressed communication (Full)
+	extZLIG = Feature{'Z', 'L', 'I', 'G'} // Compressed communication (Get)
+	extPING = Feature{'P', 'I', 'N', 'G'} // Pinger extension (additional info about hub)
+	FeaSEGA = Feature{'S', 'E', 'G', 'A'} // Grouping of file extensions in search
+	extUCMD = Feature{'U', 'C', 'M', 'D'} // User commands
+	extADCS = Feature{'A', 'D', 'C', 'S'} // ADC over TLS
 
-	extADC0 = "ADC0" // TODO: links
-	extNAT0 = "NAT0"
-	extASCH = "ASCH"
-	extSUD1 = "SUD1"
-	extSUDP = "SUDP"
-	extCCPM = "CCPM"
+	extADC0 = Feature{'A', 'D', 'C', '0'} // TODO: links
+	extNAT0 = Feature{'N', 'A', 'T', '0'}
+	extASCH = Feature{'A', 'S', 'C', 'H'}
+	extSUD1 = Feature{'S', 'U', 'D', '1'}
+	extSUDP = Feature{'S', 'U', 'D', 'P'}
+	extCCPM = Feature{'C', 'C', 'P', 'M'}
 
-	// Active markers
+	// feature markers to indicate active mode
 
-	extTCP4 = "TCP4"
-	extTCP6 = "TCP6"
-	extUDP4 = "UDP4"
-	extUDP6 = "UDP6"
-)
+	// FeaTCP4 should be set in user's INF to indicate that the client has an open TCP4 port (is active).
+	FeaTCP4 = Feature{'T', 'C', 'P', '4'}
+	// FeaTCP6 should be set in user's INF to indicate that the client has an open TCP6 port (is active).
+	FeaTCP6 = Feature{'T', 'C', 'P', '6'}
 
-var (
-	supExtensionsHub2Cli = ModFeatures{FeaBASE: true, FeaTIGR: true} // TODO: PING, UCMD
-	supExtensionsCli2Hub = ModFeatures{FeaBASE: true, FeaTIGR: true}
-	supExtensionsCli2Cli = ModFeatures{FeaBASE: true, "BAS0": true, FeaTIGR: true, extZLIG: true, extBZIP: true}
-	extFeatures          = ExtFeatures{extADC0, extSEGA}
+	extUDP4 = Feature{'U', 'D', 'P', '4'}
+	extUDP6 = Feature{'U', 'D', 'P', '6'}
 )
