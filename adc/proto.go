@@ -217,6 +217,31 @@ type HubInfo struct {
 	Version string   `adc:"VE"`
 	Desc    string   `adc:"DE"`
 	Type    UserType `adc:"CT"`
+
+	// PING extension
+
+	Address    string `adc:"HH"` // Hub Host address (ADC/ADCS URL address form)
+	Website    string `adc:"WS"` // Hub Website
+	Network    string `adc:"NE"` // Hub Network
+	Owner      string `adc:"OW"` // Hub Owner name
+	Users      int    `adc:"UC"` // Current User count
+	Share      int    `adc:"SS"` // Total share size
+	Files      int    `adc:"SF"` // Total files shared
+	MinShare   int    `adc:"MS"` // Minimum share required to enter hub ( bytes )
+	MaxShare   int    `adc:"XS"` // Maximum share for entering hub ( bytes )
+	MinSlots   int    `adc:"ML"` // Minimum slots required to enter hub
+	MaxSlots   int    `adc:"XL"` // Maximum slots for entering hub
+	UsersLimit int    `adc:"MC"` // Maximum possible clients ( users ) who can connect
+	Uptime     int    `adc:"UP"` // Hub uptime (seconds)
+
+	// ignored, doesn't matter in practice
+
+	//int `adc:"MU"` // Minimum hubs connected where clients can be users
+	//int `adc:"MR"` // Minimum hubs connected where client can be registered
+	//int `adc:"MO"` // Minimum hubs connected where client can be operators
+	//int `adc:"XU"` // Maximum hubs connected where clients can be users
+	//int `adc:"XR"` // Maximum hubs connected where client can be registered
+	//int `adc:"XO"` // Maximum hubs connected where client can be operators
 }
 
 type User struct {

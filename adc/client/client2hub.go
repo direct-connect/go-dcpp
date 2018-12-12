@@ -81,6 +81,7 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 		// should always be set for ADC
 		adc.FeaBASE: true,
 		adc.FeaTIGR: true,
+		adc.FeaPING: true,
 		// TODO: ZLIG
 	}
 
@@ -215,6 +216,9 @@ func (c *Conn) CID() adc.CID { return c.user.Id }
 // SID returns Session ID associated with this connection.
 // Only valid after a Client-Hub handshake.
 func (c *Conn) SID() adc.SID { return c.sid }
+
+// Hub returns hub information.
+func (c *Conn) Hub() adc.HubInfo { return c.hub }
 
 // Features returns a set of negotiated features.
 func (c *Conn) Features() adc.ModFeatures { return c.fea.Clone() }

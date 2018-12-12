@@ -6,6 +6,7 @@ const (
 	// http://adc.sourceforge.net/ADC-EXT.html
 
 	FeaTIGR = "TIGR" // Tiger hash support
+	FeaPING = "PING" // Send additional field in hub's info message
 	extONID = "ONID" // Online services identification
 	extBZIP = "BZIP" // bzip2 compression of filelist
 	extTS   = "TS"   // Timestamps in messages
