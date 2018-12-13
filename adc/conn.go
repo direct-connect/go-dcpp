@@ -139,7 +139,7 @@ func (c *Conn) readPacket(deadline time.Time) ([]byte, error) {
 		}
 		if len(s) != 0 {
 			if Debug {
-				log.Println(">", string(s))
+				log.Println("<-", string(s))
 			}
 			return s, nil
 		}
@@ -270,7 +270,7 @@ func (c *Conn) WritePacket(p Packet) error {
 
 func (c *Conn) writeRawPacket(s []byte) error {
 	if Debug {
-		log.Println("<", string(s))
+		log.Println("->", string(s))
 	}
 
 	// make sure connection is not in binary mode
@@ -297,7 +297,7 @@ func (c *Conn) writeRawPacket(s []byte) error {
 // Flush the underlying buffer. Should be called after each WritePacket batch.
 func (c *Conn) Flush() error {
 	if Debug {
-		log.Println("< [flushed]")
+		log.Println("-> [flushed]")
 	}
 
 	// make sure connection is not in binary mode
@@ -440,6 +440,9 @@ func (c *Conn) ReadBinary(n int64) io.ReadCloser {
 	}
 	// acquire exclusive connection lock
 	c.bin.Lock()
+	if Debug {
+		log.Printf("<- [binary data: %d bytes]", n)
+	}
 	return &rawReader{c: c, r: io.LimitReader(c.read.r, n)}
 }
 
@@ -470,6 +473,9 @@ func (r *rawReader) close() {
 	// unlock the connection
 	r.c.bin.Unlock()
 	r.c = nil
+	if Debug {
+		log.Println("<- [binary end]")
+	}
 }
 
 func (r *rawReader) Close() error {

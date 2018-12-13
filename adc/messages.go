@@ -20,7 +20,10 @@ func init() {
 	RegisterMessage(RevConnectRequest{})
 	RegisterMessage(ConnectRequest{})
 	RegisterMessage(GetInfoRequest{})
+	RegisterMessage(GetRequest{})
+	RegisterMessage(GetResponse{})
 	RegisterMessage(SearchRequest{})
+	RegisterMessage(SearchResult{})
 	RegisterMessage(ChatMessage{})
 	RegisterMessage(Disconnect{})
 }
@@ -260,6 +263,27 @@ func (GetInfoRequest) Cmd() MsgType {
 	return MsgType{'G', 'F', 'I'}
 }
 
+var _ Message = GetRequest{}
+
+type GetRequest struct {
+	Type  string `adc:"#"`
+	Path  string `adc:"#"`
+	Start int64  `adc:"#"`
+	Bytes int64  `adc:"#"`
+}
+
+func (GetRequest) Cmd() MsgType {
+	return MsgType{'G', 'E', 'T'}
+}
+
+var _ Message = GetResponse{}
+
+type GetResponse GetRequest
+
+func (GetResponse) Cmd() MsgType {
+	return MsgType{'S', 'N', 'D'}
+}
+
 type FileType int
 
 const (
@@ -292,6 +316,22 @@ type SearchRequest struct {
 
 func (SearchRequest) Cmd() MsgType {
 	return MsgType{'S', 'C', 'H'}
+}
+
+var _ Message = SearchResult{}
+
+type SearchResult struct {
+	Token string `adc:"TO"`
+	Path  string `adc:"FN"`
+	Size  int64  `adc:"SI"`
+	Slots int    `adc:"SL"`
+
+	// TIGR ext
+	Tiger TTH `adc:"TR"`
+}
+
+func (SearchResult) Cmd() MsgType {
+	return MsgType{'R', 'E', 'S'}
 }
 
 var (

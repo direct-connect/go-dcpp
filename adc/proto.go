@@ -295,26 +295,9 @@ const (
 	AwayTypeExtended AwayType = 2
 )
 
-type SearchResult struct {
-	Token string `adc:"TO"`
-	Path  string `adc:"FN"`
-	Size  int64  `adc:"SI"`
-	Slots int    `adc:"SL"`
-
-	// TIGR ext
-	Tiger TTH `adc:"TR"`
-}
-
 type PM struct {
 	Text string `adc:"#"`
 	Src  SID    `adc:"PM"`
-}
-
-type GetRequest struct {
-	Type  string `adc:"#"`
-	Path  string `adc:"#"`
-	Start int64  `adc:"#"`
-	Bytes int64  `adc:"#"`
 }
 
 const (

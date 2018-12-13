@@ -39,3 +39,7 @@ var (
 	extUDP4 = Feature{'U', 'D', 'P', '4'}
 	extUDP6 = Feature{'U', 'D', 'P', '6'}
 )
+
+const (
+	FileListBZIP = "files.xml.bz2"
+)

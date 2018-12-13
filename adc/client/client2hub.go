@@ -81,7 +81,9 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 		// should always be set for ADC
 		adc.FeaBASE: true,
 		adc.FeaTIGR: true,
+		// extensions
 		adc.FeaPING: true,
+		adc.FeaBZIP: true,
 		// TODO: ZLIG
 	}
 
