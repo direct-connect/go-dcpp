@@ -3,8 +3,6 @@ package adc
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 
 	"github.com/dennwc/go-dcpp/tiger"
@@ -12,22 +10,8 @@ import (
 
 // https://adc.sourceforge.io/ADC.html
 
-var (
-	CmdInfo           = CmdName{'I', 'N', 'F'}
-	CmdSupport        = CmdName{'S', 'U', 'P'}
-	CmdSession        = CmdName{'S', 'I', 'D'}
-	CmdStatus         = CmdName{'S', 'T', 'A'}
-	CmdDisconnect     = CmdName{'Q', 'U', 'I'}
-	CmdMessage        = CmdName{'M', 'S', 'G'}
-	CmdConnectToMe    = CmdName{'C', 'T', 'M'}
-	CmdRevConnectToMe = CmdName{'R', 'C', 'M'}
-	CmdGet            = CmdName{'G', 'E', 'T'}
-	CmdSend           = CmdName{'S', 'N', 'D'}
-	CmdPass           = CmdName{'P', 'A', 'S'}
-	CmdAuth           = CmdName{'G', 'P', 'A'}
-	CmdSearch         = CmdName{'S', 'C', 'H'}
-	CmdResult         = CmdName{'R', 'E', 'S'}
-	CmdFileInfo       = CmdName{'G', 'F', 'I'}
+const (
+	ProtoADC = `ADC/1.0`
 )
 
 const (
@@ -63,54 +47,6 @@ type Error struct {
 
 func (e Error) Error() string {
 	return fmt.Sprintf("code %d: %s", e.Code, e.Msg)
-}
-
-type Severity int
-
-const (
-	Success     = Severity(0)
-	Recoverable = Severity(1)
-	Fatal       = Severity(2)
-)
-
-type Status struct {
-	Sev  Severity
-	Code int
-	Msg  string
-}
-
-func (st Status) Ok() bool {
-	return st.Sev == Success
-}
-func (st Status) Recoverable() bool {
-	return st.Ok() || st.Sev == Recoverable
-}
-func (st Status) Err() error {
-	if !st.Ok() {
-		if st.Code == 51 {
-			return os.ErrNotExist
-		}
-		return Error{st}
-	}
-	return nil
-}
-func (st *Status) UnmarshalAdc(s []byte) error {
-	sub := bytes.SplitN(s, []byte(" "), 2)
-	code, err := strconv.Atoi(string(sub[0]))
-	if err != nil {
-		return fmt.Errorf("wrong status code: %v", err)
-	}
-	st.Code = code % 100
-	st.Sev = Severity(code / 100)
-	st.Msg = ""
-	if len(sub) > 1 {
-		st.Msg = unescape(sub[1])
-	}
-	return nil
-}
-func (st Status) MarshalAdc() ([]byte, error) {
-	s := fmt.Sprintf("%d%02d %s", int(st.Sev), st.Code, escape(st.Msg))
-	return []byte(s), nil
 }
 
 type String string
@@ -273,47 +209,6 @@ type HubInfo struct {
 	//int `adc:"XO"` // Maximum hubs connected where client can be operators
 }
 
-type User struct {
-	Id   CID    `adc:"ID"`
-	Pid  *PID   `adc:"PD"` // sent only to hub
-	Name string `adc:"NI"`
-
-	Ip4  string `adc:"I4"`
-	Ip6  string `adc:"I6"`
-	Udp4 int    `adc:"U4"`
-	Udp6 int    `adc:"U6"`
-
-	ShareSize  int64 `adc:"SS"`
-	ShareFiles int   `adc:"SF"`
-
-	Version     string `adc:"VE"`
-	Application string `adc:"AP"`
-
-	MaxUpload   string `adc:"US"` // TODO: most time it's int, but some clients write things like "Cable"
-	MaxDownload int    `adc:"DS"`
-
-	Slots         int `adc:"SL"`
-	SlotsFree     int `adc:"FS"`
-	AutoSlotLimit int `adc:"AS"`
-
-	Email string `adc:"EM"`
-	Desc  string `adc:"DE"`
-
-	HubsNormal     int `adc:"HN"`
-	HubsRegistered int `adc:"HR"`
-	HubsOperator   int `adc:"HO"`
-
-	Token string `adc:"TO"` // C-C only
-
-	Type UserType `adc:"CT"`
-	Away AwayType `adc:"AW"`
-	Ref  string   `adc:"RF"`
-
-	Features ExtFeatures `adc:"SU"`
-
-	KP string `adc:"KP"`
-}
-
 var (
 	_ Marshaller   = (ExtFeatures)(nil)
 	_ Unmarshaller = (*ExtFeatures)(nil)
@@ -410,52 +305,16 @@ type SearchResult struct {
 	Tiger TTH `adc:"TR"`
 }
 
-type FileType int
-
-const (
-	FileTypeAny  FileType = 0
-	FileTypeFile FileType = 1
-	FileTypeDir  FileType = 2
-)
-
-type SearchParams struct {
-	Token string   `adc:"TO"`
-	And   []string `adc:"AN"`
-	Not   []string `adc:"NO"`
-	Ext   []string `adc:"EX"`
-
-	Le int64 `adc:"LE"`
-	Ge int64 `adc:"GE"`
-	Eq int64 `adc:"EQ"`
-
-	Type FileType `adc:"TY"`
-
-	// TIGR ext
-	Tiger string `adc:"TR"`
-
-	// SEGA ext
-	Group ExtGroup `adc:"GR"`
-	NoExt []string `adc:"RX"`
-}
-
-const (
-	ProtoADC = `ADC/1.0`
-)
-
 type PM struct {
 	Text string `adc:"#"`
 	Src  SID    `adc:"PM"`
 }
 
-type RCMParams struct {
-	Proto string `adc:"#"`
-	Token string `adc:"#"`
-}
-
-type RCMResponse struct {
-	Proto string `adc:"#"`
-	Port  int    `adc:"#"`
-	Token string `adc:"#"`
+type GetRequest struct {
+	Type  string `adc:"#"`
+	Path  string `adc:"#"`
+	Start int64  `adc:"#"`
+	Bytes int64  `adc:"#"`
 }
 
 const (

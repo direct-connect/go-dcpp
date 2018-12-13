@@ -3,6 +3,7 @@ package adc
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -14,6 +15,11 @@ import (
 var (
 	Debug bool
 )
+
+type Route interface {
+	WriteMessage(msg Message) error
+	Flush() error
+}
 
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
@@ -85,22 +91,22 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 			case <-ticker.C:
 			}
 			// empty message serves as keep-alive for ADC
-			_ = c.WriteMessage(nil)
+			_ = c.writeRawPacket(nil)
 		}
 	}()
 }
 
-// ReadCmd reads and decodes a single ADC command.
-func (c *Conn) ReadCmd(deadline time.Time) (Command, error) {
-	p, err := c.ReadMessage(deadline)
+// ReadPacket reads and decodes a single ADC command.
+func (c *Conn) ReadPacket(deadline time.Time) (Packet, error) {
+	p, err := c.readPacket(deadline)
 	if err != nil {
 		return nil, err
 	}
-	return DecodeCmd(p)
+	return DecodePacket(p)
 }
 
-// ReadMessage reads a single ADC message (separated by 0x0a byte) without decoding it.
-func (c *Conn) ReadMessage(deadline time.Time) ([]byte, error) {
+// readPacket reads a single ADC packet (separated by 0x0a byte) without decoding it.
+func (c *Conn) readPacket(deadline time.Time) ([]byte, error) {
 	// make sure connection is not in binary mode
 	c.bin.RLock()
 	defer c.bin.RUnlock()
@@ -142,15 +148,127 @@ func (c *Conn) ReadMessage(deadline time.Time) ([]byte, error) {
 	}
 }
 
-func (c *Conn) WriteCmd(cmd Command) error {
-	s, err := cmd.MarshalAdc()
+func (c *Conn) ReadInfoMsg(deadline time.Time) (Message, error) {
+	cmd, err := c.ReadPacket(deadline)
+	if err != nil {
+		return nil, err
+	}
+	cc, ok := cmd.(*InfoPacket)
+	if !ok {
+		return nil, fmt.Errorf("expected info command, got: %#v", cmd)
+	}
+	return UnmarshalMessage(cc.Name, cc.Data)
+}
+
+func (c *Conn) ReadClientMsg(deadline time.Time) (Message, error) {
+	cmd, err := c.ReadPacket(deadline)
+	if err != nil {
+		return nil, err
+	}
+	cc, ok := cmd.(*ClientPacket)
+	if !ok {
+		return nil, fmt.Errorf("expected client command, got: %#v", cmd)
+	}
+	return UnmarshalMessage(cc.Name, cc.Data)
+}
+
+func (c *Conn) Broadcast(from SID) Route {
+	return broadcastRoute{c: c, sid: from}
+}
+
+type broadcastRoute struct {
+	c   *Conn
+	sid SID
+}
+
+func (r broadcastRoute) WriteMessage(msg Message) error {
+	return r.c.WriteBroadcast(r.sid, msg)
+}
+
+func (r broadcastRoute) Flush() error {
+	return r.c.Flush()
+}
+
+func (c *Conn) Direct(from, to SID) Route {
+	return directRoute{c: c, sid: from, targ: to}
+}
+
+type directRoute struct {
+	c    *Conn
+	sid  SID
+	targ SID
+}
+
+func (r directRoute) WriteMessage(msg Message) error {
+	return r.c.WriteDirect(r.sid, r.targ, msg)
+}
+
+func (r directRoute) Flush() error {
+	return r.c.Flush()
+}
+
+func (c *Conn) WriteHubMsg(msg Message) error {
+	data, err := Marshal(msg)
 	if err != nil {
 		return err
 	}
-	return c.WriteMessage(s)
+	return c.WritePacket(&HubPacket{
+		BasePacket{Name: msg.Cmd(), Data: data},
+	})
 }
 
-func (c *Conn) WriteMessage(s []byte) error {
+func (c *Conn) WriteClientMsg(msg Message) error {
+	data, err := Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WritePacket(&ClientPacket{
+		BasePacket{Name: msg.Cmd(), Data: data},
+	})
+}
+
+func (c *Conn) WriteBroadcast(id SID, msg Message) error {
+	data, err := Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WritePacket(&BroadcastPacket{
+		ID:         id,
+		BasePacket: BasePacket{Name: msg.Cmd(), Data: data},
+	})
+}
+
+func (c *Conn) WriteDirect(id, targ SID, msg Message) error {
+	data, err := Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WritePacket(&DirectPacket{
+		ID: id, Targ: targ,
+		BasePacket: BasePacket{Name: msg.Cmd(), Data: data},
+	})
+}
+
+func (c *Conn) WriteEcho(id, targ SID, msg Message) error {
+	data, err := Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WritePacket(&EchoPacket{
+		ID: id, Targ: targ,
+		BasePacket: BasePacket{Name: msg.Cmd(), Data: data},
+	})
+}
+
+func (c *Conn) WritePacket(p Packet) error {
+	data, err := p.MarshalPacket()
+	if err != nil {
+		return err
+	}
+	return c.writeRawPacket(data)
+}
+
+func (c *Conn) writeRawPacket(s []byte) error {
 	if Debug {
 		log.Println("<", string(s))
 	}
@@ -176,7 +294,7 @@ func (c *Conn) WriteMessage(s []byte) error {
 	return err
 }
 
-// Flush the underlying buffer. Should be called after each WriteCmd batch.
+// Flush the underlying buffer. Should be called after each WritePacket batch.
 func (c *Conn) Flush() error {
 	if Debug {
 		log.Println("< [flushed]")
@@ -204,7 +322,7 @@ func (c *Conn) Flush() error {
 func (c *Conn) HubHandshake(f ModFeatures, sid SID, info HubInfo) (*User, error) {
 	const initialWait = time.Second * 5
 	// Read supported features from the client
-	cmd, err := c.ReadCmd(initialWait)
+	cmd, err := c.ReadPacket(initialWait)
 	if err != nil {
 		return nil, err
 	} else if cmd.Kind() != kindHub || cmd.GetName() != CmdSupport {
@@ -227,26 +345,26 @@ func (c *Conn) HubHandshake(f ModFeatures, sid SID, info HubInfo) (*User, error)
 	//c.zlibGet = c.fea[extZLIG]
 
 	// Send ours supported features
-	c.WriteCmd(NewInfoCmd(CmdSupport, f))
+	c.WritePacket(NewInfoCmd(CmdSupport, f))
 	// Assign SID to the client
-	c.WriteCmd(NewInfoCmd(CmdSession, sid))
+	c.WritePacket(NewInfoCmd(CmdSession, sid))
 	// Send hub info
-	c.WriteCmd(NewInfoCmd(CmdInfo, info))
+	c.WritePacket(NewInfoCmd(CmdInfo, info))
 	// Write OK status
-	c.WriteCmd(NewInfoCmd(CmdStatus, Status{Msg: "Powered by Gophers"}))
+	c.WritePacket(NewInfoCmd(CmdStatus, Status{Msg: "Powered by Gophers"}))
 	if err := c.Flush(); err != nil {
 		return nil, err
 	}
-	cmd, err = c.ReadCmd(initialWait)
+	cmd, err = c.ReadPacket(initialWait)
 	if err != nil {
 		return nil, err
 	}
-	ucmd, ok := cmd.(Broadcast)
+	ucmd, ok := cmd.(BroadcastPacket)
 	if !ok || ucmd.Name != CmdInfo {
 		return nil, fmt.Errorf("expected INF command, got: %v, %v", cmd.Kind(), cmd.GetName())
 	}
 	var user User
-	if err = Unmarshal(string(ucmd.Raw), &user); err != nil {
+	if err = Unmarshal(string(ucmd.Data), &user); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal user info: %v", err)
 	}
 	return &user, nil
@@ -265,16 +383,16 @@ func (c *Conn) ClientHandshake(toHub bool, f ModFeatures) error { // TODO: ctx
 	}
 	// Send supported features and initiate state machine
 	if toHub {
-		c.WriteCmd(NewHubCmd(CmdSupport, f))
+		c.WritePacket(NewHubCmd(CmdSupport, f))
 	} else {
-		c.WriteCmd(NewClientCmd(CmdSupport, f))
+		c.WritePacket(NewClientCmd(CmdSupport, f))
 	}
 	if err := c.Flush(); err != nil {
 		return err
 	}
 	const protocolWait = time.Second * 5
 	for {
-		cmd, err := c.ReadCmd(protocolWait)
+		cmd, err := c.ReadPacket(protocolWait)
 		if err != nil {
 			return err
 		} else if (toHub && cmd.Kind() != kindInfo) || (!toHub && cmd.Kind() != kindClient) {

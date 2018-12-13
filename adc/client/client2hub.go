@@ -89,7 +89,9 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 	// We expect SUP followed by SID to transition to IDENTIFY.
 	//
 	// https://adc.sourceforge.io/ADC.html#_protocol
-	err := conn.WriteCmd(adc.NewHubCmd(adc.CmdSupport, ourFeatures))
+	err := conn.WriteHubMsg(adc.Supported{
+		Features: ourFeatures,
+	})
 	if err != nil {
 		return adc.SID{}, nil, err
 	}
@@ -100,20 +102,15 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 	deadline := time.Now().Add(time.Second * 5)
 
 	// first, we expect a SUP from the hub with a list of supported features
-	cmd, err := conn.ReadCmd(deadline)
+	msg, err := conn.ReadInfoMsg(deadline)
 	if err != nil {
 		return adc.SID{}, nil, err
 	}
-	info, ok := cmd.(adc.InfoCmd)
+	sup, ok := msg.(adc.Supported)
 	if !ok {
-		return adc.SID{}, nil, fmt.Errorf("unexpected command type in PROTOCOL: %#v", cmd)
-	} else if info.Name != adc.CmdSupport {
-		return adc.SID{}, nil, fmt.Errorf("expected SUP command, got: %#v", cmd)
+		return adc.SID{}, nil, fmt.Errorf("expected SUP command, got: %#v", msg)
 	}
-	hubFeatures := make(adc.ModFeatures)
-	if err = adc.Unmarshal(info.Raw, &hubFeatures); err != nil {
-		return adc.SID{}, nil, err
-	}
+	hubFeatures := sup.Features
 
 	// check mutual features
 	mutual := ourFeatures.Intersect(hubFeatures)
@@ -124,22 +121,15 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 	}
 
 	// next, we expect a SID that will assign a Session ID
-	cmd, err = conn.ReadCmd(deadline)
+	msg, err = conn.ReadInfoMsg(deadline)
 	if err != nil {
 		return adc.SID{}, nil, err
 	}
-	info, ok = cmd.(adc.InfoCmd)
+	sid, ok := msg.(adc.SIDAssign)
 	if !ok {
-		return adc.SID{}, nil, fmt.Errorf("unexpected command type in PROTOCOL: %#v", cmd)
-	} else if info.Name != adc.CmdSession {
-		return adc.SID{}, nil, fmt.Errorf("expected SID command, got: %#v", cmd)
+		return adc.SID{}, nil, fmt.Errorf("expected SID command, got: %#v", msg)
 	}
-
-	var sid adc.SID
-	if err := sid.UnmarshalAdc(info.Raw); err != nil {
-		return adc.SID{}, nil, err
-	}
-	return sid, mutual, nil
+	return sid.SID, mutual, nil
 }
 
 func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
@@ -160,7 +150,7 @@ func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
 			user.Features = append(user.Features, f)
 		}
 	}
-	err := conn.WriteCmd(adc.NewBroadcast(adc.CmdInfo, sid, user))
+	err := conn.WriteBroadcast(sid, user)
 	if err != nil {
 		return err
 	}
@@ -236,9 +226,8 @@ func (c *Conn) Close() error {
 	return err
 }
 
-func (c *Conn) writeCommand(cmd adc.ClientCommand) error {
-	cmd.SetSID(c.SID())
-	if err := c.conn.WriteCmd(cmd); err != nil {
+func (c *Conn) writeDirect(to adc.SID, msg adc.Message) error {
+	if err := c.conn.WriteDirect(c.SID(), to, msg); err != nil {
 		return err
 	}
 	return c.conn.Flush()
@@ -267,28 +256,28 @@ func (c *Conn) revConnToken(ctx context.Context, cid adc.CID) (token string, add
 func (c *Conn) readLoop() {
 	defer close(c.closed)
 	for {
-		cmd, err := c.conn.ReadCmd(time.Time{})
+		cmd, err := c.conn.ReadPacket(time.Time{})
 		if err != nil {
 			log.Println(err)
 			return
 		}
 		switch cmd := cmd.(type) {
-		case adc.Broadcast:
+		case *adc.BroadcastPacket:
 			if err := c.handleBroadcast(cmd); err != nil {
 				log.Println(err)
 				return
 			}
-		case adc.InfoCmd:
+		case *adc.InfoPacket:
 			if err := c.handleInfo(cmd); err != nil {
 				log.Println(err)
 				return
 			}
-		case adc.FeatureCmd:
+		case *adc.FeaturePacket:
 			if err := c.handleFeature(cmd); err != nil {
 				log.Println(err)
 				return
 			}
-		case adc.DirectCmd:
+		case *adc.DirectPacket:
 			// TODO: ADC flaw: why ever send the client his own SID? hub should append it instead
 			//		 same for the sending party
 			if cmd.Targ != c.SID() {
@@ -305,47 +294,47 @@ func (c *Conn) readLoop() {
 	}
 }
 
-func (c *Conn) handleBroadcast(cmd adc.Broadcast) error {
-	switch cmd.Name {
-	case adc.CmdInfo:
-		return c.peerUpdate(cmd.Id, cmd.Raw)
-	case adc.CmdSearch:
-		p := c.peerBySID(cmd.Id)
-		go c.handleSearch(p, cmd.Raw)
+func (c *Conn) handleBroadcast(p *adc.BroadcastPacket) error {
+	// we could decode the message and type-switch, but for cases
+	// below it's better to decode later
+	switch p.Name {
+	case (adc.User{}).Cmd():
+		// easier to merge while decoding
+		return c.peerUpdate(p.ID, p.Data)
+	case (adc.SearchRequest{}).Cmd():
+		peer := c.peerBySID(p.ID)
+		// async decoding
+		go c.handleSearch(peer, p.Data)
 		return nil
 	// TODO: MSG
 	default:
-		log.Printf("unhandled broadcast command: %v", cmd.Name)
+		log.Printf("unhandled broadcast command: %v", p.Name)
 		return nil
 	}
 }
 
-func (c *Conn) handleInfo(cmd adc.InfoCmd) error {
-	switch cmd.Name {
-	case adc.CmdMessage:
+func (c *Conn) handleInfo(p *adc.InfoPacket) error {
+	msg, err := p.Decode()
+	if err != nil {
+		return err
+	}
+	switch msg := msg.(type) {
+	case adc.ChatMessage:
 		// TODO: ADC: maybe hub should take a AAAA SID for itself
 		//       and this will become B-MSG AAAA, instead of I-MSG
-		var s adc.String
-		if err := s.UnmarshalAdc(cmd.Raw); err != nil {
-			return err
-		}
-		fmt.Printf("%s\n", string(s))
+		fmt.Printf("%s\n", msg.Text)
 		return nil
-	case adc.CmdDisconnect:
+	case adc.Disconnect:
 		// TODO: ADC flaw: this should be B-QUI, not I-QUI
 		//  	 it always includes a SID and is, in fact, a broadcast
-		var sid adc.SID
-		if err := sid.UnmarshalAdc(cmd.Raw); err != nil {
-			return err
-		}
-		return c.peerQuit(sid)
+		return c.peerQuit(msg.ID)
 	default:
-		log.Printf("unhandled info command: %v", cmd.Name)
+		log.Printf("unhandled info command: %v", p.Name)
 		return nil
 	}
 }
 
-func (c *Conn) handleFeature(cmd adc.FeatureCmd) error {
+func (c *Conn) handleFeature(cmd *adc.FeaturePacket) error {
 	// TODO: ADC protocol: this is another B-XXX command, but with a feature selector
 	//		 might be a good idea to extend selector with some kind of tags
 	//		 it may work for extensions, geo regions, chat channels, etc
@@ -360,28 +349,29 @@ func (c *Conn) handleFeature(cmd adc.FeatureCmd) error {
 	}
 
 	// FIXME: this allows F-MSG that we should probably avoid
-	return c.handleBroadcast(adc.Broadcast{
-		Name: cmd.Name, Id: cmd.Id, Raw: cmd.Raw,
+	return c.handleBroadcast(&adc.BroadcastPacket{
+		ID: cmd.ID, BasePacket: cmd.BasePacket,
 	})
 }
 
-func (c *Conn) handleDirect(cmd adc.DirectCmd) error {
-	switch cmd.Name {
-	case adc.CmdConnectToMe:
-		var s adc.RCMResponse
-		if err := adc.Unmarshal(cmd.Raw, &s); err != nil {
-			return err
-		}
+func (c *Conn) handleDirect(cmd *adc.DirectPacket) error {
+	msg, err := cmd.Decode()
+	if err != nil {
+		return err
+	}
+	switch msg := msg.(type) {
+	case adc.ConnectRequest:
 		c.revConn.Lock()
-		tok, ok := c.revConn.tokens[s.Token]
-		delete(c.revConn.tokens, s.Token)
+		tok, ok := c.revConn.tokens[msg.Token]
+		delete(c.revConn.tokens, msg.Token)
 		c.revConn.Unlock()
 		if !ok {
-			// FIXME: this is actually a direct connection attempt from a new peer
-			return fmt.Errorf("invalid reverse connect token: %q", s.Token)
+			// TODO: handle a direct connection request from peers
+			log.Printf("ignoring connection attempt from %v", cmd.ID)
+			return nil
 		}
-		p := c.peerBySID(cmd.Id)
-		go c.handleConnReq(p, tok, s)
+		p := c.peerBySID(cmd.ID)
+		go c.handleConnReq(p, tok, msg)
 		return nil
 	default:
 		log.Printf("unhandled direct command: %v", cmd.Name)
@@ -389,7 +379,7 @@ func (c *Conn) handleDirect(cmd adc.DirectCmd) error {
 	}
 }
 
-func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adc.RCMResponse) {
+func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adc.ConnectRequest) {
 	if p == nil {
 		tok.errc <- ErrPeerOffline
 		return
@@ -411,7 +401,7 @@ func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adc.RCMResponse) {
 }
 
 func (c *Conn) handleSearch(p *Peer, data []byte) {
-	var sch adc.SearchParams
+	var sch adc.SearchRequest
 	if err := adc.Unmarshal(data, &sch); err != nil {
 		log.Println("failed to decode search:", err)
 		return
@@ -511,29 +501,29 @@ func (c *Conn) acceptUsersList() error {
 	)
 	stage := hubInfo
 	for {
-		cmd, err := c.conn.ReadCmd(deadline)
+		cmd, err := c.conn.ReadPacket(deadline)
 		if err != nil {
 			return err
 		}
 		switch cmd := cmd.(type) {
-		case adc.InfoCmd:
+		case *adc.InfoPacket:
 			switch stage {
 			case hubInfo:
 				// waiting for hub info
-				if cmd.Name != adc.CmdInfo {
+				if cmd.Name != (adc.User{}).Cmd() {
 					return fmt.Errorf("expected hub info, received: %#v", cmd)
 				}
-				if err := adc.Unmarshal(cmd.Raw, &c.hub); err != nil {
+				if err := adc.Unmarshal(cmd.Data, &c.hub); err != nil {
 					return err
 				}
 				stage = optStatus
 			case optStatus:
 				// optionally wait for status command
-				if cmd.Name != adc.CmdStatus {
+				if cmd.Name != (adc.Status{}).Cmd() {
 					return fmt.Errorf("expected status, received: %#v", cmd)
 				}
 				var st adc.Status
-				if err := adc.Unmarshal(cmd.Raw, &st); err != nil {
+				if err := adc.Unmarshal(cmd.Data, &st); err != nil {
 					return err
 				} else if !st.Ok() {
 					return st.Err()
@@ -542,16 +532,16 @@ func (c *Conn) acceptUsersList() error {
 			default:
 				return fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
 			}
-		case adc.Broadcast:
+		case *adc.BroadcastPacket:
 			switch stage {
 			case optStatus:
 				stage = userList
 				fallthrough
 			case userList:
-				if cmd.Id == c.sid {
+				if cmd.ID == c.sid {
 					// make sure to wipe PID, so we don't send it later occasionally
 					c.user.Pid = nil
-					if err := adc.Unmarshal(cmd.Raw, &c.user); err != nil {
+					if err := adc.Unmarshal(cmd.Data, &c.user); err != nil {
 						return err
 					}
 					// done, should switch to NORMAL
@@ -559,10 +549,10 @@ func (c *Conn) acceptUsersList() error {
 				}
 				// other users
 				var u adc.User
-				if err := adc.Unmarshal(cmd.Raw, &u); err != nil {
+				if err := adc.Unmarshal(cmd.Data, &u); err != nil {
 					return err
 				}
-				_ = c.peerJoins(cmd.Id, u)
+				_ = c.peerJoins(cmd.ID, u)
 				// continue until we see ourselves in the list
 			default:
 				return fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)

@@ -1,0 +1,344 @@
+package adc
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+)
+
+var (
+	messages = make(map[MsgType]reflect.Type)
+)
+
+func init() {
+	RegisterMessage(Supported{})
+	RegisterMessage(Status{})
+	RegisterMessage(SIDAssign{})
+	RegisterMessage(User{})
+	RegisterMessage(RevConnectRequest{})
+	RegisterMessage(ConnectRequest{})
+	RegisterMessage(GetInfoRequest{})
+	RegisterMessage(SearchRequest{})
+	RegisterMessage(ChatMessage{})
+	RegisterMessage(Disconnect{})
+}
+
+type Message interface {
+	Cmd() MsgType
+}
+
+func RegisterMessage(m Message) {
+	name := m.Cmd()
+	if _, ok := messages[name]; ok {
+		panic(fmt.Errorf("%q already registered", name.String()))
+	}
+	rt := reflect.TypeOf(m)
+	if rt.Kind() == reflect.Ptr {
+		rt = rt.Elem()
+	}
+	messages[name] = rt
+}
+
+func UnmarshalMessage(name MsgType, data []byte) (Message, error) {
+	rt, ok := messages[name]
+	if !ok {
+		return RawMessage{Type: name, Data: data}, nil
+	}
+	rv := reflect.New(rt)
+	if err := Unmarshal(data, rv.Interface()); err != nil {
+		return nil, err
+	}
+	return rv.Elem().Interface().(Message), nil
+}
+
+var (
+	_ Message      = RawMessage{}
+	_ Marshaller   = RawMessage{}
+	_ Unmarshaller = (*RawMessage)(nil)
+)
+
+type RawMessage struct {
+	Type MsgType
+	Data []byte
+}
+
+func (m RawMessage) Cmd() MsgType {
+	return m.Type
+}
+
+func (m RawMessage) MarshalAdc() ([]byte, error) {
+	return m.Data, nil
+}
+
+func (m *RawMessage) UnmarshalAdc(data []byte) error {
+	m.Data = data // TODO: copy?
+	return nil
+}
+
+var (
+	_ Message      = Supported{}
+	_ Marshaller   = Supported{}
+	_ Unmarshaller = (*Supported)(nil)
+)
+
+type Supported struct {
+	Features ModFeatures
+}
+
+func (Supported) Cmd() MsgType {
+	return MsgType{'S', 'U', 'P'}
+}
+
+func (m Supported) MarshalAdc() ([]byte, error) {
+	return m.Features.MarshalAdc()
+}
+
+func (m *Supported) UnmarshalAdc(data []byte) error {
+	return m.Features.UnmarshalAdc(data)
+}
+
+type Severity int
+
+const (
+	Success     = Severity(0)
+	Recoverable = Severity(1)
+	Fatal       = Severity(2)
+)
+
+var (
+	_ Message      = Status{}
+	_ Marshaller   = Status{}
+	_ Unmarshaller = (*Status)(nil)
+)
+
+type Status struct {
+	Sev  Severity
+	Code int
+	Msg  string
+}
+
+func (Status) Cmd() MsgType {
+	return MsgType{'S', 'T', 'A'}
+}
+
+func (st Status) Ok() bool {
+	return st.Sev == Success
+}
+func (st Status) Recoverable() bool {
+	return st.Ok() || st.Sev == Recoverable
+}
+func (st Status) Err() error {
+	if !st.Ok() {
+		if st.Code == 51 {
+			return os.ErrNotExist
+		}
+		return Error{st}
+	}
+	return nil
+}
+func (st *Status) UnmarshalAdc(s []byte) error {
+	sub := bytes.SplitN(s, []byte(" "), 2)
+	code, err := strconv.Atoi(string(sub[0]))
+	if err != nil {
+		return fmt.Errorf("wrong status code: %v", err)
+	}
+	st.Code = code % 100
+	st.Sev = Severity(code / 100)
+	st.Msg = ""
+	if len(sub) > 1 {
+		st.Msg = unescape(sub[1])
+	}
+	return nil
+}
+func (st Status) MarshalAdc() ([]byte, error) {
+	s := fmt.Sprintf("%d%02d %s", int(st.Sev), st.Code, escape(st.Msg))
+	return []byte(s), nil
+}
+
+var (
+	_ Message      = Supported{}
+	_ Marshaller   = Supported{}
+	_ Unmarshaller = (*Supported)(nil)
+)
+
+type SIDAssign struct {
+	SID SID
+}
+
+func (SIDAssign) Cmd() MsgType {
+	return MsgType{'S', 'I', 'D'}
+}
+
+func (m SIDAssign) MarshalAdc() ([]byte, error) {
+	return m.SID.MarshalAdc()
+}
+
+func (m *SIDAssign) UnmarshalAdc(data []byte) error {
+	return m.SID.UnmarshalAdc(data)
+}
+
+var _ Message = User{}
+
+type User struct {
+	Id   CID    `adc:"ID"`
+	Pid  *PID   `adc:"PD"` // sent only to hub
+	Name string `adc:"NI"`
+
+	Ip4  string `adc:"I4"`
+	Ip6  string `adc:"I6"`
+	Udp4 int    `adc:"U4"`
+	Udp6 int    `adc:"U6"`
+
+	ShareSize  int64 `adc:"SS"`
+	ShareFiles int   `adc:"SF"`
+
+	Version     string `adc:"VE"`
+	Application string `adc:"AP"`
+
+	MaxUpload   string `adc:"US"` // TODO: most time it's int, but some clients write things like "Cable"
+	MaxDownload int    `adc:"DS"`
+
+	Slots         int `adc:"SL"`
+	SlotsFree     int `adc:"FS"`
+	AutoSlotLimit int `adc:"AS"`
+
+	Email string `adc:"EM"`
+	Desc  string `adc:"DE"`
+
+	HubsNormal     int `adc:"HN"`
+	HubsRegistered int `adc:"HR"`
+	HubsOperator   int `adc:"HO"`
+
+	Token string `adc:"TO"` // C-C only
+
+	Type UserType `adc:"CT"`
+	Away AwayType `adc:"AW"`
+	Ref  string   `adc:"RF"`
+
+	Features ExtFeatures `adc:"SU"`
+
+	KP string `adc:"KP"`
+}
+
+func (User) Cmd() MsgType {
+	return MsgType{'I', 'N', 'F'}
+}
+
+var _ Message = RevConnectRequest{}
+
+type RevConnectRequest struct {
+	Proto string `adc:"#"`
+	Token string `adc:"#"`
+}
+
+func (RevConnectRequest) Cmd() MsgType {
+	return MsgType{'R', 'C', 'M'}
+}
+
+var _ Message = ConnectRequest{}
+
+type ConnectRequest struct {
+	Proto string `adc:"#"`
+	Port  int    `adc:"#"`
+	Token string `adc:"#"`
+}
+
+func (ConnectRequest) Cmd() MsgType {
+	return MsgType{'C', 'T', 'M'}
+}
+
+var _ Message = GetInfoRequest{}
+
+type GetInfoRequest struct {
+	Type string `adc:"#"`
+	Path string `adc:"#"`
+}
+
+func (GetInfoRequest) Cmd() MsgType {
+	return MsgType{'G', 'F', 'I'}
+}
+
+type FileType int
+
+const (
+	FileTypeAny  FileType = 0
+	FileTypeFile FileType = 1
+	FileTypeDir  FileType = 2
+)
+
+var _ Message = SearchRequest{}
+
+type SearchRequest struct {
+	Token string   `adc:"TO"`
+	And   []string `adc:"AN"`
+	Not   []string `adc:"NO"`
+	Ext   []string `adc:"EX"`
+
+	Le int64 `adc:"LE"`
+	Ge int64 `adc:"GE"`
+	Eq int64 `adc:"EQ"`
+
+	Type FileType `adc:"TY"`
+
+	// TIGR ext
+	Tiger string `adc:"TR"`
+
+	// SEGA ext
+	Group ExtGroup `adc:"GR"`
+	NoExt []string `adc:"RX"`
+}
+
+func (SearchRequest) Cmd() MsgType {
+	return MsgType{'S', 'C', 'H'}
+}
+
+var (
+	_ Message      = ChatMessage{}
+	_ Marshaller   = ChatMessage{}
+	_ Unmarshaller = (*ChatMessage)(nil)
+)
+
+type ChatMessage struct {
+	Text string
+}
+
+func (ChatMessage) Cmd() MsgType {
+	return MsgType{'M', 'S', 'G'}
+}
+
+func (m ChatMessage) MarshalAdc() ([]byte, error) {
+	return String(m.Text).MarshalAdc()
+}
+
+func (m *ChatMessage) UnmarshalAdc(data []byte) error {
+	var s String
+	if err := s.UnmarshalAdc(data); err != nil {
+		return err
+	}
+	m.Text = string(s)
+	return nil
+}
+
+var (
+	_ Message      = Disconnect{}
+	_ Marshaller   = Disconnect{}
+	_ Unmarshaller = (*Disconnect)(nil)
+)
+
+type Disconnect struct {
+	ID SID
+}
+
+func (Disconnect) Cmd() MsgType {
+	return MsgType{'Q', 'U', 'I'}
+}
+
+func (m Disconnect) MarshalAdc() ([]byte, error) {
+	return m.ID.MarshalAdc()
+}
+
+func (m *Disconnect) UnmarshalAdc(data []byte) error {
+	return m.ID.UnmarshalAdc(data)
+}

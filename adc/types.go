@@ -67,8 +67,6 @@ func MustParseCIDP(s string) *CID {
 }
 
 var (
-	_ Marshaller               = CID{}
-	_ Unmarshaller             = (*CID)(nil)
 	_ encoding.TextMarshaler   = CID{}
 	_ encoding.TextUnmarshaler = (*CID)(nil)
 )

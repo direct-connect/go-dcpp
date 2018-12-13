@@ -41,16 +41,9 @@ func (p *Peer) dialPassive(ctx context.Context) (*PeerConn, error) {
 	defer cancel()
 
 	token, caddr, errc := p.hub.revConnToken(ctx, p.Info().Id)
-	data, err := adc.Marshal(adc.RCMParams{
-		Proto: adc.ProtoADC, Token: token,
-	})
-	if err != nil {
-		return nil, err
-	}
 
-	err = p.hub.writeCommand(&adc.DirectCmd{
-		Name: adc.CmdRevConnectToMe,
-		Targ: *sid, Raw: data,
+	err := p.hub.writeDirect(*sid, adc.RevConnectRequest{
+		Proto: adc.ProtoADC, Token: token,
 	})
 	if err != nil {
 		return nil, err
@@ -84,21 +77,13 @@ func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adc.ModFeatures, 
 		adc.FeaBASE: true,
 		adc.FeaTIGR: true,
 	}
-	data, err := adc.Marshal(ourFeatures)
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteCmd(adc.ClientCmd{
-		Name: adc.CmdSupport, Raw: data,
+	err := conn.WriteClientMsg(adc.Supported{
+		Features: ourFeatures,
 	})
 
 	// send an identification as well
-	data, err = adc.Marshal(adc.User{Id: p.hub.CID(), Token: token})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteCmd(adc.ClientCmd{
-		Name: adc.CmdInfo, Raw: data,
+	err = conn.WriteClientMsg(adc.User{
+		Id: p.hub.CID(), Token: token,
 	})
 
 	// flush both
@@ -109,39 +94,27 @@ func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adc.ModFeatures, 
 
 	deadline := time.Now().Add(time.Second * 5)
 	// wait for a list of features
-	cmd, err := conn.ReadCmd(deadline)
+	msg, err := conn.ReadClientMsg(deadline)
 	if err != nil {
 		return nil, err
 	}
-	cc, ok := cmd.(adc.ClientCmd)
+	sup, ok := msg.(adc.Supported)
 	if !ok {
-		return nil, fmt.Errorf("expected client command, got: %#v", cmd)
-	} else if cc.Name != adc.CmdSupport {
-		return nil, fmt.Errorf("expected a list of peer's features, got: %#v", cmd)
+		return nil, fmt.Errorf("expected a list of peer's features, got: %#v", msg)
 	}
-
-	var peerFeatures adc.ModFeatures
-	if err := peerFeatures.UnmarshalAdc(cc.Raw); err != nil {
-		return nil, err
-	} else if !peerFeatures.IsSet(adc.FeaBASE) || !peerFeatures.IsSet(adc.FeaTIGR) {
+	peerFeatures := sup.Features
+	if !peerFeatures.IsSet(adc.FeaBASE) || !peerFeatures.IsSet(adc.FeaTIGR) {
 		return nil, fmt.Errorf("no basic features support for peer: %v", peerFeatures)
 	}
 
 	// wait for an identification
-	cmd, err = conn.ReadCmd(deadline)
+	msg, err = conn.ReadClientMsg(deadline)
 	if err != nil {
 		return nil, err
 	}
-	cc, ok = cmd.(adc.ClientCmd)
+	u, ok := msg.(adc.User)
 	if !ok {
-		return nil, fmt.Errorf("expected client command, got: %#v", cmd)
-	} else if cc.Name != adc.CmdInfo {
-		return nil, fmt.Errorf("expected a peer's identity, got: %#v", cmd)
-	}
-
-	var u adc.User
-	if err := adc.Unmarshal(cc.Raw, &u); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("expected a peer's identity, got: %#v", msg)
 	} else if u.Id != p.Info().Id {
 		return nil, fmt.Errorf("wrong client connected: %v", u.Id)
 	}
@@ -153,21 +126,16 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 	deadline := time.Now().Add(time.Second * 5)
 
 	// wait for a list of features
-	cmd, err := conn.ReadCmd(deadline)
+	msg, err := conn.ReadClientMsg(deadline)
 	if err != nil {
 		return nil, err
 	}
-	cc, ok := cmd.(adc.ClientCmd)
+	sup, ok := msg.(adc.Supported)
 	if !ok {
-		return nil, fmt.Errorf("expected client command, got: %#v", cmd)
-	} else if cc.Name != adc.CmdSupport {
-		return nil, fmt.Errorf("expected a list of peer's features, got: %#v", cmd)
+		return nil, fmt.Errorf("expected a list of peer's features, got: %#v", msg)
 	}
-
-	var peerFeatures adc.ModFeatures
-	if err := peerFeatures.UnmarshalAdc(cc.Raw); err != nil {
-		return nil, err
-	} else if !peerFeatures.IsSet(adc.FeaBASE) || !peerFeatures.IsSet(adc.FeaTIGR) {
+	peerFeatures := sup.Features
+	if !peerFeatures.IsSet(adc.FeaBASE) || !peerFeatures.IsSet(adc.FeaTIGR) {
 		return nil, fmt.Errorf("no basic features support for peer: %v", peerFeatures)
 	}
 
@@ -177,12 +145,8 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 		adc.FeaBASE: true,
 		adc.FeaTIGR: true,
 	}
-	data, err := adc.Marshal(ourFeatures)
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteCmd(adc.ClientCmd{
-		Name: adc.CmdSupport, Raw: data,
+	err = conn.WriteClientMsg(adc.Supported{
+		Features: ourFeatures,
 	})
 	if err != nil {
 		return nil, err
@@ -193,20 +157,13 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 	}
 
 	// wait for an identification
-	cmd, err = conn.ReadCmd(deadline)
+	msg, err = conn.ReadClientMsg(deadline)
 	if err != nil {
 		return nil, err
 	}
-	cc, ok = cmd.(adc.ClientCmd)
+	u, ok := msg.(adc.User)
 	if !ok {
-		return nil, fmt.Errorf("expected client command, got: %#v", cmd)
-	} else if cc.Name != adc.CmdInfo {
-		return nil, fmt.Errorf("expected a peer's identity, got: %#v", cmd)
-	}
-
-	var u adc.User
-	if err := adc.Unmarshal(cc.Raw, &u); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("expected a peer's identity, got: %#v", msg)
 	} else if u.Id != p.Info().Id {
 		return nil, fmt.Errorf("wrong client connected: %v", u.Id)
 	} else if u.Token != token {
@@ -214,12 +171,8 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 	}
 
 	// identify ourselves
-	data, err = adc.Marshal(adc.User{Id: p.hub.CID()})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteCmd(adc.ClientCmd{
-		Name: adc.CmdInfo, Raw: data,
+	err = conn.WriteClientMsg(adc.User{
+		Id: p.hub.CID(),
 	})
 	if err != nil {
 		return nil, err
