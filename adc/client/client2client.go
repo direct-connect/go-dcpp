@@ -206,6 +206,11 @@ func (c *PeerConn) Peer() *Peer {
 	return c.p
 }
 
+type FileInfo struct {
+	Size int64
+	TTH  adc.TTH
+}
+
 type File interface {
 	io.Reader
 	io.ReaderAt
@@ -287,6 +292,15 @@ func (c *PeerConn) readFile(ctx context.Context, typ, path string, off, size int
 	return c.conn.ReadBinary(res.Bytes), nil
 }
 
+func (c *PeerConn) StatFile(ctx context.Context, path string) (FileInfo, error) {
+	info, err := c.statFile(ctx, "file", path)
+	if err != nil {
+		// TODO: handle not found error
+		return FileInfo{}, err
+	}
+	return FileInfo{Size: info.Size, TTH: info.Tiger}, nil
+}
+
 func (c *PeerConn) GetFile(ctx context.Context, path string) (File, error) {
 	info, err := c.statFile(ctx, "file", path)
 	if err != nil {
@@ -294,6 +308,14 @@ func (c *PeerConn) GetFile(ctx context.Context, path string) (File, error) {
 		return nil, err
 	}
 	return &peerFile{c: c, typ: "file", path: path, info: *info}, nil
+}
+
+func (c *PeerConn) StatFileList(ctx context.Context, path string) (FileInfo, error) {
+	if !c.fea.IsSet(adc.FeaBZIP) {
+		// TODO: implement if it happens in the wild
+		return FileInfo{}, fmt.Errorf("bzip file list is not supported by peer")
+	}
+	return c.StatFile(ctx, adc.FileListBZIP)
 }
 
 func (c *PeerConn) GetFileListBZIP(ctx context.Context) (io.ReadCloser, error) {

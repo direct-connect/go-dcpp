@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	_ Unmarshaller = (*tiger.Hash)(nil)
-	_ Marshaller   = tiger.Hash{}
+	_ Unmarshaler = (*tiger.Hash)(nil)
+	_ Marshaler   = tiger.Hash{}
 )
 
 var (
@@ -28,22 +28,22 @@ func unescape(s []byte) string {
 	return unescaper.Replace(string(s))
 }
 
-type Unmarshaller interface {
+type Unmarshaler interface {
 	UnmarshalAdc(data []byte) error
 }
 
-type Marshaller interface {
+type Marshaler interface {
 	MarshalAdc() ([]byte, error)
 }
 
 var (
-	_ Marshaller   = CID{}
-	_ Unmarshaller = (*CID)(nil)
+	_ Marshaler   = CID{}
+	_ Unmarshaler = (*CID)(nil)
 )
 
 func unmarshalValue(s []byte, rv reflect.Value) error {
 	switch fv := rv.Addr().Interface().(type) {
-	case Unmarshaller:
+	case Unmarshaler:
 		return fv.UnmarshalAdc(s)
 	}
 	if len(s) == 0 {
@@ -83,7 +83,7 @@ func unmarshalValue(s []byte, rv reflect.Value) error {
 }
 
 func Unmarshal(s []byte, o interface{}) error {
-	if m, ok := o.(Unmarshaller); ok {
+	if m, ok := o.(Unmarshaler); ok {
 		return m.UnmarshalAdc(s)
 	}
 	rv := reflect.ValueOf(o)
@@ -118,7 +118,7 @@ func Unmarshal(s []byte, o interface{}) error {
 			}
 		}
 		if len(vals) > 0 {
-			if m, ok := rv.Field(i).Addr().Interface().(Unmarshaller); ok {
+			if m, ok := rv.Field(i).Addr().Interface().(Unmarshaler); ok {
 				if err := m.UnmarshalAdc(vals[0]); err != nil {
 					return fmt.Errorf("error on field %s: %s", fld.Name, err)
 				}
@@ -146,7 +146,7 @@ func Unmarshal(s []byte, o interface{}) error {
 
 func marshalValue(o interface{}) ([]byte, error) {
 	switch v := o.(type) {
-	case Marshaller:
+	case Marshaler:
 		return v.MarshalAdc()
 	}
 	rv := reflect.ValueOf(o)
@@ -182,7 +182,7 @@ func Marshal(o interface{}) ([]byte, error) {
 	if o == nil {
 		return nil, nil
 	}
-	if m, ok := o.(Marshaller); ok {
+	if m, ok := o.(Marshaler); ok {
 		return m.MarshalAdc()
 	}
 	rv := reflect.ValueOf(o)
@@ -218,7 +218,7 @@ func Marshal(o interface{}) ([]byte, error) {
 		if omit && isZero(rv.Field(i)) {
 			continue
 		}
-		if m, ok := rv.Field(i).Interface().(Marshaller); ok {
+		if m, ok := rv.Field(i).Interface().(Marshaler); ok {
 			sv, err := m.MarshalAdc()
 			if err != nil {
 				return nil, fmt.Errorf("cannot marshal field %s: %v", fld.Name, err)

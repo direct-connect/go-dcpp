@@ -57,9 +57,9 @@ func UnmarshalMessage(name MsgType, data []byte) (Message, error) {
 }
 
 var (
-	_ Message      = RawMessage{}
-	_ Marshaller   = RawMessage{}
-	_ Unmarshaller = (*RawMessage)(nil)
+	_ Message     = RawMessage{}
+	_ Marshaler   = RawMessage{}
+	_ Unmarshaler = (*RawMessage)(nil)
 )
 
 type RawMessage struct {
@@ -81,9 +81,9 @@ func (m *RawMessage) UnmarshalAdc(data []byte) error {
 }
 
 var (
-	_ Message      = Supported{}
-	_ Marshaller   = Supported{}
-	_ Unmarshaller = (*Supported)(nil)
+	_ Message     = Supported{}
+	_ Marshaler   = Supported{}
+	_ Unmarshaler = (*Supported)(nil)
 )
 
 type Supported struct {
@@ -111,9 +111,9 @@ const (
 )
 
 var (
-	_ Message      = Status{}
-	_ Marshaller   = Status{}
-	_ Unmarshaller = (*Status)(nil)
+	_ Message     = Status{}
+	_ Marshaler   = Status{}
+	_ Unmarshaler = (*Status)(nil)
 )
 
 type Status struct {
@@ -161,9 +161,9 @@ func (st Status) MarshalAdc() ([]byte, error) {
 }
 
 var (
-	_ Message      = Supported{}
-	_ Marshaller   = Supported{}
-	_ Unmarshaller = (*Supported)(nil)
+	_ Message     = Supported{}
+	_ Marshaler   = Supported{}
+	_ Unmarshaler = (*Supported)(nil)
 )
 
 type SIDAssign struct {
@@ -335,9 +335,9 @@ func (SearchResult) Cmd() MsgType {
 }
 
 var (
-	_ Message      = ChatMessage{}
-	_ Marshaller   = ChatMessage{}
-	_ Unmarshaller = (*ChatMessage)(nil)
+	_ Message     = ChatMessage{}
+	_ Marshaler   = ChatMessage{}
+	_ Unmarshaler = (*ChatMessage)(nil)
 )
 
 type ChatMessage struct {
@@ -362,9 +362,9 @@ func (m *ChatMessage) UnmarshalAdc(data []byte) error {
 }
 
 var (
-	_ Message      = Disconnect{}
-	_ Marshaller   = Disconnect{}
-	_ Unmarshaller = (*Disconnect)(nil)
+	_ Message     = Disconnect{}
+	_ Marshaler   = Disconnect{}
+	_ Unmarshaler = (*Disconnect)(nil)
 )
 
 type Disconnect struct {

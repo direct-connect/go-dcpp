@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-
-	"github.com/dennwc/go-dcpp/tiger"
 )
 
 // https://adc.sourceforge.io/ADC.html
@@ -210,8 +208,8 @@ type HubInfo struct {
 }
 
 var (
-	_ Marshaller   = (ExtFeatures)(nil)
-	_ Unmarshaller = (*ExtFeatures)(nil)
+	_ Marshaler   = (ExtFeatures)(nil)
+	_ Unmarshaler = (*ExtFeatures)(nil)
 )
 
 type ExtFeatures []Feature
@@ -313,25 +311,3 @@ const (
 type ExtGroup int
 
 func (t ExtGroup) Is(st ExtGroup) bool { return t&st != 0 }
-
-type FileListDir struct {
-	Name       string         `xml:"Name,attr"`
-	Incomplete int            `xml:"Incomplete,attr"`
-	Dirs       []FileListDir  `xml:"Directory"`
-	Files      []FileListFile `xml:"File"`
-}
-
-type FileListFile struct {
-	Name string     `xml:"Name,attr"`
-	Size int64      `xml:"Size,attr"`
-	TTH  tiger.Hash `xml:"TTH,attr"`
-}
-
-type FileList struct {
-	Version   int            `xml:"Version,attr"`
-	CID       CID            `xml:"CID,attr"`
-	Base      string         `xml:"Base,attr"`
-	Generator string         `xml:"Generator,attr"`
-	Dirs      []FileListDir  `xml:"Directory"`
-	Files     []FileListFile `xml:"File"`
-}
