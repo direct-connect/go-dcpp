@@ -62,6 +62,10 @@ type Conn struct {
 	}
 }
 
+func (c *Conn) RemoteAddr() net.Addr {
+	return c.conn.RemoteAddr()
+}
+
 // Close closes the connection.
 func (c *Conn) Close() error {
 	if c.closed != nil {
@@ -205,6 +209,16 @@ func (r directRoute) WriteMessage(msg Message) error {
 
 func (r directRoute) Flush() error {
 	return r.c.Flush()
+}
+
+func (c *Conn) WriteInfoMsg(msg Message) error {
+	data, err := Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WritePacket(&InfoPacket{
+		BasePacket{Name: msg.Cmd(), Data: data},
+	})
 }
 
 func (c *Conn) WriteHubMsg(msg Message) error {

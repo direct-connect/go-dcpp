@@ -240,11 +240,7 @@ func (p DirectPacket) MarshalPacket() ([]byte, error) {
 
 var _ Packet = (*EchoPacket)(nil)
 
-type EchoPacket struct {
-	BasePacket
-	ID   SID
-	Targ SID
-}
+type EchoPacket DirectPacket
 
 func (*EchoPacket) kind() byte {
 	return kindEcho
