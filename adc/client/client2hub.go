@@ -82,7 +82,11 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 		adc.FeaBASE: true,
 		adc.FeaTIGR: true,
 		// extensions
-		adc.FeaPING: true,
+
+		// TODO: some hubs will stop the handshake after sending the hub info
+		//       if this extension is specified
+		//adc.FeaPING: true,
+
 		adc.FeaBZIP: true,
 		// TODO: ZLIG
 	}
