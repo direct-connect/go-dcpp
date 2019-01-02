@@ -401,7 +401,7 @@ type HubInfo struct {
 	Share      int    `adc:"SS"` // Total share size
 	Files      int    `adc:"SF"` // Total files shared
 	MinShare   int    `adc:"MS"` // Minimum share required to enter hub ( bytes )
-	MaxShare   int    `adc:"XS"` // Maximum share for entering hub ( bytes )
+	MaxShare   int64  `adc:"XS"` // Maximum share for entering hub ( bytes )
 	MinSlots   int    `adc:"ML"` // Minimum slots required to enter hub
 	MaxSlots   int    `adc:"XL"` // Maximum slots for entering hub
 	UsersLimit int    `adc:"MC"` // Maximum possible clients ( users ) who can connect

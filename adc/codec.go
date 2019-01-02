@@ -3,6 +3,7 @@ package adc
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -59,9 +60,16 @@ func unmarshalValue(s []byte, rv reflect.Value) error {
 		rv.Set(reflect.ValueOf(vi).Convert(rv.Type()))
 		return nil
 	case reflect.Int64:
-		vi, err := strconv.ParseInt(string(s), 10, 64)
+		sv := string(s)
+		vi, err := strconv.ParseInt(sv, 10, 64)
 		if err != nil {
-			return err
+			vf, err2 := strconv.ParseFloat(sv, 64)
+			if err2 != nil {
+				return err
+			} else if math.Round(vf) != vf {
+				return err2
+			}
+			vi = int64(vf)
 		}
 		rv.Set(reflect.ValueOf(vi).Convert(rv.Type()))
 		return nil
