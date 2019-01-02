@@ -3,11 +3,13 @@ package adc
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,9 +25,31 @@ type Route interface {
 
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
+	secure := false
+	if i := strings.Index(addr, "://"); i >= 0 {
+		proto := addr[:i]
+		addr = addr[i+3:]
+		switch proto {
+		case "adc":
+			// continue
+		case "adcs":
+			secure = true
+		default:
+			return nil, fmt.Errorf("unsupported protocol: %q", proto)
+		}
+	}
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
+	}
+	if secure {
+		sconn := tls.Client(conn, &tls.Config{
+			InsecureSkipVerify: true,
+		})
+		if err = sconn.Handshake(); err != nil {
+			return nil, fmt.Errorf("TLS handshake failed: %v", err)
+		}
+		conn = sconn
 	}
 	return NewConn(conn)
 }
