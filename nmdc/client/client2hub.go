@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"log"
@@ -80,10 +79,7 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 
 	ext := []string{
 		nmdc.FeaNoHello,
-		"BotList",
-		"BZList",
-		//"ADCGet",
-		//"XmlBZList",
+		nmdc.FeaNoGetINFO,
 	}
 	ext = append(ext, conf.Ext...)
 
@@ -91,7 +87,7 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = conn.WriteMsg(&nmdc.Key{Key: unlock(lock.Lock)})
+	err = conn.WriteMsg(&nmdc.Key{Key: nmdc.Unlock(lock.Lock)})
 	if err != nil {
 		return nil, err
 	}
@@ -190,40 +186,6 @@ func initConn(c *Conn) error {
 			return fmt.Errorf("unexpected command: %#v", msg)
 		}
 	}
-}
-
-var keyReplace = map[byte]string{
-	0:   "/%DCN000%/",
-	5:   "/%DCN005%/",
-	36:  "/%DCN036%/",
-	96:  "/%DCN096%/",
-	124: "/%DCN124%/",
-	126: "/%DCN126%/",
-}
-
-func unlock(str string) string {
-	lock := []byte(str)
-
-	n := len(lock)
-	key := make([]byte, n)
-
-	for i := 1; i < n; i++ {
-		key[i] = (lock[i] ^ lock[i-1]) & 0xFF
-	}
-	key[0] = byte((((lock[0] ^ lock[n-1]) ^ lock[n-2]) ^ 5) & 0xFF)
-	for i := 0; i < n; i++ {
-		key[i] = byte((((key[i] << 4) & 0xF0) | ((key[i] >> 4) & 0x0F)) & 0xFF)
-	}
-	buf := bytes.NewBuffer(nil)
-	buf.Grow(len(key))
-	for _, v := range key {
-		if esc, ok := keyReplace[v]; ok {
-			buf.WriteString(esc)
-		} else {
-			buf.WriteByte(v)
-		}
-	}
-	return buf.String()
 }
 
 // Conn represents a Client-to-Hub connection.

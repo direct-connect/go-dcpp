@@ -1,5 +1,7 @@
 package nmdc
 
+import "sort"
+
 type Name string
 
 func (s Name) MarshalNMDC() ([]byte, error) {
@@ -42,4 +44,13 @@ func (f Features) IntersectList(f2 []string) Features {
 		}
 	}
 	return m
+}
+
+func (f Features) List() []string {
+	arr := make([]string, 0, len(f))
+	for s := range f {
+		arr = append(arr, s)
+	}
+	sort.Strings(arr)
+	return arr
 }
