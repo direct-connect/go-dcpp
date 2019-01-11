@@ -206,16 +206,17 @@ func (h *Hub) runProtocol(c *adc.Conn) (*Conn, error) {
 	hubFeatures := adc.ModFeatures{
 		// should always be set for ADC
 		adc.FeaBASE: true,
+		adc.FeaBAS0: true,
 		adc.FeaTIGR: true,
 		// extensions
 		adc.FeaPING: true,
 	}
 
 	mutual := hubFeatures.Intersect(sup.Features)
-	if !mutual.IsSet(adc.FeaBASE) && mutual.IsSet(adc.FeaBAS0) {
-		return nil, fmt.Errorf("hub does not support BASE")
+	if !mutual.IsSet(adc.FeaBASE) && !mutual.IsSet(adc.FeaBAS0) {
+		return nil, fmt.Errorf("client does not support BASE")
 	} else if !mutual.IsSet(adc.FeaTIGR) {
-		return nil, fmt.Errorf("hub does not support TIGR")
+		return nil, fmt.Errorf("client does not support TIGR")
 	}
 
 	// send features supported by the hub

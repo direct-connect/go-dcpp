@@ -121,7 +121,7 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 
 	// check mutual features
 	mutual := ourFeatures.Intersect(hubFeatures)
-	if !mutual.IsSet(adc.FeaBASE) || !mutual.IsSet(adc.FeaBAS0) {
+	if !mutual.IsSet(adc.FeaBASE) && !mutual.IsSet(adc.FeaBAS0) {
 		return adc.SID{}, nil, fmt.Errorf("hub does not support BASE")
 	} else if !mutual.IsSet(adc.FeaTIGR) {
 		return adc.SID{}, nil, fmt.Errorf("hub does not support TIGR")
