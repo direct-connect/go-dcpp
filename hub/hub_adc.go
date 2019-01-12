@@ -14,32 +14,13 @@ import (
 	"github.com/dennwc/go-dcpp/adc/types"
 )
 
-func NewHub(info adc.HubInfo) *Hub {
-	if info.Version == "" {
-		info.Version = "go-dcpp 0.1"
-	}
-	return &Hub{info: info}
-}
-
-type Hub struct {
-	lastSID uint32
-	info    adc.HubInfo
-
-	peers struct {
-		sync.RWMutex
-		bySID  map[adc.SID]*Conn
-		byCID  map[adc.CID]*Conn
-		byName map[string]*Conn
-	}
-}
-
 func (h *Hub) nextSID() adc.SID {
 	// TODO: reuse SIDs
 	v := atomic.AddUint32(&h.lastSID, 1)
 	return types.SIDFromInt(v)
 }
 
-func (h *Hub) Serve(conn net.Conn) error {
+func (h *Hub) ServeADC(conn net.Conn) error {
 	c, err := adc.NewConn(conn)
 	if err != nil {
 		return err
@@ -65,7 +46,7 @@ func (h *Hub) Serve(conn net.Conn) error {
 	return h.servePeer(peer)
 }
 
-func (h *Hub) servePeer(peer *Conn) error {
+func (h *Hub) servePeer(peer *adcConn) error {
 	for {
 		p, err := peer.conn.ReadPacket(time.Time{})
 		if err == io.EOF {
@@ -139,10 +120,10 @@ func (h *Hub) broadcastInfoMsg(msg adc.Message) error {
 }
 
 func (h *Hub) broadcast(p adc.Packet) error {
-	h.peers.RLock()
-	defer h.peers.RUnlock()
+	h.adcPeers.RLock()
+	defer h.adcPeers.RUnlock()
 	var last error
-	for _, peer := range h.peers.bySID {
+	for _, peer := range h.adcPeers.bySID {
 		err := peer.conn.WritePacket(p)
 		if err == nil {
 			err = peer.conn.Flush()
@@ -155,9 +136,9 @@ func (h *Hub) broadcast(p adc.Packet) error {
 }
 
 func (h *Hub) direct(p *adc.DirectPacket) {
-	h.peers.RLock()
-	peer := h.peers.bySID[p.Targ]
-	h.peers.RUnlock()
+	h.adcPeers.RLock()
+	peer := h.adcPeers.bySID[p.Targ]
+	h.adcPeers.RUnlock()
 	if peer == nil {
 		log.Println("unknown peer:", p.Targ)
 		return
@@ -171,22 +152,7 @@ func (h *Hub) direct(p *adc.DirectPacket) {
 	}
 }
 
-func (h *Hub) ListenAndServe(addr string) error {
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	defer lis.Close()
-	for {
-		conn, err := lis.Accept()
-		if err != nil {
-			return err
-		}
-		go h.Serve(conn)
-	}
-}
-
-func (h *Hub) runProtocol(c *adc.Conn) (*Conn, error) {
+func (h *Hub) runProtocol(c *adc.Conn) (*adcConn, error) {
 	deadline := time.Now().Add(time.Second * 5)
 	// Expect features from the client
 	p, err := c.ReadPacket(deadline)
@@ -238,10 +204,10 @@ func (h *Hub) runProtocol(c *adc.Conn) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Conn{hub: h, conn: c, sid: sid, fea: mutual}, nil
+	return &adcConn{hub: h, conn: c, sid: sid, fea: mutual}, nil
 }
 
-func (h *Hub) runIdentity(peer *Conn) error {
+func (h *Hub) runIdentity(peer *adcConn) error {
 	deadline := time.Now().Add(time.Second * 5)
 	// client should send INF with ID and PID set
 	p, err := peer.conn.ReadPacket(deadline)
@@ -269,10 +235,10 @@ func (h *Hub) runIdentity(peer *Conn) error {
 		_ = peer.sendError(adc.Fatal, 21, err)
 		return err
 	}
-	h.peers.RLock()
-	_, sameName := h.peers.byName[u.Name]
-	_, sameCID := h.peers.byCID[u.Id]
-	h.peers.RUnlock()
+	h.adcPeers.RLock()
+	_, sameName := h.adcPeers.byName[u.Name]
+	_, sameCID := h.adcPeers.byCID[u.Id]
+	h.adcPeers.RUnlock()
 	if sameName {
 		err = errors.New("nick taken")
 		_ = peer.sendError(adc.Fatal, 22, err)
@@ -291,7 +257,7 @@ func (h *Hub) runIdentity(peer *Conn) error {
 	peer.user = u
 
 	// send hub info
-	err = peer.conn.WriteInfoMsg(h.info)
+	err = peer.conn.WriteInfoMsg(h.adcInfo)
 	if err != nil {
 		return err
 	}
@@ -302,32 +268,32 @@ func (h *Hub) runIdentity(peer *Conn) error {
 		Msg:  "powered by Gophers",
 	})
 	// send user list
-	h.peers.RLock()
-	for sid, p := range h.peers.bySID {
+	h.adcPeers.RLock()
+	for sid, p := range h.adcPeers.bySID {
 		err = peer.conn.WriteBroadcast(sid, p.Info())
 		if err != nil {
-			h.peers.RUnlock()
+			h.adcPeers.RUnlock()
 			return err
 		}
 	}
-	h.peers.RUnlock()
+	h.adcPeers.RUnlock()
 	// finally accept user on the hub
-	h.peers.Lock()
-	if h.peers.bySID == nil {
-		h.peers.bySID = make(map[adc.SID]*Conn)
-		h.peers.byCID = make(map[adc.CID]*Conn)
-		h.peers.byName = make(map[string]*Conn)
+	h.adcPeers.Lock()
+	if h.adcPeers.bySID == nil {
+		h.adcPeers.bySID = make(map[adc.SID]*adcConn)
+		h.adcPeers.byCID = make(map[adc.CID]*adcConn)
+		h.adcPeers.byName = make(map[string]*adcConn)
 	}
-	h.peers.bySID[peer.sid] = peer
-	h.peers.byCID[u.Id] = peer
-	h.peers.byName[u.Name] = peer
-	h.peers.Unlock()
+	h.adcPeers.bySID[peer.sid] = peer
+	h.adcPeers.byCID[u.Id] = peer
+	h.adcPeers.byName[u.Name] = peer
+	h.adcPeers.Unlock()
 	// write his info and flush
 	_ = h.broadcastMsg(peer.sid, u)
 	return nil
 }
 
-func (h *Hub) sendMOTD(peer *Conn) error {
+func (h *Hub) sendMOTD(peer *adcConn) error {
 	err := peer.conn.WriteInfoMsg(adc.ChatMessage{
 		Text: "Welcome!",
 	})
@@ -341,7 +307,7 @@ func (h *Hub) sendMOTD(peer *Conn) error {
 	return nil
 }
 
-type Conn struct {
+type adcConn struct {
 	hub  *Hub
 	conn *adc.Conn
 	fea  adc.ModFeatures
@@ -351,7 +317,7 @@ type Conn struct {
 	user adc.User
 }
 
-func (c *Conn) sendOneMsg(m adc.Message) error {
+func (c *adcConn) sendOneMsg(m adc.Message) error {
 	err := c.conn.WriteInfoMsg(m)
 	if err != nil {
 		return err
@@ -359,26 +325,26 @@ func (c *Conn) sendOneMsg(m adc.Message) error {
 	return c.conn.Flush()
 }
 
-func (c *Conn) sendError(sev adc.Severity, code int, err error) error {
+func (c *adcConn) sendError(sev adc.Severity, code int, err error) error {
 	return c.sendOneMsg(adc.Status{
 		Sev: sev, Code: code, Msg: err.Error(),
 	})
 }
 
-func (c *Conn) Info() adc.User {
+func (c *adcConn) Info() adc.User {
 	return c.user
 }
 
-func (c *Conn) Close() error {
+func (c *adcConn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	err := c.conn.Close()
 
-	c.hub.peers.Lock()
-	delete(c.hub.peers.bySID, c.sid)
-	delete(c.hub.peers.byName, c.user.Name)
-	delete(c.hub.peers.byCID, c.user.Id)
-	c.hub.peers.Unlock()
+	c.hub.adcPeers.Lock()
+	delete(c.hub.adcPeers.bySID, c.sid)
+	delete(c.hub.adcPeers.byName, c.user.Name)
+	delete(c.hub.adcPeers.byCID, c.user.Id)
+	c.hub.adcPeers.Unlock()
 
 	return err
 }
