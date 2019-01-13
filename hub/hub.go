@@ -8,19 +8,24 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/net/http2"
+
 	"github.com/dennwc/go-dcpp/adc"
 	"github.com/dennwc/go-dcpp/adc/types"
 )
 
 type Info struct {
-	Name    string
-	Version string
-	Desc    string
+	Name string
+	Desc string
+	Soft Software
 }
 
 func NewHub(info Info, tls *tls.Config) *Hub {
-	if info.Version == "" {
-		info.Version = "go-dcpp 0.1"
+	if info.Soft == (Software{}) {
+		info.Soft = Software{
+			Name: "go-dcpp",
+			Vers: "0.1",
+		}
 	}
 	if tls != nil {
 		tls.NextProtos = []string{"adc", "nmdc"}
@@ -33,12 +38,15 @@ func NewHub(info Info, tls *tls.Config) *Hub {
 	h.peers.byName = make(map[string]Peer)
 	h.peers.bySID = make(map[adc.SID]Peer)
 	h.initADC()
+	h.initHTTP()
 	return h
 }
 
 type Hub struct {
-	info Info
-	tls  *tls.Config
+	info   Info
+	tls    *tls.Config
+	h2     *http2.Server
+	h2conf *http2.ServeConnOpts
 
 	lastSID uint32
 
@@ -56,6 +64,27 @@ type Hub struct {
 
 		loggingCID map[adc.CID]struct{}
 		byCID      map[adc.CID]*adcPeer
+	}
+}
+
+type Stats struct {
+	Name  string   `json:"name"`
+	Desc  string   `json:"desc,omitempty"`
+	Users int      `json:"users"`
+	Enc   string   `json:"enc,omitempty"`
+	Soft  Software `json:"soft"`
+}
+
+func (h *Hub) Stats() Stats {
+	h.peers.RLock()
+	users := len(h.peers.byName)
+	h.peers.RUnlock()
+	return Stats{
+		Name:  h.info.Name,
+		Desc:  h.info.Desc,
+		Users: users,
+		Enc:   "utf8",
+		Soft:  h.info.Soft,
 	}
 }
 
@@ -88,8 +117,8 @@ type timeoutErr interface {
 	Timeout() bool
 }
 
-// Serve automatically detects the protocol and start the hub-client handshake.
-func (h *Hub) Serve(conn net.Conn) error {
+// serve automatically detects the protocol and start the hub-client handshake.
+func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 	defer conn.Close()
 
 	// peek few bytes to detect the protocol
@@ -102,7 +131,7 @@ func (h *Hub) Serve(conn net.Conn) error {
 		return err
 	}
 
-	if h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
+	if allowTLS && h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
 		// TLS 1.x handshake
 		tconn := tls.Server(conn, h.tls)
 		if err := tconn.Handshake(); err != nil {
@@ -121,11 +150,13 @@ func (h *Hub) Serve(conn net.Conn) error {
 		switch proto {
 		case "nmdc":
 			return h.ServeNMDC(tconn)
-		case "":
-			// it seems like only ADC supports TLS, so use it if ALPN is not supported
-			fallthrough
 		case "adc":
 			return h.ServeADC(tconn)
+		case "h2":
+			return h.ServeHTTP2(tconn)
+		case "":
+			// ALPN is not supported
+			return h.serve(tconn, false)
 		default:
 			return fmt.Errorf("unsupported protocol: %q", proto)
 		}
@@ -134,6 +165,11 @@ func (h *Hub) Serve(conn net.Conn) error {
 		return h.ServeADC(conn)
 	}
 	return fmt.Errorf("unknown protocol magic: %q", string(buf))
+}
+
+// Serve automatically detects the protocol and start the hub-client handshake.
+func (h *Hub) Serve(conn net.Conn) error {
+	return h.serve(conn, true)
 }
 
 func (h *Hub) Peers() []Peer {
@@ -191,8 +227,8 @@ func (h *Hub) sendMOTD(peer Peer) error {
 }
 
 type Software struct {
-	Name string
-	Vers string
+	Name string `json:"name"`
+	Vers string `json:"vers"`
 }
 
 type User struct {

@@ -97,7 +97,7 @@ func CertTemplate() (*x509.Certificate, error) {
 		Subject:               pkix.Name{Organization: []string{"Go Hub"}},
 		SignatureAlgorithm:    x509.SHA256WithRSA,
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour), // valid for an hour
+		NotAfter:              time.Now().Add(time.Hour * 24 * 356),
 		BasicConstraintsValid: true,
 	}
 	return &tmpl, nil

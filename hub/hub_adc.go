@@ -238,7 +238,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	// send hub info
 	err = peer.conn.WriteInfoMsg(adc.HubInfo{
 		Name:    h.info.Name,
-		Version: h.info.Version,
+		Version: h.info.Soft.Name + " " + h.info.Soft.Vers,
 		Desc:    h.info.Desc,
 	})
 	if err != nil {
