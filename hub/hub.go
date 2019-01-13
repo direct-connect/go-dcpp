@@ -6,9 +6,10 @@ import (
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dennwc/go-dcpp/adc"
-	"github.com/dennwc/go-dcpp/nmdc/hub"
+	"github.com/dennwc/go-dcpp/adc/types"
 )
 
 type Info struct {
@@ -24,34 +25,44 @@ func NewHub(info Info, tls *tls.Config) *Hub {
 	if tls != nil {
 		tls.NextProtos = []string{"adc", "nmdc"}
 	}
-	return &Hub{
-		tls: tls,
-		nmdc: hub.NewHub(hub.Info{
-			Name:  info.Name,
-			Topic: info.Desc,
-		}),
-		adcInfo: adc.HubInfo{
-			Name:    info.Name,
-			Version: info.Version,
-			Desc:    info.Desc,
-		},
+	h := &Hub{
+		info: info,
+		tls:  tls,
 	}
+	h.peers.logging = make(map[string]struct{})
+	h.peers.byName = make(map[string]Peer)
+	h.peers.bySID = make(map[adc.SID]Peer)
+	h.initADC()
+	return h
 }
 
 type Hub struct {
-	tls *tls.Config
-
-	nmdc *hub.Hub
+	info Info
+	tls  *tls.Config
 
 	lastSID uint32
-	adcInfo adc.HubInfo
 
-	adcPeers struct {
+	peers struct {
 		sync.RWMutex
-		bySID  map[adc.SID]*adcConn
-		byCID  map[adc.CID]*adcConn
-		byName map[string]*adcConn
+		// logging map is used to temporary bind a username.
+		// The name should be removed from this map as soon as a byName entry is added.
+		logging map[string]struct{}
+
+		// byName tracks peers by their name.
+		byName map[string]Peer
+		bySID  map[adc.SID]Peer
+
+		// ADC-specific
+
+		loggingCID map[adc.CID]struct{}
+		byCID      map[adc.CID]*adcPeer
 	}
+}
+
+func (h *Hub) nextSID() adc.SID {
+	// TODO: reuse SIDs
+	v := atomic.AddUint32(&h.lastSID, 1)
+	return types.SIDFromInt(v)
 }
 
 func (h *Hub) ListenAndServe(addr string) error {
@@ -123,4 +134,95 @@ func (h *Hub) Serve(conn net.Conn) error {
 		return h.ServeADC(conn)
 	}
 	return fmt.Errorf("unknown protocol magic: %q", string(buf))
+}
+
+func (h *Hub) Peers() []Peer {
+	h.peers.RLock()
+	defer h.peers.RUnlock()
+	return h.listPeers()
+}
+
+func (h *Hub) listPeers() []Peer {
+	list := make([]Peer, 0, len(h.peers.byName))
+	for _, p := range h.peers.byName {
+		list = append(list, p)
+	}
+	return list
+}
+
+func (h *Hub) bySID(sid adc.SID) Peer {
+	h.peers.RLock()
+	p := h.peers.bySID[sid]
+	h.peers.RUnlock()
+	return p
+}
+
+func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
+	log.Println("connected:", peer.SID(), peer.RemoteAddr(), peer.Name())
+	if notify == nil {
+		notify = h.Peers()
+	}
+	for _, p := range notify {
+		_ = p.PeersJoin([]Peer{peer})
+	}
+}
+
+func (h *Hub) broadcastUserLeave(peer Peer, name string, notify []Peer) {
+	log.Println("disconnected:", peer.SID(), peer.RemoteAddr(), name)
+	if notify == nil {
+		notify = h.Peers()
+	}
+	for _, p := range notify {
+		_ = p.PeersLeave([]Peer{peer})
+	}
+}
+
+func (h *Hub) broadcastChat(from Peer, text string, notify []Peer) {
+	if notify == nil {
+		notify = h.Peers()
+	}
+	for _, p := range notify {
+		_ = p.ChatMsg(from, text)
+	}
+}
+
+func (h *Hub) sendMOTD(peer Peer) error {
+	return peer.HubChatMsg("Welcome!")
+}
+
+type Software struct {
+	Name string
+	Vers string
+}
+
+type Peer interface {
+	SID() adc.SID
+	Name() string
+	RemoteAddr() net.Addr
+	Software() Software
+
+	Close() error
+
+	PeersJoin(peers []Peer) error
+	//PeersUpdate(peers []Peer) error
+	PeersLeave(peers []Peer) error
+
+	ChatMsg(from Peer, text string) error
+	PrivateMsg(from Peer, text string) error
+	HubChatMsg(text string) error
+}
+
+type BasePeer struct {
+	hub *Hub
+
+	addr net.Addr
+	sid  adc.SID
+}
+
+func (p *BasePeer) SID() adc.SID {
+	return p.sid
+}
+
+func (p *BasePeer) RemoteAddr() net.Addr {
+	return p.addr
 }

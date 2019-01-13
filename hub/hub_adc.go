@@ -7,17 +7,15 @@ import (
 	"log"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/dennwc/go-dcpp/adc"
-	"github.com/dennwc/go-dcpp/adc/types"
+	"github.com/dennwc/go-dcpp/tiger"
 )
 
-func (h *Hub) nextSID() adc.SID {
-	// TODO: reuse SIDs
-	v := atomic.AddUint32(&h.lastSID, 1)
-	return types.SIDFromInt(v)
+func (h *Hub) initADC() {
+	h.peers.loggingCID = make(map[adc.CID]struct{})
+	h.peers.byCID = make(map[adc.CID]*adcPeer)
 }
 
 func (h *Hub) ServeADC(conn net.Conn) error {
@@ -27,15 +25,14 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 	}
 	defer c.Close()
 
-	peer, err := h.runProtocol(c)
+	peer, err := h.adcStageProtocol(c)
 	if err != nil {
 		return err
 	}
 	// connection is not yet valid and we haven't added the client to the hub yet
-	if err := h.runIdentity(peer); err != nil {
+	if err := h.adcStageIdentity(peer); err != nil {
 		return err
 	}
-	log.Println("connected:", peer.sid, peer.conn.RemoteAddr(), peer.Info().Name)
 	// peer registered, now we can start serving things
 	defer peer.Close()
 
@@ -43,17 +40,13 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 		return err
 	}
 
-	return h.servePeer(peer)
+	return h.adcServePeer(peer)
 }
 
-func (h *Hub) servePeer(peer *adcConn) error {
+func (h *Hub) adcServePeer(peer *adcPeer) error {
 	for {
 		p, err := peer.conn.ReadPacket(time.Time{})
 		if err == io.EOF {
-			sid := peer.sid
-			_ = peer.Close()
-			_ = h.broadcastInfoMsg(adc.Disconnect{ID: sid})
-			log.Println("disconnected:", peer.sid, peer.conn.RemoteAddr(), peer.Info().Name)
 			return nil
 		} else if err != nil {
 			return err
@@ -66,7 +59,7 @@ func (h *Hub) servePeer(peer *adcConn) error {
 			// TODO: read INF, update peer info
 			// TODO: update nick, make sure there is no duplicates
 			// TODO: disallow STA and some others
-			go h.broadcast(p)
+			go h.adcBroadcast(p, peer, h.Peers())
 		case *adc.EchoPacket:
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed echo packet")
@@ -78,81 +71,19 @@ func (h *Hub) servePeer(peer *adcConn) error {
 				return err
 			}
 			// TODO: disallow INF, STA and some others
-			go h.direct((*adc.DirectPacket)(p))
+			go h.adcDirect((*adc.DirectPacket)(p))
 		case *adc.DirectPacket:
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed direct packet")
 			}
 			// TODO: disallow INF, STA and some others
-			go h.direct(p)
+			go h.adcDirect(p)
 		}
 		log.Printf("%v: %T%+v", peer.sid, p, p)
 	}
 }
 
-func (h *Hub) broadcastMsg(from adc.SID, msg adc.Message) error {
-	data, err := adc.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	p := &adc.BroadcastPacket{
-		BasePacket: adc.BasePacket{
-			Name: msg.Cmd(),
-			Data: data,
-		},
-		ID: from,
-	}
-	return h.broadcast(p)
-}
-
-func (h *Hub) broadcastInfoMsg(msg adc.Message) error {
-	data, err := adc.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	p := &adc.InfoPacket{
-		BasePacket: adc.BasePacket{
-			Name: msg.Cmd(),
-			Data: data,
-		},
-	}
-	return h.broadcast(p)
-}
-
-func (h *Hub) broadcast(p adc.Packet) error {
-	h.adcPeers.RLock()
-	defer h.adcPeers.RUnlock()
-	var last error
-	for _, peer := range h.adcPeers.bySID {
-		err := peer.conn.WritePacket(p)
-		if err == nil {
-			err = peer.conn.Flush()
-		}
-		if err != nil {
-			last = err
-		}
-	}
-	return last
-}
-
-func (h *Hub) direct(p *adc.DirectPacket) {
-	h.adcPeers.RLock()
-	peer := h.adcPeers.bySID[p.Targ]
-	h.adcPeers.RUnlock()
-	if peer == nil {
-		log.Println("unknown peer:", p.Targ)
-		return
-	}
-	err := peer.conn.WritePacket(p)
-	if err == nil {
-		err = peer.conn.Flush()
-	}
-	if err != nil {
-		log.Println("direct failed:", err)
-	}
-}
-
-func (h *Hub) runProtocol(c *adc.Conn) (*adcConn, error) {
+func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 	deadline := time.Now().Add(time.Second * 5)
 	// Expect features from the client
 	p, err := c.ReadPacket(deadline)
@@ -204,10 +135,18 @@ func (h *Hub) runProtocol(c *adc.Conn) (*adcConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &adcConn{hub: h, conn: c, sid: sid, fea: mutual}, nil
+	return &adcPeer{
+		BasePeer: BasePeer{
+			hub:  h,
+			addr: c.RemoteAddr(),
+			sid:  sid,
+		},
+		conn: c,
+		fea:  mutual,
+	}, nil
 }
 
-func (h *Hub) runIdentity(peer *adcConn) error {
+func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 	// client should send INF with ID and PID set
 	p, err := peer.conn.ReadPacket(deadline)
@@ -235,30 +174,72 @@ func (h *Hub) runIdentity(peer *adcConn) error {
 		_ = peer.sendError(adc.Fatal, 21, err)
 		return err
 	}
-	h.adcPeers.RLock()
-	_, sameName := h.adcPeers.byName[u.Name]
-	_, sameCID := h.adcPeers.byCID[u.Id]
-	h.adcPeers.RUnlock()
-	if sameName {
-		err = errors.New("nick taken")
+
+	// do not lock for writes first
+	h.peers.RLock()
+	_, sameName1 := h.peers.logging[u.Name]
+	_, sameName2 := h.peers.byName[u.Name]
+	_, sameCID1 := h.peers.loggingCID[u.Id]
+	_, sameCID2 := h.peers.byCID[u.Id]
+	h.peers.RUnlock()
+
+	if sameName1 || sameName2 {
+		err = errNickTaken
 		_ = peer.sendError(adc.Fatal, 22, err)
 		return err
 	}
-	if sameCID {
+	if sameCID1 || sameCID2 {
 		err = errors.New("CID taken")
 		_ = peer.sendError(adc.Fatal, 24, err)
 		return err
 	}
 
+	// ok, now lock for writes and try to bind nick and CID
+	h.peers.Lock()
+	_, sameName1 = h.peers.logging[u.Name]
+	_, sameName2 = h.peers.byName[u.Name]
+	if sameName1 || sameName2 {
+		h.peers.Unlock()
+
+		err = errNickTaken
+		_ = peer.sendError(adc.Fatal, 22, err)
+		return err
+	}
+	_, sameCID1 = h.peers.loggingCID[u.Id]
+	_, sameCID2 = h.peers.byCID[u.Id]
+	if sameCID1 || sameCID2 {
+		h.peers.Unlock()
+
+		err = errors.New("CID taken")
+		_ = peer.sendError(adc.Fatal, 24, err)
+		return err
+	}
+	// bind nick and cid, still no one will see us yet
+	h.peers.logging[u.Name] = struct{}{}
+	h.peers.loggingCID[u.Id] = struct{}{}
+	h.peers.Unlock()
+
+	unbind := func() {
+		h.peers.Lock()
+		delete(h.peers.logging, u.Name)
+		delete(h.peers.loggingCID, u.Id)
+		h.peers.Unlock()
+	}
+
 	if u.Ip4 == "" {
-		ip := peer.conn.RemoteAddr().String()
+		ip := peer.addr.String()
 		u.Ip4 = ip
 	}
 	peer.user = u
 
 	// send hub info
-	err = peer.conn.WriteInfoMsg(h.adcInfo)
+	err = peer.conn.WriteInfoMsg(adc.HubInfo{
+		Name:    h.info.Name,
+		Version: h.info.Version,
+		Desc:    h.info.Desc,
+	})
 	if err != nil {
+		unbind()
 		return err
 	}
 	// send OK status
@@ -267,84 +248,207 @@ func (h *Hub) runIdentity(peer *adcConn) error {
 		Code: 0,
 		Msg:  "powered by Gophers",
 	})
-	// send user list
-	h.adcPeers.RLock()
-	for sid, p := range h.adcPeers.bySID {
-		err = peer.conn.WriteBroadcast(sid, p.Info())
-		if err != nil {
-			h.adcPeers.RUnlock()
-			return err
+
+	// send user list (except his own info)
+	err = peer.PeersJoin(h.Peers())
+	if err != nil {
+		unbind()
+		return err
+	}
+
+	// write his info and flush
+	err = peer.PeersJoin([]Peer{peer})
+	if err != nil {
+		unbind()
+		return err
+	}
+
+	// finally accept the user on the hub
+	h.peers.Lock()
+	// cleanup temporary bindings
+	delete(h.peers.logging, peer.user.Name)
+	delete(h.peers.loggingCID, u.Id)
+
+	// make a snapshot of peers to send info to
+	list := h.listPeers()
+
+	// add user to the hub
+	h.peers.bySID[peer.sid] = peer
+	h.peers.byCID[u.Id] = peer
+	h.peers.byName[u.Name] = peer
+	h.peers.Unlock()
+
+	// notify other users about the new one
+	// TODO: this will block the client
+	h.broadcastUserJoin(peer, list)
+	return nil
+}
+
+func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
+	if peers == nil {
+		peers = h.Peers()
+	}
+	var nmdc []Peer
+	for _, peer := range peers {
+		if p2, ok := peer.(*adcPeer); ok {
+			_ = p2.conn.WritePacket(p)
+			_ = p2.conn.Flush()
+		} else {
+			nmdc = append(nmdc, peer)
 		}
 	}
-	h.adcPeers.RUnlock()
-	// finally accept user on the hub
-	h.adcPeers.Lock()
-	if h.adcPeers.bySID == nil {
-		h.adcPeers.bySID = make(map[adc.SID]*adcConn)
-		h.adcPeers.byCID = make(map[adc.CID]*adcConn)
-		h.adcPeers.byName = make(map[string]*adcConn)
+	if len(nmdc) == 0 {
+		return
 	}
-	h.adcPeers.bySID[peer.sid] = peer
-	h.adcPeers.byCID[u.Id] = peer
-	h.adcPeers.byName[u.Name] = peer
-	h.adcPeers.Unlock()
-	// write his info and flush
-	_ = h.broadcastMsg(peer.sid, u)
-	return nil
+	msg, err := p.Decode()
+	if err != nil {
+		log.Printf("cannot parse ADC message: %v", err)
+		return
+	}
+	switch msg := msg.(type) {
+	case adc.ChatMessage:
+		h.broadcastChat(from, msg.Text, nmdc)
+	}
+	// TODO: decode packet and try to convert it to NMDC
 }
 
-func (h *Hub) sendMOTD(peer *adcConn) error {
-	err := peer.conn.WriteInfoMsg(adc.ChatMessage{
-		Text: "Welcome!",
-	})
-	if err != nil {
-		return err
+func (h *Hub) adcDirect(p *adc.DirectPacket) {
+	peer := h.bySID(p.Targ)
+	if peer == nil {
+		return
 	}
-	err = peer.conn.Flush()
-	if err != nil {
-		return err
+	if p2, ok := peer.(*adcPeer); ok {
+		_ = p2.conn.WritePacket(p)
+		_ = p2.conn.Flush()
+		return
 	}
-	return nil
+	// TODO: decode packet and try to convert it to NMDC
 }
 
-type adcConn struct {
-	hub  *Hub
+var _ Peer = (*adcPeer)(nil)
+
+type adcPeer struct {
+	BasePeer
+
 	conn *adc.Conn
 	fea  adc.ModFeatures
-	sid  adc.SID
 
-	mu   sync.Mutex
-	user adc.User
+	mu     sync.RWMutex
+	closed bool
+	user   adc.User
 }
 
-func (c *adcConn) sendOneMsg(m adc.Message) error {
-	err := c.conn.WriteInfoMsg(m)
+func (p *adcPeer) Name() string {
+	p.mu.RLock()
+	name := p.user.Name
+	p.mu.RUnlock()
+	return name
+}
+
+func (p *adcPeer) Info() adc.User {
+	p.mu.RLock()
+	u := p.user
+	p.mu.RUnlock()
+	return u
+}
+
+func (p *adcPeer) Software() Software {
+	p.mu.RLock()
+	app := p.user.Application
+	vers := p.user.Version
+	p.mu.RUnlock()
+	return Software{Name: app, Vers: vers}
+}
+
+func (p *adcPeer) sendInfo(m adc.Message) error {
+	err := p.conn.WriteInfoMsg(m)
 	if err != nil {
 		return err
 	}
-	return c.conn.Flush()
+	return p.conn.Flush()
 }
 
-func (c *adcConn) sendError(sev adc.Severity, code int, err error) error {
-	return c.sendOneMsg(adc.Status{
+func (p *adcPeer) sendError(sev adc.Severity, code int, err error) error {
+	return p.sendInfo(adc.Status{
 		Sev: sev, Code: code, Msg: err.Error(),
 	})
 }
 
-func (c *adcConn) Info() adc.User {
-	return c.user
+func (p *adcPeer) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil
+	}
+	err := p.conn.Close()
+	p.closed = true
+
+	name := p.user.Name
+	p.hub.peers.Lock()
+	delete(p.hub.peers.byName, name)
+	delete(p.hub.peers.bySID, p.sid)
+	delete(p.hub.peers.byCID, p.user.Id)
+	notify := p.hub.listPeers()
+	p.hub.peers.Unlock()
+
+	p.hub.broadcastUserLeave(p, name, notify)
+	return err
 }
 
-func (c *adcConn) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	err := c.conn.Close()
+func (p *adcPeer) PeersJoin(peers []Peer) error {
+	for _, peer := range peers {
+		var u adc.User
+		if p2, ok := peer.(*adcPeer); ok {
+			u = p2.Info()
+		} else {
+			addr := peer.RemoteAddr().String()
+			cid := adc.CID(tiger.HashBytes([]byte(addr)))
+			soft := peer.Software()
+			u = adc.User{
+				Name:        peer.Name(),
+				Id:          cid,
+				Application: soft.Name,
+				Version:     soft.Vers,
+			}
+		}
+		if err := p.conn.WriteBroadcast(peer.SID(), &u); err != nil {
+			return err
+		}
+	}
+	return p.conn.Flush()
+}
 
-	c.hub.adcPeers.Lock()
-	delete(c.hub.adcPeers.bySID, c.sid)
-	delete(c.hub.adcPeers.byName, c.user.Name)
-	delete(c.hub.adcPeers.byCID, c.user.Id)
-	c.hub.adcPeers.Unlock()
+func (p *adcPeer) PeersLeave(peers []Peer) error {
+	for _, peer := range peers {
+		if err := p.conn.WriteInfoMsg(&adc.Disconnect{
+			ID: peer.SID(),
+		}); err != nil {
+			return err
+		}
+	}
+	return p.conn.Flush()
+}
 
-	return err
+func (p *adcPeer) ChatMsg(from Peer, text string) error {
+	err := p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{Text: text})
+	if err != nil {
+		return err
+	}
+	return p.conn.Flush()
+}
+
+func (p *adcPeer) PrivateMsg(from Peer, text string) error {
+	err := p.conn.WriteDirect(from.SID(), p.sid, &adc.ChatMessage{Text: text})
+	if err != nil {
+		return err
+	}
+	return p.conn.Flush()
+}
+
+func (p *adcPeer) HubChatMsg(text string) error {
+	err := p.conn.WriteInfoMsg(&adc.ChatMessage{Text: text})
+	if err != nil {
+		return err
+	}
+	return p.conn.Flush()
 }
