@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -215,6 +216,10 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 	if err != nil {
 		return err
 	}
+	err = h.sendMOTD(peer)
+	if err != nil {
+		return err
+	}
 
 	// send user list (except his own info)
 	err = peer.PeersJoin(h.Peers())
@@ -264,12 +269,14 @@ type nmdcPeer struct {
 	user   nmdc.MyInfo
 }
 
-func (p *nmdcPeer) Software() Software {
-	p.mu.RLock()
-	tag := p.user.Tag
-	p.mu.RUnlock()
-	// TODO: parse
-	return Software{Name: tag}
+func (p *nmdcPeer) User() User {
+	u := p.Info()
+	return User{
+		Name: string(u.Name),
+		App: Software{
+			Name: u.Tag, // TODO: parse
+		},
+	}
 }
 
 func (p *nmdcPeer) Name() string {
@@ -300,13 +307,13 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 		if p2, ok := peer.(*nmdcPeer); ok {
 			u = p2.Info()
 		} else {
-			soft := peer.Software()
+			info := peer.User()
 			u = nmdc.MyInfo{
-				Name: nmdc.Name(peer.Name()),
+				Name: nmdc.Name(info.Name),
 				// TODO
-				Tag: soft.Name + " V:" + soft.Vers + ",M:P,H:0/1/0,S:2",
+				Tag: info.App.Name + " V:" + info.App.Vers + ",M:P,H:0/1/0,S:2",
 				// TODO
-				Info: "$LAN(T3)0x31$example@example.com$1234$",
+				Info: "$LAN(T3)0x31$" + info.Email + "$" + strconv.FormatUint(info.Share, 10) + "$",
 			}
 		}
 		if err := p.conn.WriteMsg(&u); err != nil {

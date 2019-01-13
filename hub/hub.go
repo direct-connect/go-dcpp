@@ -195,11 +195,18 @@ type Software struct {
 	Vers string
 }
 
+type User struct {
+	Name  string
+	App   Software
+	Share uint64
+	Email string
+}
+
 type Peer interface {
 	SID() adc.SID
 	Name() string
 	RemoteAddr() net.Addr
-	Software() Software
+	User() User
 
 	Close() error
 

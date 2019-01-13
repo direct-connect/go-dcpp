@@ -185,14 +185,19 @@ func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
 		defer c.conn.SetReadDeadline(time.Time{})
 	}
 
-	b, err := c.peek()
-	if err != nil {
-		return nil, err
+	for {
+		b, err := c.peek()
+		if err != nil {
+			return nil, err
+		}
+		if len(b) == 1 && b[0] == '|' {
+			continue // keep alive
+		}
+		if b[0] == '$' {
+			return c.readCommand()
+		}
+		return c.readChatMsg()
 	}
-	if b[0] == '$' {
-		return c.readCommand()
-	}
-	return c.readChatMsg()
 }
 
 // readUntilAny reads a byte slice until one of the char delimiters, up to max bytes.

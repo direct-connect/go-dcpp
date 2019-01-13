@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -226,9 +227,11 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		h.peers.Unlock()
 	}
 
-	if u.Ip4 == "" {
-		ip := peer.addr.String()
-		u.Ip4 = ip
+	if u.Ip4 == "0.0.0.0" {
+		ip, _, _ := net.SplitHostPort(peer.addr.String())
+		if ip != "" {
+			u.Ip4 = ip
+		}
 	}
 	peer.user = u
 
@@ -352,12 +355,22 @@ func (p *adcPeer) Info() adc.User {
 	return u
 }
 
-func (p *adcPeer) Software() Software {
-	p.mu.RLock()
-	app := p.user.Application
-	vers := p.user.Version
-	p.mu.RUnlock()
-	return Software{Name: app, Vers: vers}
+func (p *adcPeer) User() User {
+	u := p.Info()
+	if u.Application == "" {
+		if i := strings.Index(u.Version, " "); i >= 0 {
+			u.Application, u.Version = u.Version[:i], u.Version[i+1:]
+		}
+	}
+	return User{
+		Name:  u.Name,
+		Share: uint64(u.ShareSize),
+		Email: u.Email,
+		App: Software{
+			Name: u.Application,
+			Vers: u.Version,
+		},
+	}
 }
 
 func (p *adcPeer) sendInfo(m adc.Message) error {
@@ -403,12 +416,14 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 		} else {
 			addr := peer.RemoteAddr().String()
 			cid := adc.CID(tiger.HashBytes([]byte(addr)))
-			soft := peer.Software()
+			info := peer.User()
 			u = adc.User{
-				Name:        peer.Name(),
+				Name:        info.Name,
 				Id:          cid,
-				Application: soft.Name,
-				Version:     soft.Vers,
+				Application: info.App.Name,
+				Version:     info.App.Vers,
+				ShareSize:   int64(info.Share),
+				Email:       info.Email,
 			}
 		}
 		if err := p.conn.WriteBroadcast(peer.SID(), &u); err != nil {
