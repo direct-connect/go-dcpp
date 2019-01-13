@@ -46,13 +46,14 @@ func (h *Hub) ServeIRC(conn net.Conn) error {
 			dst, msg := m.Params[0], m.Params[1]
 			if dst == ircHubChan {
 				go h.broadcastChat(peer, msg, nil)
-			} else {
-				// TODO: PMs
+			} else if dst := h.byName(dst); dst != nil {
+				go h.privateChat(peer, dst, msg)
 			}
 		case "QUIT":
 			return nil
 		default:
-			log.Println("msg:", m)
+			// TODO
+			log.Printf("%s: irc: %s", peer.RemoteAddr(), m)
 		}
 	}
 }
@@ -345,7 +346,7 @@ func (p *ircPeer) Close() error {
 	err := p.conn.Close()
 	p.closed = true
 
-	p.hub.Leave(p, p.sid, p.name)
+	p.hub.leave(p, p.sid, p.name)
 	return err
 }
 
@@ -418,8 +419,21 @@ func (p *ircPeer) ChatMsg(from Peer, text string) error {
 }
 
 func (p *ircPeer) PrivateMsg(from Peer, text string) error {
-	// TODO:
-	return nil
+	m := &irc.Message{
+		Command: "PRIVMSG",
+		Params:  []string{p.Name(), text},
+	}
+	if p2, ok := from.(*ircPeer); ok {
+		m.Prefix = p2.ownPref
+	} else {
+		name := from.Name()
+		m.Prefix = &irc.Prefix{
+			Name: name,
+			User: name,
+			Host: p.hostPref.Name,
+		}
+	}
+	return p.writeMessage(m)
 }
 
 func (p *ircPeer) HubChatMsg(text string) error {

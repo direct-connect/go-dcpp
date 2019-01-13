@@ -195,6 +195,13 @@ func (h *Hub) listPeers() []Peer {
 	return list
 }
 
+func (h *Hub) byName(name string) Peer {
+	h.peers.RLock()
+	p := h.peers.byName[name]
+	h.peers.RUnlock()
+	return p
+}
+
 func (h *Hub) bySID(sid adc.SID) Peer {
 	h.peers.RLock()
 	p := h.peers.bySID[sid]
@@ -231,11 +238,15 @@ func (h *Hub) broadcastChat(from Peer, text string, notify []Peer) {
 	}
 }
 
+func (h *Hub) privateChat(from, to Peer, text string) {
+	_ = to.PrivateMsg(from, text)
+}
+
 func (h *Hub) sendMOTD(peer Peer) error {
 	return peer.HubChatMsg("Welcome!")
 }
 
-func (h *Hub) Leave(peer Peer, sid adc.SID, name string) {
+func (h *Hub) leave(peer Peer, sid adc.SID, name string) {
 	h.peers.Lock()
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)
@@ -245,7 +256,7 @@ func (h *Hub) Leave(peer Peer, sid adc.SID, name string) {
 	h.broadcastUserLeave(peer, name, notify)
 }
 
-func (h *Hub) LeaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
+func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	h.peers.Lock()
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)

@@ -19,10 +19,10 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
+	defer c.Close()
 
 	peer, err := h.nmdcHandshake(c)
 	if err != nil {
-		c.Close()
 		return err
 	}
 	defer peer.Close()
@@ -252,7 +252,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			go h.broadcastChat(peer, msg.Text, nil)
 		default:
 			// TODO
-			log.Println(msg)
+			log.Printf("%s: nmdc: %s", peer.RemoteAddr(), msg)
 		}
 	}
 }
@@ -313,7 +313,7 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 			u = nmdc.MyInfo{
 				Name: nmdc.Name(info.Name),
 				// TODO
-				Tag: info.App.Name + " V:" + info.App.Vers + ",M:P,H:0/1/0,S:2",
+				Tag: info.App.Name + " V:" + info.App.Vers + ",M:A,H:0/1/0,S:2",
 				// TODO
 				Info: "$LAN(T3)0x31$" + info.Email + "$" + strconv.FormatUint(info.Share, 10) + "$",
 			}
@@ -363,6 +363,6 @@ func (p *nmdcPeer) Close() error {
 	p.closed = true
 
 	name := string(p.user.Name)
-	p.hub.Leave(p, p.sid, name)
+	p.hub.leave(p, p.sid, name)
 	return err
 }

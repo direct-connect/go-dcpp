@@ -335,30 +335,16 @@ func (SearchResult) Cmd() MsgType {
 }
 
 var (
-	_ Message     = ChatMessage{}
-	_ Marshaler   = ChatMessage{}
-	_ Unmarshaler = (*ChatMessage)(nil)
+	_ Message = ChatMessage{}
 )
 
 type ChatMessage struct {
-	Text string
+	Text String `adc:"#"`
+	PM   *SID   `adc:"PM"`
 }
 
 func (ChatMessage) Cmd() MsgType {
 	return MsgType{'M', 'S', 'G'}
-}
-
-func (m ChatMessage) MarshalAdc() ([]byte, error) {
-	return String(m.Text).MarshalAdc()
-}
-
-func (m *ChatMessage) UnmarshalAdc(data []byte) error {
-	var s String
-	if err := s.UnmarshalAdc(data); err != nil {
-		return err
-	}
-	m.Text = string(s)
-	return nil
 }
 
 var (

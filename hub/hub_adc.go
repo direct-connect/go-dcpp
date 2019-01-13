@@ -73,15 +73,17 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 				return err
 			}
 			// TODO: disallow INF, STA and some others
-			go h.adcDirect((*adc.DirectPacket)(p))
+			go h.adcDirect((*adc.DirectPacket)(p), peer)
 		case *adc.DirectPacket:
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed direct packet")
 			}
 			// TODO: disallow INF, STA and some others
-			go h.adcDirect(p)
+			go h.adcDirect(p, peer)
+		default:
+			data, _ := p.MarshalPacket()
+			log.Printf("%s: adc: %s", peer.RemoteAddr(), string(data))
 		}
-		log.Printf("%v: %T%+v", peer.sid, p, p)
 	}
 }
 
@@ -311,12 +313,13 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 	}
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
-		h.broadcastChat(from, msg.Text, nmdc)
+		h.broadcastChat(from, string(msg.Text), nmdc)
+	default:
+		// TODO: decode other packets
 	}
-	// TODO: decode packet and try to convert it to NMDC
 }
 
-func (h *Hub) adcDirect(p *adc.DirectPacket) {
+func (h *Hub) adcDirect(p *adc.DirectPacket, from Peer) {
 	peer := h.bySID(p.Targ)
 	if peer == nil {
 		return
@@ -326,7 +329,17 @@ func (h *Hub) adcDirect(p *adc.DirectPacket) {
 		_ = p2.conn.Flush()
 		return
 	}
-	// TODO: decode packet and try to convert it to NMDC
+	msg, err := p.Decode()
+	if err != nil {
+		log.Printf("cannot parse ADC message: %v", err)
+		return
+	}
+	switch msg := msg.(type) {
+	case adc.ChatMessage:
+		h.privateChat(from, peer, string(msg.Text))
+	default:
+		// TODO: decode other packets
+	}
 }
 
 var _ Peer = (*adcPeer)(nil)
@@ -401,7 +414,7 @@ func (p *adcPeer) Close() error {
 	err := p.conn.Close()
 	p.closed = true
 
-	p.hub.LeaveCID(p, p.sid, p.user.Id, p.user.Name)
+	p.hub.leaveCID(p, p.sid, p.user.Id, p.user.Name)
 	return err
 }
 
@@ -411,9 +424,12 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 		if p2, ok := peer.(*adcPeer); ok {
 			u = p2.Info()
 		} else {
-			addr := peer.RemoteAddr().String()
-			cid := adc.CID(tiger.HashBytes([]byte(addr)))
+			// TODO: same address from multiple clients behind NAT, so we addend the name
+			addr, _, _ := net.SplitHostPort(peer.RemoteAddr().String())
 			info := peer.User()
+			// TODO: once we support name changes, we should make the user
+			//       virtually leave and rejoin with a new CID
+			cid := adc.CID(tiger.HashBytes([]byte(info.Name + "\x00" + addr)))
 			u = adc.User{
 				Name:        info.Name,
 				Id:          cid,
@@ -442,7 +458,9 @@ func (p *adcPeer) PeersLeave(peers []Peer) error {
 }
 
 func (p *adcPeer) ChatMsg(from Peer, text string) error {
-	err := p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{Text: text})
+	err := p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{
+		Text: adc.String(text),
+	})
 	if err != nil {
 		return err
 	}
@@ -450,7 +468,10 @@ func (p *adcPeer) ChatMsg(from Peer, text string) error {
 }
 
 func (p *adcPeer) PrivateMsg(from Peer, text string) error {
-	err := p.conn.WriteDirect(from.SID(), p.sid, &adc.ChatMessage{Text: text})
+	src := from.SID()
+	err := p.conn.WriteDirect(src, p.sid, &adc.ChatMessage{
+		Text: adc.String(text), PM: &src,
+	})
 	if err != nil {
 		return err
 	}
@@ -458,7 +479,9 @@ func (p *adcPeer) PrivateMsg(from Peer, text string) error {
 }
 
 func (p *adcPeer) HubChatMsg(text string) error {
-	err := p.conn.WriteInfoMsg(&adc.ChatMessage{Text: text})
+	err := p.conn.WriteInfoMsg(&adc.ChatMessage{
+		Text: adc.String(text),
+	})
 	if err != nil {
 		return err
 	}

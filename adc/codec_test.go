@@ -91,6 +91,21 @@ var casesDecode = []struct {
 		`ADC/1.0 3000 1298498081`,
 		&adc.ConnectRequest{Proto: "ADC/1.0", Port: 3000, Token: "1298498081"},
 	},
+	{
+		"msg",
+		`some\stext`,
+		&adc.ChatMessage{Text: "some text"},
+	},
+	{
+		"pm",
+		`some\stext PMAAAB`,
+		&adc.ChatMessage{Text: "some text", PM: sidp("AAAB")},
+	},
+}
+
+func sidp(s string) *types.SID {
+	v := types.SIDFromString(s)
+	return &v
 }
 
 func TestDecode(t *testing.T) {
