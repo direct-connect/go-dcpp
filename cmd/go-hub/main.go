@@ -13,6 +13,8 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"time"
 
@@ -24,6 +26,7 @@ var (
 )
 
 func main() {
+	go http.ListenAndServe(":6060", nil)
 	flag.Parse()
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

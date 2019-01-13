@@ -20,6 +20,7 @@ func (h *Hub) initADC() {
 }
 
 func (h *Hub) ServeADC(conn net.Conn) error {
+	log.Printf("%s: using ADC", conn.RemoteAddr())
 	c, err := adc.NewConn(conn)
 	if err != nil {
 		return err
@@ -336,9 +337,11 @@ type adcPeer struct {
 	conn *adc.Conn
 	fea  adc.ModFeatures
 
-	mu     sync.RWMutex
-	closed bool
-	user   adc.User
+	mu   sync.RWMutex
+	user adc.User
+
+	closeMu sync.Mutex
+	closed  bool
 }
 
 func (p *adcPeer) Name() string {
@@ -388,23 +391,17 @@ func (p *adcPeer) sendError(sev adc.Severity, code int, err error) error {
 }
 
 func (p *adcPeer) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.closeMu.Lock()
+	defer p.closeMu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.closed {
 		return nil
 	}
 	err := p.conn.Close()
 	p.closed = true
 
-	name := p.user.Name
-	p.hub.peers.Lock()
-	delete(p.hub.peers.byName, name)
-	delete(p.hub.peers.bySID, p.sid)
-	delete(p.hub.peers.byCID, p.user.Id)
-	notify := p.hub.listPeers()
-	p.hub.peers.Unlock()
-
-	p.hub.broadcastUserLeave(p, name, notify)
+	p.hub.LeaveCID(p, p.sid, p.user.Id, p.user.Name)
 	return err
 }
 

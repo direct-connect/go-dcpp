@@ -14,6 +14,7 @@ import (
 )
 
 func (h *Hub) ServeNMDC(conn net.Conn) error {
+	log.Printf("%s: using NMDC", conn.RemoteAddr())
 	c, err := nmdc.NewConn(conn)
 	if err != nil {
 		return err
@@ -264,9 +265,10 @@ type nmdcPeer struct {
 	conn *nmdc.Conn
 	fea  nmdc.Features
 
-	mu     sync.RWMutex
-	closed bool
-	user   nmdc.MyInfo
+	mu      sync.RWMutex
+	user    nmdc.MyInfo
+	closeMu sync.Mutex
+	closed  bool
 }
 
 func (p *nmdcPeer) User() User {
@@ -350,8 +352,10 @@ func (p *nmdcPeer) HubChatMsg(text string) error {
 }
 
 func (p *nmdcPeer) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.closeMu.Lock()
+	defer p.closeMu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.closed {
 		return nil
 	}
@@ -359,12 +363,6 @@ func (p *nmdcPeer) Close() error {
 	p.closed = true
 
 	name := string(p.user.Name)
-	p.hub.peers.Lock()
-	delete(p.hub.peers.byName, name)
-	delete(p.hub.peers.bySID, p.sid)
-	notify := p.hub.listPeers()
-	p.hub.peers.Unlock()
-
-	p.hub.broadcastUserLeave(p, name, notify)
+	p.hub.Leave(p, p.sid, name)
 	return err
 }

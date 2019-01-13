@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/net/http2"
 
@@ -31,8 +32,9 @@ func NewHub(info Info, tls *tls.Config) *Hub {
 		tls.NextProtos = []string{"adc", "nmdc"}
 	}
 	h := &Hub{
-		info: info,
-		tls:  tls,
+		created: time.Now(),
+		info:    info,
+		tls:     tls,
 	}
 	h.peers.logging = make(map[string]struct{})
 	h.peers.byName = make(map[string]Peer)
@@ -43,10 +45,11 @@ func NewHub(info Info, tls *tls.Config) *Hub {
 }
 
 type Hub struct {
-	info   Info
-	tls    *tls.Config
-	h2     *http2.Server
-	h2conf *http2.ServeConnOpts
+	created time.Time
+	info    Info
+	tls     *tls.Config
+	h2      *http2.Server
+	h2conf  *http2.ServeConnOpts
 
 	lastSID uint32
 
@@ -73,6 +76,7 @@ type Stats struct {
 	Users int      `json:"users"`
 	Enc   string   `json:"enc,omitempty"`
 	Soft  Software `json:"soft"`
+	// TODO: uptime
 }
 
 func (h *Hub) Stats() Stats {
@@ -145,7 +149,7 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 		if proto != "" {
 			log.Printf("%s: ALPN negotiated %q", tconn.RemoteAddr(), proto)
 		} else {
-			log.Printf("%s: ALPN not supported, fallback to ADC", tconn.RemoteAddr())
+			log.Printf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
 		}
 		switch proto {
 		case "nmdc":
@@ -160,9 +164,14 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 		default:
 			return fmt.Errorf("unsupported protocol: %q", proto)
 		}
-	} else if string(buf) == "HSUP" {
+	}
+	switch string(buf) {
+	case "HSUP":
 		// ADC client-hub handshake
 		return h.ServeADC(conn)
+	case "NICK":
+		// IRC handshake
+		return h.ServeIRC(conn)
 	}
 	return fmt.Errorf("unknown protocol magic: %q", string(buf))
 }
@@ -194,7 +203,7 @@ func (h *Hub) bySID(sid adc.SID) Peer {
 }
 
 func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
-	log.Println("connected:", peer.SID(), peer.RemoteAddr(), peer.Name())
+	log.Printf("%s: connected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {
 		notify = h.Peers()
 	}
@@ -204,7 +213,7 @@ func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 }
 
 func (h *Hub) broadcastUserLeave(peer Peer, name string, notify []Peer) {
-	log.Println("disconnected:", peer.SID(), peer.RemoteAddr(), name)
+	log.Printf("%s: disconnected: %s %s", peer.RemoteAddr(), peer.SID(), name)
 	if notify == nil {
 		notify = h.Peers()
 	}
@@ -224,6 +233,27 @@ func (h *Hub) broadcastChat(from Peer, text string, notify []Peer) {
 
 func (h *Hub) sendMOTD(peer Peer) error {
 	return peer.HubChatMsg("Welcome!")
+}
+
+func (h *Hub) Leave(peer Peer, sid adc.SID, name string) {
+	h.peers.Lock()
+	delete(h.peers.byName, name)
+	delete(h.peers.bySID, sid)
+	notify := h.listPeers()
+	h.peers.Unlock()
+
+	h.broadcastUserLeave(peer, name, notify)
+}
+
+func (h *Hub) LeaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
+	h.peers.Lock()
+	delete(h.peers.byName, name)
+	delete(h.peers.bySID, sid)
+	delete(h.peers.byCID, cid)
+	notify := h.listPeers()
+	h.peers.Unlock()
+
+	h.broadcastUserLeave(peer, name, notify)
 }
 
 type Software struct {

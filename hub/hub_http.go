@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 
@@ -25,6 +26,7 @@ func (h *Hub) initHTTP() {
 }
 
 func (h *Hub) ServeHTTP2(conn net.Conn) error {
+	log.Printf("%s: using HTTP2", conn.RemoteAddr())
 	h.h2.ServeConn(conn, h.h2conf)
 	return nil
 }
