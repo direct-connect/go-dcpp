@@ -304,8 +304,8 @@ type MyInfo struct {
 	Desc      string
 	Client    string
 	Version   string
-	Mode      string
-	Hub       []int
+	Mode      string // TODO: active (A), passive (P), or SOCKS5 (5) mode
+	Hubs      [3]int
 	Slots     int
 	OpenSlots string
 	Info      string // TODO: parse
@@ -327,36 +327,28 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 
 	buf.WriteString(" ")
 	buf.WriteString(m.Desc)
-	if m.Client != "" {
-		buf.WriteString("<")
-		buf.WriteString(m.Client)
-		buf.WriteString(" ")
-	} else {
-		return nil, errors.New("unknown client")
-	}
+	buf.WriteString("<")
+	buf.WriteString(m.Client)
+	buf.WriteString(" ")
 	var a []string
 	if m.Version != "" {
-		a = append(a, fmt.Sprintf("%v%v", "V:", m.Version))
+		a = append(a, "V:"+m.Version)
 	} else {
 		return nil, errors.New("no version specified")
 	}
 	if m.Mode != "" {
-		a = append(a, fmt.Sprintf("%v%v", "M:", m.Mode))
+		a = append(a, "M:"+m.Mode)
 	} else {
 		return nil, errors.New("no mode specified")
 	}
-	if len(m.Hub) != 0 {
-		var hubs []string
-		for _, inf := range m.Hub {
-			hubs = append(hubs, strconv.Itoa(inf))
-		}
-		a = append(a, fmt.Sprintf("%v%v", "H:", strings.Join(hubs, "/")))
-	} else {
-		return nil, errors.New("no hub specified")
+	var hubs []string
+	for _, inf := range m.Hubs {
+		hubs = append(hubs, strconv.Itoa(inf))
 	}
-	a = append(a, fmt.Sprintf("%v%v", "S:", m.Slots))
+	a = append(a, "H:"+strings.Join(hubs, "/"))
+	a = append(a, "S:"+strconv.Itoa(m.Slots))
 	if m.OpenSlots != "" {
-		a = append(a, fmt.Sprintf("%v%v", "O:", m.OpenSlots))
+		a = append(a, "O:"+m.OpenSlots)
 	}
 	buf.WriteString(strings.Join(a, ","))
 	buf.WriteString(">")
@@ -394,9 +386,6 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			return errors.New("invalid info tag")
 		}
 		i = bytes.Index(tag, []byte(" "))
-		if i < 0 {
-			return errors.New("invalid client indicate")
-		}
 		m.Client = string(tag[:i])
 		tag = tag[i+1 : len(tag)-1]
 		fields := bytes.Split(tag, []byte(","))
@@ -411,15 +400,15 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			case "V":
 				m.Version = string(value)
 			case "M":
-				m.Mode = string(value) //TODO: active (A), passive (P), or SOCKS5 (5) mode
+				m.Mode = string(value)
 			case "H":
-				hubs := bytes.Split(field[i+1:], []byte("/"))
-				for _, inf := range hubs {
+				hubs := strings.Split(value, "/")
+				for i, inf := range hubs {
 					h, err := strconv.Atoi(string(inf))
 					if err != nil {
-						return errors.New("invalid info hubs")
+						return fmt.Errorf("invalid info hubs: %v", err)
 					}
-					m.Hub = append(m.Hub, h)
+					m.Hubs[i] = h
 				}
 			case "S":
 				slots, err := strconv.Atoi(value)
@@ -430,7 +419,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			case "O":
 				m.OpenSlots = string(value)
 			default:
-				return errors.New("invalid info tag")
+				return fmt.Errorf("unknown info tag: %q", name)
 			}
 		}
 	}
