@@ -20,10 +20,10 @@ var (
 	extPING = Feature{'P', 'I', 'N', 'G'} // Pinger extension (additional info about hub)
 	FeaSEGA = Feature{'S', 'E', 'G', 'A'} // Grouping of file extensions in search
 	extUCMD = Feature{'U', 'C', 'M', 'D'} // User commands
-	extADCS = Feature{'A', 'D', 'C', 'S'} // ADC over TLS
+	FeaADCS = Feature{'A', 'D', 'C', 'S'} // ADC over TLS for C-H
 
-	extADC0 = Feature{'A', 'D', 'C', '0'} // TODO: links
-	extNAT0 = Feature{'N', 'A', 'T', '0'}
+	FeaADC0 = Feature{'A', 'D', 'C', '0'} // ADC over TLS for C-C
+	extNAT0 = Feature{'N', 'A', 'T', '0'} // NAT traversal for C-C
 	extASCH = Feature{'A', 'S', 'C', 'H'}
 	extSUD1 = Feature{'S', 'U', 'D', '1'}
 	extSUDP = Feature{'S', 'U', 'D', 'P'}

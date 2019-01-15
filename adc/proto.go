@@ -9,7 +9,8 @@ import (
 // https://adc.sourceforge.io/ADC.html
 
 const (
-	ProtoADC = `ADC/1.0`
+	ProtoADC  = `ADC/1.0`
+	ProtoADCS = `ADCS/0.10`
 )
 
 const (
