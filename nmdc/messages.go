@@ -308,15 +308,15 @@ const (
 )
 
 type MyInfo struct {
-	Name      Name
-	Desc      string
-	Client    string
-	Version   string
-	Mode      UserMode
-	Hubs      [3]int
-	Slots     int
-	OpenSlots string
-	Info      string // TODO: parse
+	Name    Name
+	Desc    string
+	Client  string
+	Version string
+	Mode    UserMode
+	Hubs    [3]int
+	Slots   int
+	Other   map[string]string
+	Info    string // TODO: parse
 }
 
 func (*MyInfo) Cmd() string {
@@ -347,8 +347,8 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	}
 	a = append(a, "H:"+strings.Join(hubs, "/"))
 	a = append(a, "S:"+strconv.Itoa(m.Slots))
-	if m.OpenSlots != "" {
-		a = append(a, "O:"+m.OpenSlots)
+	for name, value := range m.Other {
+		a = append(a, name+":"+value)
 	}
 	buf.WriteString(strings.Join(a, ","))
 	buf.WriteString(">")
@@ -392,6 +392,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		m.Client = string(tag[:i])
 		tag = tag[i+1 : len(tag)-1]
 		fields := bytes.Split(tag, []byte(","))
+		other := make(map[string]string)
 		for _, field := range fields {
 			i = bytes.Index(field, []byte(":"))
 			if i < 0 {
@@ -437,12 +438,11 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 					return errors.New("invalid info slots")
 				}
 				m.Slots = int(slots)
-			case "O":
-				m.OpenSlots = value
 			default:
-				return fmt.Errorf("unknown info tag: %q", name)
+				other[name] = value
 			}
 		}
+		m.Other = other
 	}
 	m.Desc = string(desc)
 	m.Info = string(data)

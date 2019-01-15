@@ -13,16 +13,16 @@ var casesUnmarshal = []struct {
 }{
 	{
 		name: "MyINFO",
-		data: `$ALL johndoe <++ V:0.673,M:P,H:0/1/0,S:2>$ $LAN(T3)0x31$example@example.com$1234$`,
+		data: `$ALL johndoe <ApexDC++ V:0.4.0,M:P,H:27/1/3,S:92,L:512>$ $LAN(T3)0x31$example@example.com$1234$`,
 		msg: &MyInfo{
-			Name:      "johndoe",
-			Client:    "++",
-			Version:   "0.673",
-			Mode:      UserModePassive,
-			Hubs:      [3]int{0, 1, 0},
-			Slots:     2,
-			OpenSlots: "",
-			Info:      "$LAN(T3)0x31$example@example.com$1234$",
+			Name:    "johndoe",
+			Client:  "ApexDC++",
+			Version: "0.4.0",
+			Mode:    UserModePassive,
+			Hubs:    [3]int{27, 1, 3},
+			Slots:   92,
+			Other:   map[string]string{"L": "512"},
+			Info:    "$LAN(T3)0x31$example@example.com$1234$",
 		},
 	},
 }
