@@ -299,12 +299,20 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 	return nil
 }
 
+type UserMode byte
+
+const (
+	UserModeActive  = UserMode('A')
+	UserModePassive = UserMode('P')
+	UserModeSOCKS5  = UserMode('5')
+)
+
 type MyInfo struct {
 	Name      Name
 	Desc      string
 	Client    string
 	Version   string
-	Mode      string // TODO: active (A), passive (P), or SOCKS5 (5) mode
+	Mode      UserMode
 	Hubs      [3]int
 	Slots     int
 	OpenSlots string
@@ -331,16 +339,8 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.WriteString(m.Client)
 	buf.WriteString(" ")
 	var a []string
-	if m.Version != "" {
-		a = append(a, "V:"+m.Version)
-	} else {
-		return nil, errors.New("no version specified")
-	}
-	if m.Mode != "" {
-		a = append(a, "M:"+m.Mode)
-	} else {
-		return nil, errors.New("no mode specified")
-	}
+	a = append(a, "V:"+m.Version)
+	a = append(a, "M:"+string(m.Mode))
 	var hubs []string
 	for _, inf := range m.Hubs {
 		hubs = append(hubs, strconv.Itoa(inf))
@@ -386,6 +386,9 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			return errors.New("invalid info tag")
 		}
 		i = bytes.Index(tag, []byte(" "))
+		if i < 0 {
+			return errors.New("invalid client indicate")
+		}
 		m.Client = string(tag[:i])
 		tag = tag[i+1 : len(tag)-1]
 		fields := bytes.Split(tag, []byte(","))
@@ -398,13 +401,31 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			value := string(field[i+1:])
 			switch name {
 			case "V":
-				m.Version = string(value)
+				m.Version = value
 			case "M":
-				m.Mode = string(value)
+				switch value {
+				case "A":
+					m.Mode = UserModeActive
+				case "P":
+					m.Mode = UserModePassive
+				case "5":
+					m.Mode = UserModeSOCKS5
+				default:
+					if len([]byte(value)) == 0 {
+						m.Mode = UserMode(' ')
+					} else if len([]byte(value)) == 1 {
+						m.Mode = UserMode(field[0])
+					} else {
+						return fmt.Errorf("invalid user mode")
+					}
+				}
 			case "H":
 				hubs := strings.Split(value, "/")
+				if len(hubs) > 3 {
+					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
+				}
 				for i, inf := range hubs {
-					h, err := strconv.Atoi(string(inf))
+					h, err := strconv.Atoi(inf)
 					if err != nil {
 						return fmt.Errorf("invalid info hubs: %v", err)
 					}
@@ -417,7 +438,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 				}
 				m.Slots = int(slots)
 			case "O":
-				m.OpenSlots = string(value)
+				m.OpenSlots = value
 			default:
 				return fmt.Errorf("unknown info tag: %q", name)
 			}

@@ -18,7 +18,7 @@ var casesUnmarshal = []struct {
 			Name:      "johndoe",
 			Client:    "++",
 			Version:   "0.673",
-			Mode:      "P",
+			Mode:      UserModePassive,
 			Hubs:      [3]int{0, 1, 0},
 			Slots:     2,
 			OpenSlots: "",
