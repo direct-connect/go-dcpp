@@ -28,6 +28,8 @@ func init() {
 	RegisterMessage(&MyInfo{})
 	RegisterMessage(&OpList{})
 	RegisterMessage(&BotList{})
+	RegisterMessage(&ConnectToMe{})
+	RegisterMessage(&RevConnectToMe{})
 }
 
 type Message interface {
@@ -512,4 +514,80 @@ func (m *BotList) UnmarshalNMDC(data []byte) error {
 		return nil
 	}
 	return ((*OpList)(m)).UnmarshalNMDC(data)
+}
+
+type ConnectToMe struct {
+	From    Name
+	Address string
+	Secure  bool
+}
+
+func (m *ConnectToMe) Cmd() string {
+	return "ConnectToMe"
+}
+
+func (m *ConnectToMe) MarshalNMDC() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	data, err := m.From.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(data)
+	buf.WriteByte(' ')
+	buf.WriteString(m.Address)
+	if m.Secure {
+		buf.WriteByte('S')
+	}
+	return buf.Bytes(), nil
+}
+
+func (m *ConnectToMe) UnmarshalNMDC(data []byte) error {
+	i := bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid ConnectToMe command")
+	}
+	if err := m.From.UnmarshalNMDC(data[:i]); err != nil {
+		return err
+	}
+	addr := data[i+1:]
+	if l := len(addr); l != 0 && addr[l-1] == 'S' {
+		addr = addr[:l-1]
+		m.Secure = true
+	}
+	m.Address = string(addr)
+	return nil
+}
+
+type RevConnectToMe struct {
+	From, To Name
+}
+
+func (m *RevConnectToMe) Cmd() string {
+	return "RevConnectToMe"
+}
+
+func (m *RevConnectToMe) MarshalNMDC() ([]byte, error) {
+	from, err := m.From.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	to, err := m.To.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	return bytes.Join([][]byte{from, to}, []byte(" ")), nil
+}
+
+func (m *RevConnectToMe) UnmarshalNMDC(data []byte) error {
+	i := bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid RevConnectToMe command")
+	}
+	if err := m.From.UnmarshalNMDC(data[:i]); err != nil {
+		return err
+	}
+	if err := m.To.UnmarshalNMDC(data[i+1:]); err != nil {
+		return err
+	}
+	return nil
 }

@@ -25,6 +25,15 @@ var casesUnmarshal = []struct {
 			Info:    "$LAN(T3)0x31$example@example.com$1234$",
 		},
 	},
+	{
+		name: "ConnectToMe",
+		data: `john 192.168.1.2:412S`,
+		msg: &ConnectToMe{
+			From:    "john",
+			Address: "192.168.1.2:412",
+			Secure:  true,
+		},
+	},
 }
 
 func TestUnmarshal(t *testing.T) {
