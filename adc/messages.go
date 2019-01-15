@@ -187,32 +187,32 @@ var _ Message = User{}
 type User struct {
 	Id   CID    `adc:"ID"`
 	Pid  *PID   `adc:"PD"` // sent only to hub
-	Name string `adc:"NI"`
+	Name string `adc:"NI,req"`
 
 	Ip4  string `adc:"I4"`
 	Ip6  string `adc:"I6"`
 	Udp4 int    `adc:"U4"`
 	Udp6 int    `adc:"U6"`
 
-	ShareSize  int64 `adc:"SS"`
-	ShareFiles int   `adc:"SF"`
+	ShareSize  int64 `adc:"SS,req"`
+	ShareFiles int   `adc:"SF,req"`
 
-	Version     string `adc:"VE"`
+	Version     string `adc:"VE,req"`
 	Application string `adc:"AP"`
 
 	MaxUpload   string `adc:"US"` // TODO: most time it's int, but some clients write things like "Cable"
 	MaxDownload int    `adc:"DS"`
 
-	Slots         int `adc:"SL"`
-	SlotsFree     int `adc:"FS"`
+	Slots         int `adc:"SL,req"`
+	SlotsFree     int `adc:"FS,req"`
 	AutoSlotLimit int `adc:"AS"`
 
 	Email string `adc:"EM"`
 	Desc  string `adc:"DE"`
 
-	HubsNormal     int `adc:"HN"`
-	HubsRegistered int `adc:"HR"`
-	HubsOperator   int `adc:"HO"`
+	HubsNormal     int `adc:"HN,req"`
+	HubsRegistered int `adc:"HR,req"`
+	HubsOperator   int `adc:"HO,req"`
 
 	Token string `adc:"TO"` // C-C only
 
@@ -220,7 +220,7 @@ type User struct {
 	Away AwayType `adc:"AW"`
 	Ref  string   `adc:"RF"`
 
-	Features ExtFeatures `adc:"SU"`
+	Features ExtFeatures `adc:"SU,req"`
 
 	KP string `adc:"KP"`
 }

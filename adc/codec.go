@@ -107,7 +107,7 @@ func Unmarshal(s []byte, o interface{}) error {
 	sub := bytes.Split(s, []byte(" "))
 	for i := 0; i < rt.NumField(); i++ {
 		fld := rt.Field(i)
-		tag := fld.Tag.Get(`adc`)
+		tag := strings.SplitN(fld.Tag.Get(`adc`), ",", 2)[0]
 		if tag == "" || tag == "-" {
 			continue
 		} else if tag == "#" {
@@ -222,7 +222,12 @@ func Marshal(o interface{}) ([]byte, error) {
 		if tag == "" || tag == "-" {
 			continue
 		}
+		sub := strings.SplitN(tag, ",", 2)
+		tag = sub[0]
 		omit := tag != "#"
+		if len(sub) > 1 && sub[1] == "req" {
+			omit = false
+		}
 		if omit && isZero(rv.Field(i)) {
 			continue
 		}

@@ -147,7 +147,7 @@ var casesEncode = []struct {
 			Version:  `EiskaltDC++ 2.2.9`,
 			Features: adc.ExtFeatures{{'S', 'E', 'G', 'A'}, {'A', 'D', 'C', '0'}, {'T', 'C', 'P', '4'}, {'U', 'D', 'P', '4'}},
 		},
-		`IDKAY6BI76T6XFIQXZNRYE4WXJ2Y3YGXJG7UM7XLI NIdennnn I4172.17.42.1 SS25146919163 SF23 VEEiskaltDC++\s2.2.9 SUSEGA,ADC0,TCP4,UDP4`,
+		`IDKAY6BI76T6XFIQXZNRYE4WXJ2Y3YGXJG7UM7XLI NIdennnn I4172.17.42.1 SS25146919163 SF23 VEEiskaltDC++\s2.2.9 SL0 FS0 HN0 HR0 HO0 SUSEGA,ADC0,TCP4,UDP4`,
 	},
 	{
 		adc.SearchRequest{And: []string{"some", "data"}, Token: "4171511714", Group: adc.ExtVideo},
