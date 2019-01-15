@@ -3,9 +3,11 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base32"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -22,11 +24,17 @@ import (
 )
 
 var (
-	f_host = flag.String("host", ":1411", "host to listen on")
+	f_host  = flag.String("host", ":1411", "host to listen on")
+	f_sign  = flag.String("sign", "127.0.0.1", "host or IP to sign TLS certs for")
+	f_name  = flag.String("name", "GoTestHub", "hub name")
+	f_desc  = flag.String("desc", "Hybrid hub", "hub description")
+	f_pprof = flag.Bool("pprof", false, "run pprof")
 )
 
 func main() {
-	go http.ListenAndServe(":6060", nil)
+	if *f_pprof {
+		go http.ListenAndServe(":6060", nil)
+	}
 	flag.Parse()
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -35,7 +43,7 @@ func main() {
 }
 
 func run() error {
-	cert, err := genCert()
+	cert, kp, err := loadCert()
 	if err != nil {
 		return err
 	}
@@ -44,29 +52,62 @@ func run() error {
 		Certificates: []tls.Certificate{*cert},
 	}
 	h := hub.NewHub(hub.Info{
-		Name: "GoTestHub",
-		Desc: "Hybrid hub",
+		Name: *f_name,
+		Desc: *f_desc,
 	}, conf)
+
+	_, port, _ := net.SplitHostPort(*f_host)
+	addr := *f_sign + ":" + port
 	log.Println("listening on", *f_host)
+	log.Printf(`
+
+[ Hub URIs ]
+adcs://%s?kp=%s
+adcs://%s
+adc://%s
+dchub://%s
+
+[ IRC chat ]
+ircs://%s/hub
+irc://%s/hub
+
+[ HTTPS stats ]
+https://%s
+
+`,
+		addr, kp,
+		addr,
+		addr,
+		addr,
+
+		addr,
+		addr,
+
+		addr,
+	)
 	return h.ListenAndServe(*f_host)
 }
 
-func genCert() (*tls.Certificate, error) {
+func loadCert() (*tls.Certificate, string, error) {
 	// generate a new key-pair
 	rootKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	rootCertTmpl, err := CertTemplate()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// describe what the certificate will be used for
 	rootCertTmpl.IsCA = true
 	rootCertTmpl.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature
 	rootCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
-	rootCertTmpl.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
+	if ip := net.ParseIP(*f_sign); ip != nil {
+		rootCertTmpl.IPAddresses = []net.IP{ip}
+	} else {
+		rootCertTmpl.DNSNames = []string{*f_sign}
+	}
 
 	_, rootCertPEM, err := CreateCert(rootCertTmpl, rootCertTmpl, &rootKey.PublicKey, rootKey)
 	if err != nil {
@@ -78,12 +119,16 @@ func genCert() (*tls.Certificate, error) {
 		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(rootKey),
 	})
 
+	h := sha256.Sum256(rootCertPEM)
+	kp := "SHA256/" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:])
+
 	// Create a TLS cert using the private key and certificate
 	rootTLSCert, err := tls.X509KeyPair(rootCertPEM, rootKeyPEM)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return &rootTLSCert, nil
+	log.Println("generated cert for", *f_sign)
+	return &rootTLSCert, kp, nil
 }
 
 // helper function to create a cert template with a serial number and other required fields
