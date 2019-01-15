@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-irc/irc"
+
+	"github.com/dennwc/go-dcpp/version"
 )
 
 const (
@@ -330,7 +332,7 @@ func (p *ircPeer) User() User {
 		App: Software{
 			// TODO: propagate the real IRC client version
 			Name: "DC-IRC bridge",
-			Vers: "0.1",
+			Vers: version.Vers,
 		},
 	}
 }

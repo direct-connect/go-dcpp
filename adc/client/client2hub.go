@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dennwc/go-dcpp/adc"
+	"github.com/dennwc/go-dcpp/version"
 )
 
 // DialHub connects to a hub and runs a handshake.
@@ -149,8 +150,8 @@ func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
 		user.Id = user.Pid.Hash()
 	}
 	if user.Application == "" {
-		user.Application = "go-dcpp"
-		user.Version = "0.1"
+		user.Application = version.Name
+		user.Version = version.Vers
 	}
 	for _, f := range []adc.Feature{adc.FeaSEGA, adc.FeaTCP4} {
 		if !user.Features.Has(f) {

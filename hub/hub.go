@@ -13,6 +13,7 @@ import (
 
 	"github.com/dennwc/go-dcpp/adc"
 	"github.com/dennwc/go-dcpp/adc/types"
+	"github.com/dennwc/go-dcpp/version"
 )
 
 type Info struct {
@@ -24,8 +25,8 @@ type Info struct {
 func NewHub(info Info, tls *tls.Config) *Hub {
 	if info.Soft == (Software{}) {
 		info.Soft = Software{
-			Name: "go-dcpp",
-			Vers: "0.1",
+			Name: version.Name,
+			Vers: version.Vers,
 		}
 	}
 	if tls != nil {
