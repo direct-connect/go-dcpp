@@ -1,0 +1,6 @@
+github.com/go-irc/irc v2.1.0+incompatible h1:pg7pMVq5OYQbqTxceByD/EN8VIsba7DtKn49rsCnG8Y=
+github.com/go-irc/irc v2.1.0+incompatible/go.mod h1:jJILTRy8s/qOvusiKifAEfhQMVwft1ZwQaVJnnzmyX4=
+golang.org/x/net v0.0.0-20190110200230-915654e7eabc h1:Yx9JGxI1SBhVLFjpAkWMaO1TF+xyqtHLjZpvQboJGiM=
+golang.org/x/net v0.0.0-20190110200230-915654e7eabc/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+golang.org/x/text v0.3.0 h1:g61tztE5qeGQ89tm6NTjjM9VPIm088od1l6aSorWRWg=
+golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
