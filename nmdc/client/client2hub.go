@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dennwc/go-dcpp/nmdc"
+	"github.com/dennwc/go-dcpp/version"
 )
 
 // DialHub connects to a hub and runs a handshake.
@@ -145,9 +146,13 @@ handshake:
 		return nil, err
 	}
 	err = conn.WriteMsg(&nmdc.MyInfo{
-		Name: nmdc.Name(conf.Name),
+		Name:    nmdc.Name(conf.Name),
+		Client:  version.Name,
+		Version: version.Vers,
+		Mode:    nmdc.UserModePassive,
+		Hubs:    [3]int{1, 0, 0},
+		Slots:   1,
 		// TODO
-		Tag:  "Go V:0.1,M:P,H:0/1/0,S:2",
 		Info: "$LAN(T3)0x31$example@example.com$12345$",
 	})
 	if err != nil {

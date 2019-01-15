@@ -59,6 +59,7 @@ func HubHandshake(conn *adc.Conn, conf *Config) (*Conn, error) {
 	c.user.Pid = &conf.PID
 	c.user.Name = conf.Name
 	c.user.Features = conf.Extensions
+	c.user.Slots = 1
 
 	if err := identifyToHub(conn, sid, &c.user); err != nil {
 		conn.Close()

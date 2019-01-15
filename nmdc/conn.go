@@ -22,6 +22,8 @@ const (
 
 var Debug bool
 
+// TODO: support keep alive with "|"
+
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
 	conn, err := net.Dial("tcp", addr)
