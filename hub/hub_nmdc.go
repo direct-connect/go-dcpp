@@ -13,6 +13,8 @@ import (
 	"github.com/dennwc/go-dcpp/nmdc"
 )
 
+const nmdcFakeToken = "nmdc"
+
 func (h *Hub) ServeNMDC(conn net.Conn) error {
 	log.Printf("%s: using NMDC", conn.RemoteAddr())
 	c, err := nmdc.NewConn(conn)
@@ -250,9 +252,26 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				return errors.New("invalid name in the chat message")
 			}
 			go h.broadcastChat(peer, msg.Text, nil)
+		case *nmdc.ConnectToMe:
+			targ := h.byName(string(msg.Targ))
+			if targ == nil {
+				continue
+			}
+			// TODO: token?
+			go h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
+		case *nmdc.RevConnectToMe:
+			if string(msg.From) != peer.Name() {
+				return errors.New("invalid name in RevConnectToMe")
+			}
+			targ := h.byName(string(msg.To))
+			if targ == nil {
+				continue
+			}
+			go h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
 		default:
 			// TODO
-			log.Printf("%s: nmdc: %s", peer.RemoteAddr(), msg)
+			data, _ := msg.MarshalNMDC()
+			log.Printf("%s: nmdc: $%s %v|", peer.RemoteAddr(), msg.Cmd(), string(data))
 		}
 	}
 }
@@ -279,6 +298,10 @@ func (p *nmdcPeer) User() User {
 			Name: u.Client,
 			Vers: u.Version,
 		},
+		// TODO
+		IPv4: true,
+		IPv6: false,
+		TLS:  true,
 	}
 }
 
@@ -294,6 +317,22 @@ func (p *nmdcPeer) Info() nmdc.MyInfo {
 	u := p.user
 	p.mu.RUnlock()
 	return u
+}
+
+func (p *nmdcPeer) Close() error {
+	p.closeMu.Lock()
+	defer p.closeMu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.closed {
+		return nil
+	}
+	err := p.conn.Close()
+	p.closed = true
+
+	name := string(p.user.Name)
+	p.hub.leave(p, p.sid, name)
+	return err
 }
 
 func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
@@ -321,7 +360,7 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 				Hubs:  [3]int{1, 0, 0},
 				Slots: 1,
 				// TODO
-				Info: "$LAN(T3)0x31$" + info.Email + "$" + strconv.FormatUint(info.Share, 10) + "$",
+				Info: "$LAN(T3)\x71$" + info.Email + "$" + strconv.FormatUint(info.Share, 10) + "$",
 			}
 		}
 		if err := p.conn.WriteMsg(&u); err != nil {
@@ -350,25 +389,27 @@ func (p *nmdcPeer) ChatMsg(from Peer, text string) error {
 }
 
 func (p *nmdcPeer) PrivateMsg(from Peer, text string) error {
-	panic("implement me")
+	// TODO
+	return nil
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
 	return p.writeOne(&nmdc.ChatMessage{Text: text})
 }
 
-func (p *nmdcPeer) Close() error {
-	p.closeMu.Lock()
-	defer p.closeMu.Unlock()
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if p.closed {
-		return nil
-	}
-	err := p.conn.Close()
-	p.closed = true
+func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
+	// TODO: save token somewhere?
+	return p.writeOne(&nmdc.ConnectToMe{
+		Targ:    nmdc.Name(peer.Name()),
+		Address: addr,
+		Secure:  secure,
+	})
+}
 
-	name := string(p.user.Name)
-	p.hub.leave(p, p.sid, name)
-	return err
+func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
+	// TODO: save token somewhere?
+	return p.writeOne(&nmdc.RevConnectToMe{
+		From: nmdc.Name(peer.Name()),
+		To:   nmdc.Name(p.Name()),
+	})
 }

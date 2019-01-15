@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -319,7 +320,7 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 	}
 }
 
-func (h *Hub) adcDirect(p *adc.DirectPacket, from Peer) {
+func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	peer := h.bySID(p.Targ)
 	if peer == nil {
 		return
@@ -337,6 +338,23 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from Peer) {
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
 		h.privateChat(from, peer, string(msg.Text))
+	case adc.ConnectRequest:
+		info := from.Info()
+		pinf := peer.User()
+		var ip string
+		if pinf.IPv6 && info.Ip6 != "" {
+			ip = info.Ip6
+		} else if pinf.IPv4 {
+			ip = info.Ip4
+		}
+		if ip == "" {
+			return
+		}
+		secure := strings.HasPrefix(msg.Proto, "ADCS")
+		h.connectReq(from, peer, ip+":"+strconv.Itoa(msg.Port), msg.Token, secure)
+	case adc.RevConnectRequest:
+		secure := strings.HasPrefix(msg.Proto, "ADCS")
+		h.revConnectReq(from, peer, msg.Token, secure)
 	default:
 		// TODO: decode other packets
 	}
@@ -386,6 +404,9 @@ func (p *adcPeer) User() User {
 			Name: u.Application,
 			Vers: u.Version,
 		},
+		IPv4: u.Features.Has(adc.FeaTCP4),
+		IPv6: u.Features.Has(adc.FeaTCP6),
+		TLS:  u.Features.Has(adc.FeaADC0),
 	}
 }
 
@@ -438,6 +459,20 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 				ShareSize:   int64(info.Share),
 				Email:       info.Email,
 			}
+			if info.TLS {
+				u.Features = append(u.Features, adc.FeaADC0)
+			}
+			if info.IPv4 {
+				u.Features = append(u.Features, adc.FeaTCP4)
+			}
+			if info.IPv6 {
+				u.Features = append(u.Features, adc.FeaTCP6)
+			}
+			if strings.HasPrefix(addr, "[") {
+				u.Ip6 = addr
+			} else {
+				u.Ip4 = addr
+			}
 		}
 		if err := p.conn.WriteBroadcast(peer.SID(), &u); err != nil {
 			return err
@@ -481,6 +516,61 @@ func (p *adcPeer) PrivateMsg(from Peer, text string) error {
 func (p *adcPeer) HubChatMsg(text string) error {
 	err := p.conn.WriteInfoMsg(&adc.ChatMessage{
 		Text: adc.String(text),
+	})
+	if err != nil {
+		return err
+	}
+	return p.conn.Flush()
+}
+
+func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
+	host, sport, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	port, err := strconv.Atoi(sport)
+	if err != nil {
+		return err
+	}
+
+	// make sure we are on the same page - fake an update of an address for that peer
+	field := [2]byte{'I', '4'} // IPv4
+	if strings.HasPrefix(host, "[") {
+		field = [2]byte{'I', '6'} // IPv6
+	}
+	err = p.conn.WriteInfoMsg(adc.UserMod{
+		field: host,
+	})
+	if err != nil {
+		return err
+	}
+
+	// we need to pretend that peer speaks the same protocol as we do
+	proto := adc.ProtoADC
+	if secure {
+		proto = adc.ProtoADCS
+	}
+	err = p.conn.WriteDirect(peer.SID(), p.sid, &adc.ConnectRequest{
+		Proto: proto,
+		Port:  port,
+		Token: token,
+	})
+	if err != nil {
+		return err
+	}
+
+	return p.conn.Flush()
+}
+
+func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
+	// we need to pretend that peer speaks the same protocol as we do
+	proto := adc.ProtoADC
+	if secure {
+		proto = adc.ProtoADCS
+	}
+	err := p.conn.WriteDirect(peer.SID(), p.sid, &adc.RevConnectRequest{
+		Proto: proto,
+		Token: token,
 	})
 	if err != nil {
 		return err

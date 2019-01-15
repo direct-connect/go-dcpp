@@ -442,3 +442,13 @@ func (p *ircPeer) HubChatMsg(text string) error {
 	// TODO:
 	return nil
 }
+
+func (p *ircPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
+	// TODO: DCC?
+	return nil
+}
+
+func (p *ircPeer) RevConnectTo(peer Peer, token string, secure bool) error {
+	// TODO: DCC?
+	return nil
+}

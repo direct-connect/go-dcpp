@@ -29,7 +29,7 @@ var casesUnmarshal = []struct {
 		name: "ConnectToMe",
 		data: `john 192.168.1.2:412S`,
 		msg: &ConnectToMe{
-			From:    "john",
+			Targ:    "john",
 			Address: "192.168.1.2:412",
 			Secure:  true,
 		},

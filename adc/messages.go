@@ -229,6 +229,54 @@ func (User) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
 }
 
+var (
+	_ Message     = UserMod{}
+	_ Marshaler   = UserMod{}
+	_ Unmarshaler = (*UserMod)(nil)
+)
+
+type UserMod map[[2]byte]string
+
+func (m *UserMod) UnmarshalAdc(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	if *m == nil {
+		*m = make(map[[2]byte]string)
+	}
+	mp := *m
+	sub := bytes.Split(data, []byte(" "))
+	for _, v := range sub {
+		if len(v) < 2 {
+			return fmt.Errorf("invalid field: %q", string(v))
+		}
+		k := [2]byte{v[0], v[1]}
+		v = v[2:]
+		mp[k] = string(v)
+	}
+	return nil
+}
+
+func (m UserMod) MarshalAdc() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	for k, v := range m {
+		if buf.Len() != 0 {
+			buf.WriteString(" ")
+		}
+		buf.Write(k[:])
+		data, err := String(v).MarshalAdc()
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(data)
+	}
+	return buf.Bytes(), nil
+}
+
+func (UserMod) Cmd() MsgType {
+	return MsgType{'I', 'N', 'F'}
+}
+
 var _ Message = RevConnectRequest{}
 
 type RevConnectRequest struct {

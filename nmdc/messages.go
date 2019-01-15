@@ -517,7 +517,7 @@ func (m *BotList) UnmarshalNMDC(data []byte) error {
 }
 
 type ConnectToMe struct {
-	From    Name
+	Targ    Name
 	Address string
 	Secure  bool
 }
@@ -528,7 +528,7 @@ func (m *ConnectToMe) Cmd() string {
 
 func (m *ConnectToMe) MarshalNMDC() ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
-	data, err := m.From.MarshalNMDC()
+	data, err := m.Targ.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
@@ -546,7 +546,7 @@ func (m *ConnectToMe) UnmarshalNMDC(data []byte) error {
 	if i < 0 {
 		return errors.New("invalid ConnectToMe command")
 	}
-	if err := m.From.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.Targ.UnmarshalNMDC(data[:i]); err != nil {
 		return err
 	}
 	addr := data[i+1:]

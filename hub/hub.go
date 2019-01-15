@@ -268,6 +268,14 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	h.broadcastUserLeave(peer, name, notify)
 }
 
+func (h *Hub) connectReq(from, to Peer, addr, token string, secure bool) {
+	_ = to.ConnectTo(from, addr, token, secure)
+}
+
+func (h *Hub) revConnectReq(from, to Peer, token string, secure bool) {
+	_ = to.RevConnectTo(from, token, secure)
+}
+
 type Software struct {
 	Name string `json:"name"`
 	Vers string `json:"vers"`
@@ -278,6 +286,9 @@ type User struct {
 	App   Software
 	Share uint64
 	Email string
+	IPv4  bool
+	IPv6  bool
+	TLS   bool
 }
 
 type Peer interface {
@@ -289,12 +300,15 @@ type Peer interface {
 	Close() error
 
 	PeersJoin(peers []Peer) error
-	//PeersUpdate(peers []Peer) error
 	PeersLeave(peers []Peer) error
+	//PeersUpdate(peers []Peer) error
 
 	ChatMsg(from Peer, text string) error
 	PrivateMsg(from Peer, text string) error
 	HubChatMsg(text string) error
+
+	ConnectTo(peer Peer, addr string, token string, secure bool) error
+	RevConnectTo(peer Peer, token string, secure bool) error
 }
 
 type BasePeer struct {
