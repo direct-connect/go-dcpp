@@ -15,9 +15,14 @@ var casesUnmarshal = []struct {
 		name: "MyINFO",
 		data: `$ALL johndoe <++ V:0.673,M:P,H:0/1/0,S:2>$ $LAN(T3)0x31$example@example.com$1234$`,
 		msg: &MyInfo{
-			Name: "johndoe",
-			Tag:  "++ V:0.673,M:P,H:0/1/0,S:2",
-			Info: "$LAN(T3)0x31$example@example.com$1234$",
+			Name:      "johndoe",
+			Client:    "++",
+			Version:   "0.673",
+			Mode:      UserModePassive,
+			Hubs:      [3]int{0, 1, 0},
+			Slots:     2,
+			OpenSlots: "",
+			Info:      "$LAN(T3)0x31$example@example.com$1234$",
 		},
 	},
 }

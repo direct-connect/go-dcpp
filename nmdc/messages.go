@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -298,11 +299,24 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 	return nil
 }
 
+type UserMode byte
+
+const (
+	UserModeActive  = UserMode('A')
+	UserModePassive = UserMode('P')
+	UserModeSOCKS5  = UserMode('5')
+)
+
 type MyInfo struct {
-	Name Name
-	Desc string
-	Tag  string // TODO: parse
-	Info string // TODO: parse
+	Name      Name
+	Desc      string
+	Client    string
+	Version   string
+	Mode      UserMode
+	Hubs      [3]int
+	Slots     int
+	OpenSlots string
+	Info      string // TODO: parse
 }
 
 func (*MyInfo) Cmd() string {
@@ -321,11 +335,23 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 
 	buf.WriteString(" ")
 	buf.WriteString(m.Desc)
-	if m.Tag != "" {
-		buf.WriteString("<")
-		buf.WriteString(m.Tag)
-		buf.WriteString(">")
+	buf.WriteString("<")
+	buf.WriteString(m.Client)
+	buf.WriteString(" ")
+	var a []string
+	a = append(a, "V:"+m.Version)
+	a = append(a, "M:"+string(m.Mode))
+	var hubs []string
+	for _, inf := range m.Hubs {
+		hubs = append(hubs, strconv.Itoa(inf))
 	}
+	a = append(a, "H:"+strings.Join(hubs, "/"))
+	a = append(a, "S:"+strconv.Itoa(m.Slots))
+	if m.OpenSlots != "" {
+		a = append(a, "O:"+m.OpenSlots)
+	}
+	buf.WriteString(strings.Join(a, ","))
+	buf.WriteString(">")
 	buf.WriteString("$ ")
 	buf.WriteString(m.Info)
 	return buf.Bytes(), nil
@@ -359,7 +385,64 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		if len(tag) == 0 || tag[len(tag)-1] != '>' {
 			return errors.New("invalid info tag")
 		}
-		m.Tag = string(tag[:len(tag)-1])
+		i = bytes.Index(tag, []byte(" "))
+		if i < 0 {
+			return errors.New("invalid client indicate")
+		}
+		m.Client = string(tag[:i])
+		tag = tag[i+1 : len(tag)-1]
+		fields := bytes.Split(tag, []byte(","))
+		for _, field := range fields {
+			i = bytes.Index(field, []byte(":"))
+			if i < 0 {
+				return errors.New("unknown field in tag")
+			}
+			name := string(field[:i])
+			value := string(field[i+1:])
+			switch name {
+			case "V":
+				m.Version = value
+			case "M":
+				switch value {
+				case "A":
+					m.Mode = UserModeActive
+				case "P":
+					m.Mode = UserModePassive
+				case "5":
+					m.Mode = UserModeSOCKS5
+				default:
+					if len([]byte(value)) == 0 {
+						m.Mode = UserMode(' ')
+					} else if len([]byte(value)) == 1 {
+						m.Mode = UserMode(field[0])
+					} else {
+						return fmt.Errorf("invalid user mode")
+					}
+				}
+			case "H":
+				hubs := strings.Split(value, "/")
+				if len(hubs) > 3 {
+					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
+				}
+				for i, inf := range hubs {
+					h, err := strconv.Atoi(inf)
+					if err != nil {
+						return fmt.Errorf("invalid info hubs: %v", err)
+					}
+					m.Hubs[i] = h
+				}
+			case "S":
+				slots, err := strconv.Atoi(value)
+				if err != nil {
+					return errors.New("invalid info slots")
+				}
+				m.Slots = int(slots)
+			case "O":
+				m.OpenSlots = value
+			default:
+				return fmt.Errorf("unknown info tag: %q", name)
+			}
+		}
 	}
 	m.Desc = string(desc)
 	m.Info = string(data)
