@@ -310,15 +310,18 @@ const (
 )
 
 type MyInfo struct {
-	Name    Name
-	Desc    string
-	Client  string
-	Version string
-	Mode    UserMode
-	Hubs    [3]int
-	Slots   int
-	Other   map[string]string
-	Info    string // TODO: parse
+	Name      Name
+	Desc      string
+	Client    string
+	Version   string
+	Mode      UserMode
+	Hubs      [3]int
+	Slots     int
+	Other     map[string]string
+	Conn      string
+	Flag      byte
+	Mail      string
+	ShareSize string
 }
 
 func (*MyInfo) Cmd() string {
@@ -354,8 +357,13 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	}
 	buf.WriteString(strings.Join(a, ","))
 	buf.WriteString(">")
-	buf.WriteString("$ ")
-	buf.WriteString(m.Info)
+	buf.WriteString("$ $")
+	buf.WriteString(m.Conn + string(m.Flag))
+	buf.WriteString("$")
+	buf.WriteString(m.Mail)
+	buf.WriteString("$")
+	buf.WriteString(m.ShareSize)
+	buf.WriteString("$")
 	return buf.Bytes(), nil
 }
 
@@ -380,7 +388,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		return errors.New("invalid info command")
 	}
 	desc := data[:i]
-	data = data[i+2:]
+	data = data[i+3 : len(data)-1]
 	if i := bytes.Index(desc, []byte("<")); i >= 0 {
 		tag := desc[i+1:]
 		desc = desc[:i]
@@ -447,7 +455,20 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		m.Other = other
 	}
 	m.Desc = string(desc)
-	m.Info = string(data)
+	fields := bytes.Split(data, []byte("$"))
+	for i, field := range fields {
+		switch i {
+		case 0:
+			m.Conn = string(field[:len(field)-1])
+			m.Flag = field[len(field)-1]
+		case 1:
+			m.Mail = string(field[:])
+		case 2:
+			m.ShareSize = string(field[:])
+		default:
+			return errors.New("invalid info connection")
+		}
+	}
 	return nil
 }
 
