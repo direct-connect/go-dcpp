@@ -149,11 +149,14 @@ handshake:
 		Name:    nmdc.Name(conf.Name),
 		Client:  version.Name,
 		Version: version.Vers,
-		Mode:    nmdc.UserModePassive,
-		Hubs:    [3]int{1, 0, 0},
-		Slots:   1,
+		Flag:    nmdc.FlagStatusNormal | nmdc.FlagIPv4 | nmdc.FlagTLSDownload,
+
 		// TODO
-		Info: "$LAN(T3)0x31$example@example.com$12345$",
+		Mode:      nmdc.UserModePassive,
+		Hubs:      [3]int{1, 0, 0},
+		Slots:     1,
+		Conn:      "LAN(T3)",
+		ShareSize: 13 * 1023 * 1023 * 1023,
 	})
 	if err != nil {
 		return nil, err

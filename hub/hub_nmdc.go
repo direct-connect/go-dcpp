@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -298,10 +297,11 @@ func (p *nmdcPeer) User() User {
 			Name: u.Client,
 			Vers: u.Version,
 		},
-		// TODO
-		IPv4: true,
-		IPv6: false,
-		TLS:  true,
+		Email: u.Email,
+		Share: u.ShareSize,
+		IPv4:  u.Flag.IsSet(nmdc.FlagIPv4),
+		IPv6:  u.Flag.IsSet(nmdc.FlagIPv6),
+		TLS:   u.Flag.IsSet(nmdc.FlagTLS),
 	}
 }
 
@@ -350,17 +350,29 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 			u = p2.Info()
 		} else {
 			info := peer.User()
+			flag := nmdc.FlagStatusNormal
+			if info.IPv4 {
+				flag |= nmdc.FlagIPv4
+			}
+			if info.IPv6 {
+				flag |= nmdc.FlagIPv6
+			}
+			if info.TLS {
+				flag |= nmdc.FlagTLS
+			}
 			u = nmdc.MyInfo{
-				Name:    nmdc.Name(info.Name),
-				Client:  info.App.Name,
-				Version: info.App.Vers,
+				Name:      nmdc.Name(info.Name),
+				Client:    info.App.Name,
+				Version:   info.App.Vers,
+				Email:     info.Email,
+				ShareSize: info.Share,
+				Flag:      flag,
 
 				// TODO
 				Mode:  nmdc.UserModeActive,
 				Hubs:  [3]int{1, 0, 0},
 				Slots: 1,
-				// TODO
-				Info: "$LAN(T3)\x71$" + info.Email + "$" + strconv.FormatUint(info.Share, 10) + "$",
+				Conn:  "LAN(T3)",
 			}
 		}
 		if err := p.conn.WriteMsg(&u); err != nil {

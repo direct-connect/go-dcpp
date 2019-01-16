@@ -309,6 +309,25 @@ const (
 	UserModeSOCKS5  = UserMode('5')
 )
 
+type UserFlag byte
+
+func (f UserFlag) IsSet(f2 UserFlag) bool {
+	return f&f2 != 0
+}
+
+const (
+	FlagStatusNormal   = UserFlag(0x01)
+	FlagStatusAway     = UserFlag(0x02)
+	FlagStatusServer   = UserFlag(0x04)
+	FlagStatusFireball = UserFlag(0x08)
+	FlagTLSDownload    = UserFlag(0x10)
+	FlagTLSUpload      = UserFlag(0x20)
+	FlagIPv4           = UserFlag(0x40)
+	FlagIPv6           = UserFlag(0x80)
+
+	FlagTLS = FlagTLSUpload | FlagTLSDownload
+)
+
 type MyInfo struct {
 	Name      Name
 	Desc      string
@@ -319,7 +338,7 @@ type MyInfo struct {
 	Slots     int
 	Other     map[string]string
 	Conn      string
-	Flag      byte
+	Flag      UserFlag
 	Email     string
 	ShareSize uint64
 }
@@ -465,15 +484,16 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			if len(field) == 0 {
 				return errors.New("invalid info connection")
 			}
-			m.Conn = string(field[:len(field)-1])
-			m.Flag = field[len(field)-1]
+			l := len(field)
+			m.Flag = UserFlag(field[l-1])
+			m.Conn = string(field[:l-1])
 		case 1:
 			m.Email = string(field)
 		case 2:
-			if string(field) == "" {
+			if s := string(field); s == "" {
 				m.ShareSize = 0
 			} else {
-				size, err := strconv.ParseUint(string(field), 10, 64)
+				size, err := strconv.ParseUint(s, 10, 64)
 				if err != nil {
 					return err
 				}
