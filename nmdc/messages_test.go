@@ -25,8 +25,8 @@ var casesUnmarshal = []struct {
 			Other:     map[string]string{"L": "512"},
 			Conn:      "LAN(T3)",
 			Flag:      'K',
-			Mail:      "example@example.com",
-			ShareSize: "1234",
+			Email:     "example@example.com",
+			ShareSize: 1234,
 		},
 	},
 	{

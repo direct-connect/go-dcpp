@@ -320,8 +320,8 @@ type MyInfo struct {
 	Other     map[string]string
 	Conn      string
 	Flag      byte
-	Mail      string
-	ShareSize string
+	Email     string
+	ShareSize int
 }
 
 func (*MyInfo) Cmd() string {
@@ -360,9 +360,9 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.WriteString("$ $")
 	buf.WriteString(m.Conn + string(m.Flag))
 	buf.WriteString("$")
-	buf.WriteString(m.Mail)
+	buf.WriteString(m.Email)
 	buf.WriteString("$")
-	buf.WriteString(m.ShareSize)
+	buf.WriteString(strconv.Itoa(m.ShareSize))
 	buf.WriteString("$")
 	return buf.Bytes(), nil
 }
@@ -456,17 +456,29 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 	}
 	m.Desc = string(desc)
 	fields := bytes.Split(data, []byte("$"))
+	if len(fields) != 3 {
+		return errors.New("invalid info connection")
+	}
 	for i, field := range fields {
 		switch i {
 		case 0:
+			if len(field) == 0 {
+				return errors.New("invalid info connection")
+			}
 			m.Conn = string(field[:len(field)-1])
 			m.Flag = field[len(field)-1]
 		case 1:
-			m.Mail = string(field[:])
+			m.Email = string(field[:])
 		case 2:
-			m.ShareSize = string(field[:])
-		default:
-			return errors.New("invalid info connection")
+			if string(field[:]) == "" {
+				m.ShareSize = 0
+			} else {
+				size, err := strconv.Atoi(string(field[:]))
+				if err != nil {
+					return err
+				}
+				m.ShareSize = size
+			}
 		}
 	}
 	return nil
