@@ -321,7 +321,7 @@ type MyInfo struct {
 	Conn      string
 	Flag      byte
 	Email     string
-	ShareSize int
+	ShareSize uint64
 }
 
 func (*MyInfo) Cmd() string {
@@ -362,7 +362,7 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.WriteString("$")
 	buf.WriteString(m.Email)
 	buf.WriteString("$")
-	buf.WriteString(strconv.Itoa(m.ShareSize))
+	buf.WriteString(strconv.FormatUint(m.ShareSize, 10))
 	buf.WriteString("$")
 	return buf.Bytes(), nil
 }
@@ -468,12 +468,12 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			m.Conn = string(field[:len(field)-1])
 			m.Flag = field[len(field)-1]
 		case 1:
-			m.Email = string(field[:])
+			m.Email = string(field)
 		case 2:
-			if string(field[:]) == "" {
+			if string(field) == "" {
 				m.ShareSize = 0
 			} else {
-				size, err := strconv.Atoi(string(field[:]))
+				size, err := strconv.ParseUint(string(field), 10, 64)
 				if err != nil {
 					return err
 				}
