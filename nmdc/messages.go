@@ -402,7 +402,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 	}
 	data = data[i+1:]
 
-	fields := bytes.Split(data, []byte("$ $"))
+	fields := bytes.SplitN(data, []byte("$ $"), 2)
 	if len(fields) != 2 {
 		return errors.New("invalid info command")
 	}
@@ -474,8 +474,12 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		m.Other = other
 	}
 	m.Desc = string(desc)
-	fields = bytes.Split(data, []byte("$"))
-	if len(fields) != 4 {
+	l := len(data)
+	if !bytes.Equal(data[l-1:], []byte("$")) {
+		return errors.New("invalid info connection")
+	}
+	fields = bytes.SplitN(data[:l-1], []byte("$"), 3)
+	if len(fields) != 3 {
 		return errors.New("invalid info connection")
 	}
 	for i, field := range fields {
