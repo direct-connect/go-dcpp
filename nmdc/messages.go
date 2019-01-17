@@ -475,7 +475,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 	}
 	m.Desc = string(desc)
 	l := len(data)
-	if !bytes.Equal(data[l-1:], []byte("$")) {
+	if l == 0 || data[l-1] != '$' {
 		return errors.New("invalid info connection")
 	}
 	fields = bytes.SplitN(data[:l-1], []byte("$"), 3)
