@@ -402,12 +402,12 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 	}
 	data = data[i+1:]
 
-	i = bytes.Index(data, []byte("$ "))
-	if i < 0 {
+	fields := bytes.Split(data, []byte("$ $"))
+	if len(fields) != 2 {
 		return errors.New("invalid info command")
 	}
-	desc := data[:i]
-	data = data[i+3 : len(data)-1]
+	desc := fields[0]
+	data = fields[1]
 	if i := bytes.Index(desc, []byte("<")); i >= 0 {
 		tag := desc[i+1:]
 		desc = desc[:i]
@@ -420,7 +420,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		}
 		m.Client = string(tag[:i])
 		tag = tag[i+1 : len(tag)-1]
-		fields := bytes.Split(tag, []byte(","))
+		fields = bytes.Split(tag, []byte(","))
 		other := make(map[string]string)
 		for _, field := range fields {
 			i = bytes.Index(field, []byte(":"))
@@ -474,8 +474,8 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		m.Other = other
 	}
 	m.Desc = string(desc)
-	fields := bytes.Split(data, []byte("$"))
-	if len(fields) != 3 {
+	fields = bytes.Split(data, []byte("$"))
+	if len(fields) != 4 {
 		return errors.New("invalid info connection")
 	}
 	for i, field := range fields {
