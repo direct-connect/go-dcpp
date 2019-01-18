@@ -38,6 +38,15 @@ var casesUnmarshal = []struct {
 			Secure:  true,
 		},
 	},
+	{
+		name: "To:",
+		data: `john From: peter $<peter> dogs are more cute`,
+		msg: &PrivateMessage{
+			To:   "john",
+			From: "peter",
+			Text: "dogs are more cute",
+		},
+	},
 }
 
 func TestUnmarshal(t *testing.T) {
