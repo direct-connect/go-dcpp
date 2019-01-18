@@ -30,6 +30,7 @@ func init() {
 	RegisterMessage(&BotList{})
 	RegisterMessage(&ConnectToMe{})
 	RegisterMessage(&RevConnectToMe{})
+	RegisterMessage(&PrivateMessage{})
 }
 
 type Message interface {
@@ -646,5 +647,72 @@ func (m *RevConnectToMe) UnmarshalNMDC(data []byte) error {
 	if err := m.To.UnmarshalNMDC(data[i+1:]); err != nil {
 		return err
 	}
+	return nil
+}
+
+type PrivateMessage struct {
+	To, From Name
+	Text     string
+}
+
+func (m *PrivateMessage) Cmd() string {
+	return "PrivateMessage"
+}
+
+func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
+	data, err := m.To.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf := bytes.NewBuffer(nil)
+	buf.WriteString("$To: ")
+	buf.Write(data)
+	data, err = m.From.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.WriteString(" From: ")
+	buf.Write(data)
+	buf.WriteString(" $<")
+	buf.Write(data)
+	buf.WriteString("> " + m.Text)
+	return buf.Bytes(), nil
+}
+
+func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
+	if !bytes.HasPrefix(data, []byte("$To: ")) {
+		return errors.New("invalid PrivateMessage")
+	}
+	data = bytes.TrimPrefix(data, []byte("$To: "))
+	i := bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid PrivateMessage")
+	}
+	if err := m.To.UnmarshalNMDC(data[:i]); err != nil {
+		return err
+	}
+	data = data[i+1:]
+	if !bytes.HasPrefix(data, []byte("From: ")) {
+		return errors.New("invalid PrivateMessage")
+	}
+	data = bytes.TrimPrefix(data, []byte("From: "))
+	i = bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid PrivateMessage")
+	}
+	from := data[:i]
+	data = data[i+1:]
+	if !bytes.HasPrefix(data, []byte("$<")) {
+		return errors.New("invalid PrivateMessage")
+	}
+	data = bytes.TrimPrefix(data, []byte("$<"))
+	i = bytes.Index(data, []byte("> "))
+	if !bytes.Equal(from, data[:i]) {
+		return errors.New("invalid PrivateMessage")
+	}
+	if err := m.From.UnmarshalNMDC(from); err != nil {
+		return err
+	}
+	m.Text = string(data[i+2:])
 	return nil
 }
