@@ -267,6 +267,15 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				continue
 			}
 			go h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
+		case *nmdc.PrivateMessage:
+			if string(msg.From) != peer.Name() {
+				return errors.New("invalid name in PrivateMessage")
+			}
+			targ := h.byName(string(msg.To))
+			if targ == nil {
+				continue
+			}
+			go h.privateChat(peer, targ, msg.Text)
 		default:
 			// TODO
 			data, _ := msg.MarshalNMDC()
@@ -401,8 +410,11 @@ func (p *nmdcPeer) ChatMsg(from Peer, text string) error {
 }
 
 func (p *nmdcPeer) PrivateMsg(from Peer, text string) error {
-	// TODO
-	return nil
+	return p.writeOne(&nmdc.PrivateMessage{
+		To:   nmdc.Name(p.Name()),
+		From: nmdc.Name(from.Name()),
+		Text: text,
+	})
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
