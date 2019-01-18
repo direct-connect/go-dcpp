@@ -656,7 +656,7 @@ type PrivateMessage struct {
 }
 
 func (m *PrivateMessage) Cmd() string {
-	return "PrivateMessage"
+	return "To"
 }
 
 func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
