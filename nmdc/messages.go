@@ -660,30 +660,26 @@ func (m *PrivateMessage) Cmd() string {
 }
 
 func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
-	data, err := m.To.MarshalNMDC()
+	to, err := m.To.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	buf := bytes.NewBuffer(nil)
-	buf.WriteString("$To: ")
-	buf.Write(data)
-	data, err = m.From.MarshalNMDC()
+	buf.Write(to)
+	from, err := m.From.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	buf.WriteString(" From: ")
-	buf.Write(data)
+	buf.Write(from)
 	buf.WriteString(" $<")
-	buf.Write(data)
-	buf.WriteString("> " + m.Text)
+	buf.Write(from)
+	buf.WriteString("> ")
+	buf.WriteString(m.Text)
 	return buf.Bytes(), nil
 }
 
 func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
-	if !bytes.HasPrefix(data, []byte("$To: ")) {
-		return errors.New("invalid PrivateMessage")
-	}
-	data = bytes.TrimPrefix(data, []byte("$To: "))
 	i := bytes.Index(data, []byte(" "))
 	if i < 0 {
 		return errors.New("invalid PrivateMessage")

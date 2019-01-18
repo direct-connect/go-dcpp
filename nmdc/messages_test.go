@@ -40,7 +40,7 @@ var casesUnmarshal = []struct {
 	},
 	{
 		name: "PrivateMessage",
-		data: `$To: john From: peter $<peter> dogs are more cute`,
+		data: `john From: peter $<peter> dogs are more cute`,
 		msg: &PrivateMessage{
 			To:   "john",
 			From: "peter",
