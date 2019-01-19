@@ -31,6 +31,8 @@ func init() {
 	RegisterMessage(&ConnectToMe{})
 	RegisterMessage(&RevConnectToMe{})
 	RegisterMessage(&PrivateMessage{})
+	RegisterMessage(&Failed{})
+	RegisterMessage(&Error{})
 }
 
 type Message interface {
@@ -727,5 +729,45 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 	if err := m.Text.UnmarshalNMDC(text); err != nil {
 		return err
 	}
+	return nil
+}
+
+type Failed struct {
+	Text string
+}
+
+func (f *Failed) Cmd() string {
+	return "Failed"
+}
+
+func (f *Failed) MarshalNMDC() ([]byte, error) {
+	if f.Text == "" {
+		return nil, nil
+	}
+	return []byte(f.Text), nil
+}
+
+func (f *Failed) UnmarshalNMDC(data []byte) error {
+	f.Text = string(data)
+	return nil
+}
+
+type Error struct {
+	Text string
+}
+
+func (e *Error) Cmd() string {
+	return "Error"
+}
+
+func (e *Error) MarshalNMDC() ([]byte, error) {
+	if e.Text == "" {
+		return nil, nil
+	}
+	return []byte(e.Text), nil
+}
+
+func (e *Error) UnmarshalNMDC(data []byte) error {
+	e.Text = string(data)
 	return nil
 }
