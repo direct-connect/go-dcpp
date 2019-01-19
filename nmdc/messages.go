@@ -733,7 +733,7 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 }
 
 type Failed struct {
-	Text string
+	Text String
 }
 
 func (f *Failed) Cmd() string {
@@ -744,16 +744,22 @@ func (f *Failed) MarshalNMDC() ([]byte, error) {
 	if f.Text == "" {
 		return nil, nil
 	}
-	return []byte(f.Text), nil
+	text, err := f.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(text), nil
 }
 
-func (f *Failed) UnmarshalNMDC(data []byte) error {
-	f.Text = string(data)
+func (f *Failed) UnmarshalNMDC(text []byte) error {
+	if err := f.Text.UnmarshalNMDC(text); err != nil {
+		return err
+	}
 	return nil
 }
 
 type Error struct {
-	Text string
+	Text String
 }
 
 func (e *Error) Cmd() string {
@@ -764,10 +770,16 @@ func (e *Error) MarshalNMDC() ([]byte, error) {
 	if e.Text == "" {
 		return nil, nil
 	}
-	return []byte(e.Text), nil
+	text, err := e.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(text), nil
 }
 
-func (e *Error) UnmarshalNMDC(data []byte) error {
-	e.Text = string(data)
+func (e *Error) UnmarshalNMDC(text []byte) error {
+	if err := e.Text.UnmarshalNMDC(text); err != nil {
+		return err
+	}
 	return nil
 }

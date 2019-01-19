@@ -276,6 +276,10 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				continue
 			}
 			go h.privateChat(peer, targ, string(msg.Text))
+		case *nmdc.Failed:
+			// TODO
+		case *nmdc.Error:
+			// TODO
 		default:
 			// TODO
 			data, _ := msg.MarshalNMDC()
@@ -436,4 +440,12 @@ func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 		From: nmdc.Name(peer.Name()),
 		To:   nmdc.Name(p.Name()),
 	})
+}
+
+func (p *nmdcPeer) failed(text string) error {
+	return p.writeOne(&nmdc.Failed{Text: nmdc.String(text)})
+}
+
+func (p *nmdcPeer) error(text string) error {
+	return p.writeOne(&nmdc.Error{Text: nmdc.String(text)})
 }
