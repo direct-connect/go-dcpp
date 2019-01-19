@@ -65,7 +65,7 @@ func UnmarshalMessage(name string, data []byte) (Message, error) {
 
 type ChatMessage struct {
 	Name Name
-	Text string
+	Text String
 }
 
 func (m *ChatMessage) Cmd() string {
@@ -83,8 +83,12 @@ func (m *ChatMessage) MarshalNMDC() ([]byte, error) {
 		buf.Write(name)
 		buf.WriteString("> ")
 	}
+	text, err := m.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
 	// TODO: convert to connection encoding
-	buf.WriteString(m.Text)
+	buf.Write(text)
 	buf.WriteByte('|')
 	return buf.Bytes(), nil
 }
@@ -331,7 +335,7 @@ const (
 
 type MyInfo struct {
 	Name      Name
-	Desc      string
+	Desc      String
 	Client    string
 	Version   string
 	Mode      UserMode
@@ -359,7 +363,11 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.Write(name)
 
 	buf.WriteString(" ")
-	buf.WriteString(m.Desc)
+	desc, err := m.Desc.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(desc)
 	buf.WriteString("<")
 	buf.WriteString(m.Client)
 	buf.WriteString(" ")
@@ -474,7 +482,9 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		}
 		m.Other = other
 	}
-	m.Desc = string(desc)
+	if err := m.Desc.UnmarshalNMDC(desc); err != nil {
+		return err
+	}
 	l := len(data)
 	if l == 0 || data[l-1] != '$' {
 		return errors.New("invalid info connection")
@@ -652,7 +662,7 @@ func (m *RevConnectToMe) UnmarshalNMDC(data []byte) error {
 
 type PrivateMessage struct {
 	To, From Name
-	Text     string
+	Text     String
 }
 
 func (m *PrivateMessage) Cmd() string {
@@ -675,7 +685,11 @@ func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
 	buf.WriteString(" $<")
 	buf.Write(from)
 	buf.WriteString("> ")
-	buf.WriteString(m.Text)
+	text, err := m.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.Write(text)
 	return buf.Bytes(), nil
 }
 
@@ -709,6 +723,9 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 	if err := m.From.UnmarshalNMDC(from); err != nil {
 		return err
 	}
-	m.Text = string(data[i+2:])
+	text := data[i+2:]
+	if err := m.Text.UnmarshalNMDC(text); err != nil {
+		return err
+	}
 	return nil
 }

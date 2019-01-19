@@ -5,10 +5,28 @@ import "sort"
 type Name string
 
 func (s Name) MarshalNMDC() ([]byte, error) {
-	return []byte(s), nil // FIXME
+	// TODO: encoding
+	str := Escape(string(s))
+	return []byte(str), nil
 }
 func (s *Name) UnmarshalNMDC(data []byte) error {
-	*s = Name(data) // FIXME
+	// TODO: encoding
+	str := Unescape(string(data))
+	*s = Name(str)
+	return nil
+}
+
+type String string
+
+func (s String) MarshalNMDC() ([]byte, error) {
+	// TODO: encoding
+	str := Escape(string(s))
+	return []byte(str), nil
+}
+func (s *String) UnmarshalNMDC(data []byte) error {
+	// TODO: encoding
+	str := Unescape(string(data))
+	*s = String(str)
 	return nil
 }
 

@@ -265,8 +265,10 @@ func (c *Conn) readChatMsg() (Message, error) {
 		return nil, fmt.Errorf("cannot read chat message: %v", err)
 	}
 	msg = msg[:len(msg)-1] // trim '|'
-	// TODO: unescape, convert to UTF8
-	m.Text = string(msg)
+	// TODO: convert to UTF8
+	if err = m.Text.UnmarshalNMDC(msg); err != nil {
+		return nil, err
+	}
 	if Debug {
 		data, _ := m.MarshalNMDC()
 		log.Println("<-", string(data))

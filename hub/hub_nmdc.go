@@ -250,7 +250,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if string(msg.Name) != peer.Name() {
 				return errors.New("invalid name in the chat message")
 			}
-			go h.broadcastChat(peer, msg.Text, nil)
+			go h.broadcastChat(peer, string(msg.Text), nil)
 		case *nmdc.ConnectToMe:
 			targ := h.byName(string(msg.Targ))
 			if targ == nil {
@@ -275,7 +275,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if targ == nil {
 				continue
 			}
-			go h.privateChat(peer, targ, msg.Text)
+			go h.privateChat(peer, targ, string(msg.Text))
 		default:
 			// TODO
 			data, _ := msg.MarshalNMDC()
@@ -405,7 +405,7 @@ func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 func (p *nmdcPeer) ChatMsg(from Peer, text string) error {
 	return p.writeOne(&nmdc.ChatMessage{
 		Name: nmdc.Name(from.Name()),
-		Text: text,
+		Text: nmdc.String(text),
 	})
 }
 
@@ -413,12 +413,12 @@ func (p *nmdcPeer) PrivateMsg(from Peer, text string) error {
 	return p.writeOne(&nmdc.PrivateMessage{
 		To:   nmdc.Name(p.Name()),
 		From: nmdc.Name(from.Name()),
-		Text: text,
+		Text: nmdc.String(text),
 	})
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
-	return p.writeOne(&nmdc.ChatMessage{Text: text})
+	return p.writeOne(&nmdc.ChatMessage{Text: nmdc.String(text)})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
