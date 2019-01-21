@@ -105,7 +105,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.RUnlock()
 
 	if sameName1 || sameName2 {
-		peer.writeOne(&nmdc.ValidateDenide{nick.Name})
+		_ = peer.writeOne(&nmdc.ValidateDenide{nick.Name})
 		return nil, errNickTaken
 	}
 
@@ -116,7 +116,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 
-		peer.writeOne(&nmdc.ValidateDenide{nick.Name})
+		_ = peer.writeOne(&nmdc.ValidateDenide{nick.Name})
 		return nil, errNickTaken
 	}
 	// bind nick, still no one will see us yet
@@ -276,10 +276,6 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				continue
 			}
 			go h.privateChat(peer, targ, string(msg.Text))
-		case *nmdc.Failed:
-			// TODO
-		case *nmdc.Error:
-			// TODO
 		default:
 			// TODO
 			data, _ := msg.MarshalNMDC()
