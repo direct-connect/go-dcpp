@@ -8,8 +8,13 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	SchemaNMDC = "dchub://"
 )
 
 const (
@@ -26,6 +31,8 @@ var Debug bool
 
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
+	addr = strings.TrimPrefix(addr, SchemaNMDC)
+
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, err

@@ -27,12 +27,12 @@ type Route interface {
 func Dial(addr string) (*Conn, error) {
 	secure := false
 	if i := strings.Index(addr, "://"); i >= 0 {
-		proto := addr[:i]
+		proto := addr[:i+3]
 		addr = addr[i+3:]
 		switch proto {
-		case "adc":
+		case SchemaADC:
 			// continue
-		case "adcs":
+		case SchemaADCS:
 			secure = true
 		default:
 			return nil, fmt.Errorf("unsupported protocol: %q", proto)
