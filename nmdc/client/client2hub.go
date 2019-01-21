@@ -58,6 +58,7 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 		conn.Close()
 		return nil, err
 	}
+	conn.KeepAlive(time.Minute / 2)
 	go c.readLoop()
 	return c, nil
 }

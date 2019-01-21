@@ -27,8 +27,6 @@ const (
 
 var Debug bool
 
-// TODO: support keep alive with "|"
-
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
 	addr = strings.TrimPrefix(addr, SchemaNMDC)
@@ -91,18 +89,30 @@ func (c *Conn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Conn) WriteMsg(m Message) error {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
-	c.write.Lock()
-	defer c.write.Unlock()
-
-	if err := c.write.err; err != nil {
-		return err
+// KeepAlive starts sending keep-alive messages on the connection.
+func (c *Conn) KeepAlive(interval time.Duration) {
+	if c.closed != nil {
+		// already enabled
+		return
 	}
+	c.closed = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-c.closed:
+				return
+			case <-ticker.C:
+			}
+			// empty message serves as keep-alive for NMDC
+			_ = c.writeRaw([]byte("|"))
+			_ = c.Flush()
+		}
+	}()
+}
 
+func (c *Conn) WriteMsg(m Message) error {
 	var (
 		data []byte
 		err  error
@@ -133,10 +143,28 @@ func (c *Conn) WriteMsg(m Message) error {
 		}
 	}
 	if err == nil {
-		if Debug {
-			log.Println("->", string(data))
-		}
-		_, err = c.write.w.Write(data)
+		err = c.writeRaw(data)
+	}
+	return err
+}
+
+func (c *Conn) writeRaw(s []byte) error {
+	// make sure connection is not in binary mode
+	c.bin.RLock()
+	defer c.bin.RUnlock()
+
+	c.write.Lock()
+	defer c.write.Unlock()
+
+	if err := c.write.err; err != nil {
+		return err
+	}
+	if Debug {
+		log.Println("->", string(s))
+	}
+	_, err := c.write.w.Write(s)
+	if err != nil {
+		c.write.err = err
 	}
 	return err
 }

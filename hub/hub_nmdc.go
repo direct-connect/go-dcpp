@@ -237,6 +237,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 }
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
+	peer.conn.KeepAlive(time.Minute / 2)
 	for {
 		msg, err := peer.conn.ReadMsg(time.Time{})
 		if err == io.EOF {
