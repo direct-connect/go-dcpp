@@ -105,7 +105,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.RUnlock()
 
 	if sameName1 || sameName2 {
-		// TODO: write error
+		_ = peer.writeOne(&nmdc.ValidateDenide{nick.Name})
 		return nil, errNickTaken
 	}
 
@@ -116,7 +116,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 
-		// TODO: write error
+		_ = peer.writeOne(&nmdc.ValidateDenide{nick.Name})
 		return nil, errNickTaken
 	}
 	// bind nick, still no one will see us yet
@@ -436,4 +436,12 @@ func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 		From: nmdc.Name(peer.Name()),
 		To:   nmdc.Name(p.Name()),
 	})
+}
+
+func (p *nmdcPeer) failed(text string) error {
+	return p.writeOne(&nmdc.Failed{Text: nmdc.String(text)})
+}
+
+func (p *nmdcPeer) error(text string) error {
+	return p.writeOne(&nmdc.Error{Text: nmdc.String(text)})
 }

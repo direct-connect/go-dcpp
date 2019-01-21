@@ -47,6 +47,13 @@ var casesUnmarshal = []struct {
 			Text: "dogs are more cute",
 		},
 	},
+	{
+		name: "Error",
+		data: `message`,
+		msg: &Error{
+			Text: "message",
+		},
+	},
 }
 
 func TestUnmarshal(t *testing.T) {

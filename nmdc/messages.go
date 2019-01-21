@@ -20,6 +20,7 @@ func init() {
 	RegisterMessage(&HubTopic{})
 	RegisterMessage(&MyNick{})
 	RegisterMessage(&ValidateNick{})
+	RegisterMessage(&ValidateDenide{})
 	RegisterMessage(&Quit{})
 	RegisterMessage(&Lock{})
 	RegisterMessage(&Key{})
@@ -31,6 +32,8 @@ func init() {
 	RegisterMessage(&ConnectToMe{})
 	RegisterMessage(&RevConnectToMe{})
 	RegisterMessage(&PrivateMessage{})
+	RegisterMessage(&Failed{})
+	RegisterMessage(&Error{})
 }
 
 type Message interface {
@@ -116,19 +119,51 @@ func (m *RawCommand) UnmarshalNMDC(data []byte) error {
 }
 
 type Hello struct {
-	Name Name
+	Name
 }
 
 func (*Hello) Cmd() string {
 	return "Hello"
 }
 
-func (m *Hello) MarshalNMDC() ([]byte, error) {
-	return m.Name.MarshalNMDC()
+type HubName struct {
+	Name
 }
 
-func (m *Hello) UnmarshalNMDC(data []byte) error {
-	return m.Name.UnmarshalNMDC(data)
+func (*HubName) Cmd() string {
+	return "HubName"
+}
+
+type MyNick struct {
+	Name
+}
+
+func (*MyNick) Cmd() string {
+	return "MyNick"
+}
+
+type ValidateNick struct {
+	Name
+}
+
+func (*ValidateNick) Cmd() string {
+	return "ValidateNick"
+}
+
+type ValidateDenide struct {
+	Name
+}
+
+func (*ValidateDenide) Cmd() string {
+	return "ValidateDenide"
+}
+
+type Quit struct {
+	Name
+}
+
+func (*Quit) Cmd() string {
+	return "Quit"
 }
 
 type Version struct {
@@ -148,22 +183,6 @@ func (m *Version) UnmarshalNMDC(data []byte) error {
 	return nil
 }
 
-type HubName struct {
-	Name Name
-}
-
-func (*HubName) Cmd() string {
-	return "HubName"
-}
-
-func (m *HubName) MarshalNMDC() ([]byte, error) {
-	return m.Name.MarshalNMDC()
-}
-
-func (m *HubName) UnmarshalNMDC(data []byte) error {
-	return m.Name.UnmarshalNMDC(data)
-}
-
 type HubTopic struct {
 	Text string
 }
@@ -179,54 +198,6 @@ func (m *HubTopic) MarshalNMDC() ([]byte, error) {
 func (m *HubTopic) UnmarshalNMDC(data []byte) error {
 	m.Text = string(data) // TODO: encoding
 	return nil
-}
-
-type MyNick struct {
-	Name Name
-}
-
-func (*MyNick) Cmd() string {
-	return "MyNick"
-}
-
-func (m *MyNick) MarshalNMDC() ([]byte, error) {
-	return m.Name.MarshalNMDC()
-}
-
-func (m *MyNick) UnmarshalNMDC(data []byte) error {
-	return m.Name.UnmarshalNMDC(data)
-}
-
-type ValidateNick struct {
-	Name Name
-}
-
-func (*ValidateNick) Cmd() string {
-	return "ValidateNick"
-}
-
-func (m *ValidateNick) MarshalNMDC() ([]byte, error) {
-	return m.Name.MarshalNMDC()
-}
-
-func (m *ValidateNick) UnmarshalNMDC(data []byte) error {
-	return m.Name.UnmarshalNMDC(data)
-}
-
-type Quit struct {
-	Name Name
-}
-
-func (*Quit) Cmd() string {
-	return "Quit"
-}
-
-func (m *Quit) MarshalNMDC() ([]byte, error) {
-	return m.Name.MarshalNMDC()
-}
-
-func (m *Quit) UnmarshalNMDC(data []byte) error {
-	return m.Name.UnmarshalNMDC(data)
 }
 
 type Lock struct {
@@ -725,6 +696,58 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 	}
 	text := data[i+2:]
 	if err := m.Text.UnmarshalNMDC(text); err != nil {
+		return err
+	}
+	return nil
+}
+
+type Failed struct {
+	Text String
+}
+
+func (f *Failed) Cmd() string {
+	return "Failed"
+}
+
+func (f *Failed) MarshalNMDC() ([]byte, error) {
+	if f.Text == "" {
+		return nil, nil
+	}
+	text, err := f.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(text), nil
+}
+
+func (f *Failed) UnmarshalNMDC(text []byte) error {
+	if err := f.Text.UnmarshalNMDC(text); err != nil {
+		return err
+	}
+	return nil
+}
+
+type Error struct {
+	Text String
+}
+
+func (e *Error) Cmd() string {
+	return "Error"
+}
+
+func (e *Error) MarshalNMDC() ([]byte, error) {
+	if e.Text == "" {
+		return nil, nil
+	}
+	text, err := e.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(text), nil
+}
+
+func (e *Error) UnmarshalNMDC(text []byte) error {
+	if err := e.Text.UnmarshalNMDC(text); err != nil {
 		return err
 	}
 	return nil
