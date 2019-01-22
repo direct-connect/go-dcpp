@@ -54,16 +54,34 @@ func RegisterMessage(m Message) {
 	messages[name] = rt
 }
 
-func UnmarshalMessage(name string, data []byte) (Message, error) {
-	rt, ok := messages[name]
+type RawCommand struct {
+	Name string
+	Data []byte
+}
+
+func (m *RawCommand) Cmd() string {
+	return m.Name
+}
+
+func (m *RawCommand) MarshalNMDC() ([]byte, error) {
+	return m.Data, nil
+}
+
+func (m *RawCommand) UnmarshalNMDC(data []byte) error {
+	m.Data = data
+	return nil
+}
+
+func (m *RawCommand) Decode() (Message, error) {
+	rt, ok := messages[m.Name]
 	if !ok {
-		return &RawCommand{Name: name, Data: data}, nil
+		return m, nil
 	}
-	m := reflect.New(rt).Interface().(Message)
-	if err := m.UnmarshalNMDC(data); err != nil {
+	msg := reflect.New(rt).Interface().(Message)
+	if err := msg.UnmarshalNMDC(m.Data); err != nil {
 		return nil, err
 	}
-	return m, nil
+	return msg, nil
 }
 
 type ChatMessage struct {
@@ -98,24 +116,6 @@ func (m *ChatMessage) MarshalNMDC() ([]byte, error) {
 
 func (m *ChatMessage) UnmarshalNMDC(data []byte) error {
 	panic("special case")
-}
-
-type RawCommand struct {
-	Name string
-	Data []byte
-}
-
-func (m *RawCommand) Cmd() string {
-	return m.Name
-}
-
-func (m *RawCommand) MarshalNMDC() ([]byte, error) {
-	return m.Data, nil
-}
-
-func (m *RawCommand) UnmarshalNMDC(data []byte) error {
-	m.Data = data
-	return nil
 }
 
 type Hello struct {
@@ -192,11 +192,15 @@ func (*HubTopic) Cmd() string {
 }
 
 func (m *HubTopic) MarshalNMDC() ([]byte, error) {
-	return []byte(m.Text), nil // TODO: encoding
+	return String(m.Text).MarshalNMDC()
 }
 
 func (m *HubTopic) UnmarshalNMDC(data []byte) error {
-	m.Text = string(data) // TODO: encoding
+	var s String
+	if err := s.UnmarshalNMDC(data); err != nil {
+		return err
+	}
+	m.Text = string(s)
 	return nil
 }
 

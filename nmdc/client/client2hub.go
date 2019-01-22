@@ -64,19 +64,6 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 
 func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 	deadline := time.Now().Add(time.Second * 5)
-	// TODO: optimize for Lock
-	msg, err := conn.ReadMsg(deadline)
-	if err != nil {
-		return nil, fmt.Errorf("expected lock: %v", err)
-	}
-	lock, ok := msg.(*nmdc.Lock)
-	if !ok {
-		return nil, fmt.Errorf("expected lock from the server, got: %#v", msg)
-	}
-	if !strings.HasPrefix(lock.Lock, "EXTENDEDPROTOCOL") {
-		// TODO: support legacy protocol, if we care
-		return nil, errors.New("extensions are not supported by hub")
-	}
 
 	ext := []string{
 		nmdc.FeaNoHello,
@@ -84,19 +71,7 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 	}
 	ext = append(ext, conf.Ext...)
 
-	err = conn.WriteMsg(&nmdc.Supports{Ext: ext})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteMsg(&nmdc.Key{Key: nmdc.Unlock(lock.Lock)})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteMsg(&nmdc.ValidateNick{Name: nmdc.Name(conf.Name)})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.Flush()
+	_, err := conn.SendClientHandshake(deadline, conf.Name, ext...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +85,7 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 
 handshake:
 	for {
-		msg, err = conn.ReadMsg(deadline)
+		msg, err := conn.ReadMsg(deadline)
 		if err != nil {
 			return nil, err
 		}
@@ -137,15 +112,7 @@ handshake:
 		}
 	}
 
-	err = conn.WriteMsg(&nmdc.Version{Vers: "1,0091"})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteMsg(&nmdc.GetNickList{})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteMsg(&nmdc.MyInfo{
+	err = conn.SendClientInfo(deadline, &nmdc.MyInfo{
 		Name:    nmdc.Name(conf.Name),
 		Client:  version.Name,
 		Version: version.Vers,
@@ -158,10 +125,6 @@ handshake:
 		Conn:      "LAN(T3)",
 		ShareSize: 13 * 1023 * 1023 * 1023,
 	})
-	if err != nil {
-		return nil, err
-	}
-	err = conn.Flush()
 	if err != nil {
 		return nil, err
 	}

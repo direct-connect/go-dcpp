@@ -31,12 +31,11 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 }
 
 func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
-	// TODO: randomize
-	const lock = "EXTENDEDPROTOCOL_godcpp"
-	err := c.WriteMsg(&nmdc.Lock{
-		Lock: lock,
-		PK:   "go-dcpp_nmdc_hub",
-	})
+	lock := &nmdc.Lock{
+		Lock: "EXTENDEDPROTOCOL_godcpp", // TODO: randomize
+		PK:   h.info.Soft.Name + " " + h.info.Soft.Vers,
+	}
+	err := c.WriteMsg(lock)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +60,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	key, ok := msg.(*nmdc.Key)
 	if !ok {
 		return nil, fmt.Errorf("expected key from the client, got: %#v", msg)
-	} else if key.Key != nmdc.Unlock(lock) {
+	} else if key.Key != lock.Key().Key {
 		return nil, errors.New("wrong key")
 	}
 	our := nmdc.Features{
@@ -72,7 +71,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	if _, ok := mutual[nmdc.FeaNoHello]; !ok {
 		return nil, errors.New("NoHello is not supported")
 	} else if _, ok := mutual[nmdc.FeaNoGetINFO]; !ok {
-		return nil, errors.New("FeaNoGetINFO is not supported")
+		return nil, errors.New("NoGetINFO is not supported")
 	}
 	msg, err = c.ReadMsg(deadline)
 	if err != nil {

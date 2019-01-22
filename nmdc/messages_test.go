@@ -59,7 +59,7 @@ var casesUnmarshal = []struct {
 func TestUnmarshal(t *testing.T) {
 	for _, c := range casesUnmarshal {
 		t.Run(c.name, func(t *testing.T) {
-			m, err := UnmarshalMessage(c.name, []byte(c.data))
+			m, err := (&RawCommand{Name: c.name, Data: []byte(c.data)}).Decode()
 			if err != nil {
 				t.Fatal(err)
 			} else if !reflect.DeepEqual(m, c.msg) {

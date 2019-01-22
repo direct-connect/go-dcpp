@@ -11,8 +11,8 @@ var keyReplace = map[byte]string{
 	126: "/%DCN126%/",
 }
 
-func Unlock(str string) string {
-	lock := []byte(str)
+func (m *Lock) Key() *Key {
+	lock := []byte(m.Lock)
 
 	n := len(lock)
 	key := make([]byte, n)
@@ -33,5 +33,5 @@ func Unlock(str string) string {
 			buf.WriteByte(v)
 		}
 	}
-	return buf.String()
+	return &Key{Key: buf.String()}
 }

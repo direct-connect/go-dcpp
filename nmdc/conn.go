@@ -177,7 +177,7 @@ func (c *Conn) discard(n int) {
 	}
 }
 
-func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
+func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 	// make sure connection is not in binary mode
 	c.bin.RLock()
 	defer c.bin.RUnlock()
@@ -186,7 +186,7 @@ func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
 	defer c.read.Unlock()
 
 	if err := c.read.err; err != nil {
-		return nil, err
+		return err
 	}
 
 	if !deadline.IsZero() {
@@ -197,16 +197,57 @@ func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
 	for {
 		b, err := c.peek()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(b) == 1 && b[0] == '|' {
 			continue // keep alive
 		}
-		if b[0] == '$' {
-			return c.readCommand()
+		msg := *ptr
+		if b[0] != '$' {
+			// not a command - chat message
+			m, ok := msg.(*ChatMessage)
+			if !ok {
+				if msg != nil {
+					return errors.New("expected chat message, got command")
+				}
+				m = &ChatMessage{}
+				*ptr = m
+			}
+			return c.readChatMsg(m)
 		}
-		return c.readChatMsg()
+		// command
+		raw, err := c.readRawCommand()
+		if err != nil {
+			return err
+		}
+		if msg == nil {
+			m, err := raw.Decode()
+			if err != nil {
+				return err
+			}
+			*ptr = m
+			return nil
+		}
+		if msg.Cmd() != raw.Name {
+			return fmt.Errorf("expected %q, got %q", msg.Cmd(), raw.Name)
+		}
+		return msg.UnmarshalNMDC(raw.Data)
 	}
+}
+
+func (c *Conn) ReadMsgTo(deadline time.Time, m Message) error {
+	if m == nil {
+		panic("nil message to decode")
+	}
+	return c.readMsgTo(deadline, &m)
+}
+
+func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
+	var m Message
+	if err := c.readMsgTo(deadline, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // readUntilAny reads a byte slice until one of the char delimiters, up to max bytes.
@@ -233,57 +274,57 @@ func (c *Conn) readUntilAny(chars string, max int) ([]byte, error) {
 	}
 }
 
-func (c *Conn) readChatMsg() (Message, error) {
+func (c *Conn) readChatMsg(m *ChatMessage) error {
+	*m = ChatMessage{}
 	// <Bob> hello|
 	// or
 	// Some info|
-	var m ChatMessage
 
 	b, err := c.peek()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if b[0] == '<' {
 		c.discard(1) // trim '<'
 		name, err := c.readUntilAny(">", maxUserName)
 		if err != nil {
-			return nil, fmt.Errorf("cannot read username in chat message: %v", err)
+			return fmt.Errorf("cannot read username in chat message: %v", err)
 		}
 		name = name[:len(name)-1] // trim '>'
 		if len(name) == 0 {
-			return nil, errors.New("empty name in chat message")
+			return errors.New("empty name in chat message")
 		}
 		if err = m.Name.UnmarshalNMDC(name); err != nil {
-			return nil, err
+			return err
 		}
 
 		b, err = c.peek()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(b) < 1 || b[0] != ' ' {
-			return nil, errors.New("cannot parse chat message")
+			return errors.New("cannot parse chat message")
 		}
 		c.discard(1) // discard ' '
 	}
 
 	msg, err := c.readUntilAny("|", maxChatMsg)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read chat message: %v", err)
+		return fmt.Errorf("cannot read chat message: %v", err)
 	}
 	msg = msg[:len(msg)-1] // trim '|'
 	// TODO: convert to UTF8
 	if err = m.Text.UnmarshalNMDC(msg); err != nil {
-		return nil, err
+		return err
 	}
 	if Debug {
 		data, _ := m.MarshalNMDC()
 		log.Println("<-", string(data))
 	}
-	return &m, nil
+	return nil
 }
 
-func (c *Conn) readCommand() (Message, error) {
+func (c *Conn) readRawCommand() (*RawCommand, error) {
 	// $Name xxx yyy|
 	c.discard(1) // trim '$'
 
@@ -298,7 +339,15 @@ func (c *Conn) readCommand() (Message, error) {
 
 	i := bytes.Index(buf, []byte(" "))
 	if i < 0 {
-		return UnmarshalMessage(string(buf), nil)
+		return &RawCommand{Name: string(buf)}, nil
 	}
-	return UnmarshalMessage(string(buf[:i]), buf[i+1:])
+	return &RawCommand{Name: string(buf[:i]), Data: buf[i+1:]}, nil
+}
+
+func (c *Conn) readCommand() (Message, error) {
+	raw, err := c.readRawCommand()
+	if err != nil {
+		return nil, err
+	}
+	return raw.Decode()
 }
