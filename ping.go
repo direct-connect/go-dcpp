@@ -43,6 +43,7 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			info.Users = append(info.Users, HubUser{
 				Name:  string(u.Name),
 				Share: u.ShareSize,
+				Email: u.Email,
 				Client: &Software{
 					Name: u.Client,
 					Vers: u.Version,
@@ -69,6 +70,7 @@ type HubUser struct {
 	Name   string    `json:"name"`
 	Client *Software `json:"client"`
 	Share  uint64    `json:"share"`
+	Email  string    `json:"email"`
 }
 
 // Software version.
