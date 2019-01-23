@@ -207,6 +207,7 @@ func (m *HubTopic) UnmarshalNMDC(data []byte) error {
 type Lock struct {
 	Lock string
 	PK   string
+	// TODO: Ref
 }
 
 func (*Lock) Cmd() string {
@@ -262,6 +263,7 @@ func (m *Supports) MarshalNMDC() ([]byte, error) {
 }
 
 func (m *Supports) UnmarshalNMDC(data []byte) error {
+	data = bytes.TrimSuffix(data, []byte(" "))
 	m.Ext = strings.Split(string(data), " ")
 	return nil
 }
@@ -373,13 +375,13 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 	// $ALL johndoe <++ V:0.673,M:P,H:0/1/0,S:2>$ $LAN(T3)0x31$example@example.com$1234$
 	if !bytes.HasPrefix(data, []byte("$ALL ")) {
-		return errors.New("invalid info command")
+		return errors.New("invalid info command: wrong prefix")
 	}
 	data = bytes.TrimPrefix(data, []byte("$ALL "))
 
 	i := bytes.Index(data, []byte(" "))
 	if i < 0 {
-		return errors.New("invalid info command")
+		return errors.New("invalid info command: no separators")
 	}
 	if err := m.Name.UnmarshalNMDC(data[:i]); err != nil {
 		return err
@@ -409,7 +411,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		for _, field := range fields {
 			i = bytes.Index(field, []byte(":"))
 			if i < 0 {
-				return errors.New("unknown field in tag")
+				return fmt.Errorf("unknown field in tag: %q", field)
 			}
 			name := string(field[:i])
 			value := string(field[i+1:])
