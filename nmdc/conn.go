@@ -200,6 +200,7 @@ func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 			return err
 		}
 		if len(b) == 1 && b[0] == '|' {
+			c.discard(1)
 			continue // keep alive
 		}
 		msg := *ptr
