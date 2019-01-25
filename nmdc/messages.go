@@ -286,6 +286,7 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 type UserMode byte
 
 const (
+	UserModeUnknown = UserMode(0x00)
 	UserModeActive  = UserMode('A')
 	UserModePassive = UserMode('P')
 	UserModeSOCKS5  = UserMode('5')
@@ -350,7 +351,11 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.WriteString(" ")
 	var a []string
 	a = append(a, "V:"+m.Version)
-	a = append(a, "M:"+string(m.Mode))
+	if m.Mode != UserModeUnknown {
+		a = append(a, "M:"+string(m.Mode))
+	} else {
+		a = append(a, "M:")
+	}
 	var hubs []string
 	for _, inf := range m.Hubs {
 		hubs = append(hubs, strconv.Itoa(inf))
@@ -387,53 +392,82 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		return err
 	}
 	data = data[i+1:]
-
-	fields := bytes.SplitN(data, []byte("$ $"), 2)
-	if len(fields) != 2 {
+	l := len(data)
+	fields := bytes.SplitN(data[:l-1], []byte("$"), 6)
+	if len(fields) != 5 {
 		return errors.New("invalid info command")
 	}
-	desc := fields[0]
-	data = fields[1]
-	if i := bytes.Index(desc, []byte("<")); i >= 0 {
-		tag := desc[i+1:]
-		desc = desc[:i]
-		if len(tag) == 0 || tag[len(tag)-1] != '>' {
-			return errors.New("invalid info tag")
-		}
-		i = bytes.Index(tag, []byte(" "))
-		if i < 0 {
-			return errors.New("invalid client indicate")
-		}
-		m.Client = string(tag[:i])
-		tag = tag[i+1 : len(tag)-1]
-		fields = bytes.Split(tag, []byte(","))
-		other := make(map[string]string)
-		for _, field := range fields {
-			i = bytes.Index(field, []byte(":"))
+	for i, field := range fields {
+		switch i {
+		case 0:
+			var desc []byte
+			m.Mode = UserModeUnknown
+			i = bytes.Index(field, []byte("<"))
 			if i < 0 {
-				return fmt.Errorf("unknown field in tag: %q", field)
+				desc = field
+			} else {
+				desc = field[:i]
+				tag := field[i+1:]
+				if len(tag) == 0 || tag[len(tag)-1] != '>' {
+					return errors.New("invalid info tag")
+				}
+				if err := m.unmarshalTag(tag[:len(tag)-1]); err != nil {
+					return err
+				}
 			}
+			if err := m.Desc.UnmarshalNMDC(desc); err != nil {
+				return err
+			}
+		case 1:
+			if string(field) != " " {
+				return fmt.Errorf("unknown field before connection %v", string(field))
+			}
+		case 2:
+			if len(field) == 0 {
+				return errors.New("invalid info connection")
+			}
+			l := len(field)
+			m.Flag = UserFlag(field[l-1])
+			m.Conn = string(field[:l-1])
+		case 3:
+			m.Email = string(field)
+		case 4:
+			size, err := strconv.ParseUint(string(field), 10, 64)
+			if err != nil {
+				return err
+			}
+			m.ShareSize = size
+		}
+	}
+	return nil
+}
+
+func (m *MyInfo) unmarshalTag(tag []byte) error {
+	var client []byte
+	var tags [][]byte
+	i := bytes.Index(tag, []byte(" V:"))
+	if i < 0 {
+		tags = bytes.Split(tag, []byte(","))
+	} else {
+		client = tag[:i]
+		tags = bytes.Split(tag[i+1:], []byte(","))
+	}
+	other := make(map[string]string)
+	for r, field := range tags {
+		i = bytes.Index(field, []byte(":"))
+		if i < 0 && r < 1 {
+			client = field
+		} else if i >= 0 {
 			name := string(field[:i])
 			value := string(field[i+1:])
 			switch name {
 			case "V":
 				m.Version = value
 			case "M":
-				switch value {
-				case "A":
-					m.Mode = UserModeActive
-				case "P":
-					m.Mode = UserModePassive
-				case "5":
-					m.Mode = UserModeSOCKS5
-				default:
-					if len([]byte(value)) == 0 {
-						m.Mode = UserMode(' ')
-					} else if len([]byte(value)) == 1 {
-						m.Mode = UserMode(field[0])
-					} else {
-						return fmt.Errorf("invalid user mode")
-					}
+				if len([]byte(value)) == 1 {
+					m.Mode = UserMode(value[0])
+				} else {
+					m.Mode = UserModeUnknown
 				}
 			case "H":
 				hubs := strings.Split(value, "/")
@@ -456,42 +490,13 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			default:
 				other[name] = value
 			}
+		} else {
+			return fmt.Errorf("unknown field in tag: %q", field)
 		}
+	}
+	m.Client = string(client)
+	if len(other) != 0 {
 		m.Other = other
-	}
-	if err := m.Desc.UnmarshalNMDC(desc); err != nil {
-		return err
-	}
-	l := len(data)
-	if l == 0 || data[l-1] != '$' {
-		return errors.New("invalid info connection")
-	}
-	fields = bytes.SplitN(data[:l-1], []byte("$"), 4)
-	if len(fields) != 3 {
-		return errors.New("invalid info connection")
-	}
-	for i, field := range fields {
-		switch i {
-		case 0:
-			if len(field) == 0 {
-				return errors.New("invalid info connection")
-			}
-			l := len(field)
-			m.Flag = UserFlag(field[l-1])
-			m.Conn = string(field[:l-1])
-		case 1:
-			m.Email = string(field)
-		case 2:
-			if s := string(field); s == "" {
-				m.ShareSize = 0
-			} else {
-				size, err := strconv.ParseUint(s, 10, 64)
-				if err != nil {
-					return err
-				}
-				m.ShareSize = size
-			}
-		}
 	}
 	return nil
 }

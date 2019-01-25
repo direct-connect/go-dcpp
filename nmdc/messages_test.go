@@ -7,9 +7,10 @@ import (
 )
 
 var casesUnmarshal = []struct {
-	name string
-	data string
-	msg  Message
+	name    string
+	data    string
+	expData string
+	msg     Message
 }{
 	// TODO: $HubINFO Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= & KCAHDEP$Public HUB$CP1251|
 	{
@@ -31,25 +32,26 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name: "MyINFO no tag",
-		data: `$ALL verg P verg$P$0.005$$114616804986$|`,
+		name:    "MyINFO",
+		data:    `$ALL verg P verg$ $0.005A$$114616804986$`,
+		expData: `$ALL verg P verg< V:,M:,H:0/0/0,S:0>$ $0.005A$$114616804986$`,
 		msg: &MyInfo{
 			Name:      "verg",
 			Desc:      "P verg",
-			Mode:      UserModePassive,
+			Mode:      UserModeUnknown,
 			Conn:      "0.005",
-			Flag:      'K',
+			Flag:      'A',
 			ShareSize: 114616804986,
 		},
 	},
 	{
-		name: "MyINFO desc",
-		data: `$ALL elmaars1 LV [5]<elmaars1 DC++,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
+		name:    "MyINFO",
+		data:    `$ALL elmaars1 LV [5]<elmaars1 DC++,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
+		expData: `$ALL elmaars1 LV [5]<elmaars1 DC++ V:,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
 		msg: &MyInfo{
 			Name:      "elmaars1",
 			Desc:      "LV [5]",
 			Client:    "elmaars1 DC++",
-			Version:   "",
 			Mode:      UserModeActive,
 			Hubs:      [3]int{1, 0, 0},
 			Slots:     5,
@@ -92,7 +94,7 @@ func TestUnmarshal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			} else if !reflect.DeepEqual(m, c.msg) {
-				t.Fatalf("failed: %#v", m)
+				t.Fatalf("failed: %#v vs %#v", m, c.msg)
 			}
 		})
 	}
@@ -102,10 +104,14 @@ func TestMarshal(t *testing.T) {
 	for _, c := range casesUnmarshal {
 		t.Run(c.name, func(t *testing.T) {
 			data, err := c.msg.MarshalNMDC()
+			exp := c.expData
+			if exp == "" {
+				exp = c.data
+			}
 			if err != nil {
 				t.Fatal(err)
-			} else if !bytes.Equal(data, []byte(c.data)) {
-				t.Fatalf("failed: %#v vs %#v", string(data), string(c.data))
+			} else if !bytes.Equal(data, []byte(exp)) {
+				t.Fatalf("failed: %#v vs %#v", string(data), string(exp))
 			}
 		})
 	}
