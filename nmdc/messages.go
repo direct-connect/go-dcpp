@@ -432,6 +432,9 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		case 3:
 			m.Email = string(field)
 		case 4:
+			if len(field) == 0 {
+				continue
+			}
 			size, err := strconv.ParseUint(string(field), 10, 64)
 			if err != nil {
 				return err

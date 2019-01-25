@@ -7,6 +7,7 @@ import (
 )
 
 var casesUnmarshal = []struct {
+	typ     string
 	name    string
 	data    string
 	expData string
@@ -14,7 +15,7 @@ var casesUnmarshal = []struct {
 }{
 	// TODO: $HubINFO Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= & KCAHDEP$Public HUB$CP1251|
 	{
-		name: "MyINFO",
+		typ:  "MyINFO",
 		data: `$ALL johndoe RU<ApexDC++ V:0.4.0,M:P,H:27/1/3,S:92,L:512>$ $LAN(T3)K$example@example.com$1234$`,
 		msg: &MyInfo{
 			Name:      "johndoe",
@@ -32,7 +33,8 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name:    "MyINFO",
+		typ:     "MyINFO",
+		name:    "no tag",
 		data:    `$ALL verg P verg$ $0.005A$$114616804986$`,
 		expData: `$ALL verg P verg< V:,M:,H:0/0/0,S:0>$ $0.005A$$114616804986$`,
 		msg: &MyInfo{
@@ -45,7 +47,21 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name:    "MyINFO",
+		typ:     "MyINFO",
+		name:    "no share",
+		data:    `$ALL verg P verg$ $0.005A$$$`,
+		expData: `$ALL verg P verg< V:,M:,H:0/0/0,S:0>$ $0.005A$$0$`,
+		msg: &MyInfo{
+			Name: "verg",
+			Desc: "P verg",
+			Mode: UserModeUnknown,
+			Conn: "0.005",
+			Flag: 'A',
+		},
+	},
+	{
+		typ:     "MyINFO",
+		name:    "no vers",
 		data:    `$ALL elmaars1 LV [5]<elmaars1 DC++,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
 		expData: `$ALL elmaars1 LV [5]<elmaars1 DC++ V:,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
 		msg: &MyInfo{
@@ -61,7 +77,7 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name: "ConnectToMe",
+		typ:  "ConnectToMe",
 		data: `john 192.168.1.2:412S`,
 		msg: &ConnectToMe{
 			Targ:    "john",
@@ -70,7 +86,7 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name: "To:",
+		typ:  "To:",
 		data: `john From: peter $<peter> dogs are more cute`,
 		msg: &PrivateMessage{
 			To:   "john",
@@ -79,7 +95,7 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name: "Error",
+		typ:  "Error",
 		data: `message`,
 		msg: &Error{
 			Text: "message",
@@ -89,8 +105,12 @@ var casesUnmarshal = []struct {
 
 func TestUnmarshal(t *testing.T) {
 	for _, c := range casesUnmarshal {
-		t.Run(c.name, func(t *testing.T) {
-			m, err := (&RawCommand{Name: c.name, Data: []byte(c.data)}).Decode()
+		name := c.typ
+		if c.name != "" {
+			name += " " + c.name
+		}
+		t.Run(name, func(t *testing.T) {
+			m, err := (&RawCommand{Name: c.typ, Data: []byte(c.data)}).Decode()
 			if err != nil {
 				t.Fatal(err)
 			} else if !reflect.DeepEqual(m, c.msg) {
@@ -102,7 +122,11 @@ func TestUnmarshal(t *testing.T) {
 
 func TestMarshal(t *testing.T) {
 	for _, c := range casesUnmarshal {
-		t.Run(c.name, func(t *testing.T) {
+		name := c.typ
+		if c.name != "" {
+			name += " " + c.name
+		}
+		t.Run(name, func(t *testing.T) {
 			data, err := c.msg.MarshalNMDC()
 			exp := c.expData
 			if exp == "" {
