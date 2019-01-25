@@ -34,7 +34,7 @@ var casesUnmarshal = []struct {
 	{
 		name:    "MyINFO",
 		data:    `$ALL verg P verg$P$0.005A$$114616804986$`,
-		expData: `$ALL verg P verg<M:P,H:0/0/0,S:0>$ $0.005A$$114616804986$`,
+		expData: `$ALL verg P verg< V:,M:P,H:0/0/0,S:0>$ $0.005A$$114616804986$`,
 		msg: &MyInfo{
 			Name:      "verg",
 			Desc:      "P verg",
@@ -45,8 +45,9 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		name: "MyINFO",
-		data: `$ALL elmaars1 LV [5]<elmaars1 DC++,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
+		name:    "MyINFO",
+		data:    `$ALL elmaars1 LV [5]<elmaars1 DC++,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
+		expData: `$ALL elmaars1 LV [5]<elmaars1 DC++ V:,M:A,H:1/0/0,S:5>$ $100A$$1294368450291$`,
 		msg: &MyInfo{
 			Name:      "elmaars1",
 			Desc:      "LV [5]",
