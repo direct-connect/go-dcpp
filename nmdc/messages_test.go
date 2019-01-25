@@ -77,6 +77,23 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:     "MyINFO",
+		name:    "hub space",
+		data:    `$ALL vespa9347q1 <StrgDC++ V:2.42,M:A,H:1 /0/0,S:2>$ $0.01.$$37038592310$`,
+		expData: `$ALL vespa9347q1 <StrgDC++ V:2.42,M:A,H:1/0/0,S:2>$ $0.01.$$37038592310$`,
+		msg: &MyInfo{
+			Name:      "vespa9347q1",
+			Client:    "StrgDC++",
+			Version:   "2.42",
+			Mode:      UserModeActive,
+			Hubs:      [3]int{1, 0, 0},
+			Slots:     2,
+			Conn:      "0.01",
+			Flag:      '.',
+			ShareSize: 37038592310,
+		},
+	},
+	{
 		typ:  "ConnectToMe",
 		data: `john 192.168.1.2:412S`,
 		msg: &ConnectToMe{

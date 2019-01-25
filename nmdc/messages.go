@@ -435,7 +435,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			if len(field) == 0 {
 				continue
 			}
-			size, err := strconv.ParseUint(string(field), 10, 64)
+			size, err := strconv.ParseUint(strings.TrimSpace(string(field)), 10, 64)
 			if err != nil {
 				return err
 			}
@@ -478,14 +478,14 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
 				}
 				for i, inf := range hubs {
-					h, err := strconv.Atoi(inf)
+					h, err := strconv.Atoi(strings.TrimSpace(inf))
 					if err != nil {
 						return fmt.Errorf("invalid info hubs: %v", err)
 					}
 					m.Hubs[i] = h
 				}
 			case "S":
-				slots, err := strconv.Atoi(value)
+				slots, err := strconv.Atoi(strings.TrimSpace(value))
 				if err != nil {
 					return errors.New("invalid info slots")
 				}
