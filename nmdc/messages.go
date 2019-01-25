@@ -286,6 +286,7 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 type UserMode byte
 
 const (
+	UserModeUnknown = UserMode(0x00)
 	UserModeActive  = UserMode('A')
 	UserModePassive = UserMode('P')
 	UserModeSOCKS5  = UserMode('5')
@@ -350,7 +351,11 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.WriteString(" ")
 	var a []string
 	a = append(a, "V:"+m.Version)
-	a = append(a, "M:"+string(m.Mode))
+	if m.Mode != UserModeUnknown {
+		a = append(a, "M:"+string(m.Mode))
+	} else {
+		a = append(a, "M:")
+	}
 	var hubs []string
 	for _, inf := range m.Hubs {
 		hubs = append(hubs, strconv.Itoa(inf))
@@ -396,6 +401,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		switch i {
 		case 0:
 			var desc []byte
+			m.Mode = UserModeUnknown
 			i = bytes.Index(field, []byte("<"))
 			if i < 0 {
 				desc = field
@@ -413,29 +419,8 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 				return err
 			}
 		case 1:
-			if len(field) > 1 || len(field) == 0 {
-				return fmt.Errorf("invalid info command: unknown field %v", string(field))
-			} else {
-				if m.Mode == 0x0 {
-					var mode UserMode
-					switch string(field) {
-					case "A":
-						mode = UserModeActive
-					case "P":
-						mode = UserModePassive
-					case "5":
-						mode = UserModeSOCKS5
-					default:
-						if string(field) != " " {
-							mode = UserMode(field[0])
-						}
-					}
-					m.Mode = mode
-				} else {
-					if string(field) != " " {
-						return fmt.Errorf("invalid info command: unknown field %v", string(field))
-					}
-				}
+			if string(field) != " " {
+				return fmt.Errorf("unknown field before connection %v", string(field))
 			}
 		case 2:
 			if len(field) == 0 {
@@ -447,15 +432,11 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		case 3:
 			m.Email = string(field)
 		case 4:
-			if s := string(field); s == "" {
-				m.ShareSize = 0
-			} else {
-				size, err := strconv.ParseUint(s, 10, 64)
-				if err != nil {
-					return err
-				}
-				m.ShareSize = size
+			size, err := strconv.ParseUint(string(field), 10, 64)
+			if err != nil {
+				return err
 			}
+			m.ShareSize = size
 		}
 	}
 	return nil
@@ -483,19 +464,10 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 			case "V":
 				m.Version = value
 			case "M":
-				switch value {
-				case "A":
-					m.Mode = UserModeActive
-				case "P":
-					m.Mode = UserModePassive
-				case "5":
-					m.Mode = UserModeSOCKS5
-				default:
-					if len([]byte(value)) == 1 {
-						m.Mode = UserMode(field[0])
-					} else {
-						return fmt.Errorf("invalid user mode")
-					}
+				if len([]byte(value)) == 1 {
+					m.Mode = UserMode(value[0])
+				} else {
+					m.Mode = UserModeUnknown
 				}
 			case "H":
 				hubs := strings.Split(value, "/")

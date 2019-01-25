@@ -33,12 +33,12 @@ var casesUnmarshal = []struct {
 	},
 	{
 		name:    "MyINFO",
-		data:    `$ALL verg P verg$P$0.005A$$114616804986$`,
-		expData: `$ALL verg P verg< V:,M:P,H:0/0/0,S:0>$ $0.005A$$114616804986$`,
+		data:    `$ALL verg P verg$ $0.005A$$114616804986$`,
+		expData: `$ALL verg P verg< V:,M:,H:0/0/0,S:0>$ $0.005A$$114616804986$`,
 		msg: &MyInfo{
 			Name:      "verg",
 			Desc:      "P verg",
-			Mode:      UserModePassive,
+			Mode:      UserModeUnknown,
 			Conn:      "0.005",
 			Flag:      'A',
 			ShareSize: 114616804986,
@@ -111,7 +111,7 @@ func TestMarshal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			} else if !bytes.Equal(data, []byte(exp)) {
-				t.Fatalf("failed: %#v vs %#v", string(data), string(c.data))
+				t.Fatalf("failed: %#v vs %#v", string(data), string(exp))
 			}
 		})
 	}
