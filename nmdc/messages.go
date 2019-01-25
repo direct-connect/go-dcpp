@@ -347,9 +347,13 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.Write(desc)
 	buf.WriteString("<")
 	buf.WriteString(m.Client)
-	buf.WriteString(" ")
 	var a []string
-	a = append(a, "V:"+m.Version)
+	if m.Version != "" {
+		buf.WriteString(" ")
+		a = append(a, "V:"+m.Version)
+	} else if m.Client != "" {
+		buf.WriteString(",")
+	}
 	a = append(a, "M:"+string(m.Mode))
 	var hubs []string
 	for _, inf := range m.Hubs {
@@ -387,101 +391,127 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 		return err
 	}
 	data = data[i+1:]
-
-	fields := bytes.SplitN(data, []byte("$ $"), 2)
-	if len(fields) != 2 {
-		return errors.New("invalid info command")
-	}
-	desc := fields[0]
-	data = fields[1]
-	if i := bytes.Index(desc, []byte("<")); i >= 0 {
-		tag := desc[i+1:]
-		desc = desc[:i]
-		if len(tag) == 0 || tag[len(tag)-1] != '>' {
-			return errors.New("invalid info tag")
-		}
-		i = bytes.Index(tag, []byte(" "))
-		if i < 0 {
-			return errors.New("invalid client indicate")
-		}
-		m.Client = string(tag[:i])
-		tag = tag[i+1 : len(tag)-1]
-		fields = bytes.Split(tag, []byte(","))
-		other := make(map[string]string)
-		for _, field := range fields {
-			i = bytes.Index(field, []byte(":"))
-			if i < 0 {
-				return fmt.Errorf("unknown field in tag: %q", field)
-			}
-			name := string(field[:i])
-			value := string(field[i+1:])
-			switch name {
-			case "V":
-				m.Version = value
-			case "M":
-				switch value {
-				case "A":
-					m.Mode = UserModeActive
-				case "P":
-					m.Mode = UserModePassive
-				case "5":
-					m.Mode = UserModeSOCKS5
-				default:
-					if len([]byte(value)) == 0 {
-						m.Mode = UserMode(' ')
-					} else if len([]byte(value)) == 1 {
-						m.Mode = UserMode(field[0])
-					} else {
-						return fmt.Errorf("invalid user mode")
-					}
-				}
-			case "H":
-				hubs := strings.Split(value, "/")
-				if len(hubs) > 3 {
-					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
-				}
-				for i, inf := range hubs {
-					h, err := strconv.Atoi(inf)
-					if err != nil {
-						return fmt.Errorf("invalid info hubs: %v", err)
-					}
-					m.Hubs[i] = h
-				}
-			case "S":
-				slots, err := strconv.Atoi(value)
-				if err != nil {
-					return errors.New("invalid info slots")
-				}
-				m.Slots = int(slots)
-			default:
-				other[name] = value
-			}
-		}
-		m.Other = other
-	}
-	if err := m.Desc.UnmarshalNMDC(desc); err != nil {
-		return err
-	}
 	l := len(data)
-	if l == 0 || data[l-1] != '$' {
-		return errors.New("invalid info connection")
-	}
-	fields = bytes.SplitN(data[:l-1], []byte("$"), 4)
-	if len(fields) != 3 {
-		return errors.New("invalid info connection")
+	fields := bytes.SplitN(data[:l-1], []byte("$"), 6)
+	if len(fields) != 5 {
+		return errors.New("invalid info command")
 	}
 	for i, field := range fields {
 		switch i {
 		case 0:
+			var desc []byte
+			if i := bytes.Index(field, []byte("<")); i > 0 {
+				desc = field[:i]
+				tag := field[i+1:]
+				if len(tag) == 0 || tag[len(tag)-1] != '>' {
+					return errors.New("invalid info tag")
+				}
+				tag = tag[:len(tag)-1]
+				var client []byte
+				var tags [][]byte
+				i = bytes.Index(tag, []byte(" V:"))
+				if i < 0 {
+					tags = bytes.Split(tag, []byte(","))
+				} else {
+					client = tag[:i]
+					tags = bytes.Split(tag[i+1:], []byte(","))
+				}
+				other := make(map[string]string)
+				for r, field := range tags {
+					i = bytes.Index(field, []byte(":"))
+					if i < 0 && r < 1 {
+						client = field
+					} else if i >= 0 {
+						name := string(field[:i])
+						value := string(field[i+1:])
+						switch name {
+						case "V":
+							m.Version = value
+						case "M":
+							switch value {
+							case "A":
+								m.Mode = UserModeActive
+							case "P":
+								m.Mode = UserModePassive
+							case "5":
+								m.Mode = UserModeSOCKS5
+							default:
+								if len([]byte(value)) == 1 {
+									m.Mode = UserMode(field[0])
+								} else {
+									return fmt.Errorf("invalid user mode")
+								}
+							}
+						case "H":
+							hubs := strings.Split(value, "/")
+							if len(hubs) > 3 {
+								return fmt.Errorf("hubs info contain: %v operators", len(hubs))
+							}
+							for i, inf := range hubs {
+								h, err := strconv.Atoi(inf)
+								if err != nil {
+									return fmt.Errorf("invalid info hubs: %v", err)
+								}
+								m.Hubs[i] = h
+							}
+						case "S":
+							slots, err := strconv.Atoi(value)
+							if err != nil {
+								return errors.New("invalid info slots")
+							}
+							m.Slots = int(slots)
+						default:
+							other[name] = value
+						}
+					} else {
+						return fmt.Errorf("unknown field in tag: %q", field)
+					}
+				}
+				m.Client = string(client)
+				if len(other) != 0 {
+					m.Other = other
+				}
+			} else {
+				desc = field
+			}
+			if err := m.Desc.UnmarshalNMDC(desc); err != nil {
+				return err
+			}
+		case 1:
+			if len(field) > 1 || len(field) == 0 {
+				return fmt.Errorf("invalid info command: unknown field %v", string(field))
+			} else {
+				if m.Mode == 0x0 {
+					var mode UserMode
+					switch string(field) {
+					case "A":
+						mode = UserModeActive
+					case "P":
+						mode = UserModePassive
+					case "5":
+						mode = UserModeSOCKS5
+					default:
+						if string(field) != " " {
+							mode = UserMode(field[0])
+						}
+					}
+					m.Mode = mode
+				} else {
+					if string(field) != " " {
+						return fmt.Errorf("invalid info command: unknown field %v", string(field))
+					}
+				}
+			}
+		case 2:
 			if len(field) == 0 {
 				return errors.New("invalid info connection")
 			}
 			l := len(field)
 			m.Flag = UserFlag(field[l-1])
 			m.Conn = string(field[:l-1])
-		case 1:
+		case 3:
 			m.Email = string(field)
-		case 2:
+		case 4:
 			if s := string(field); s == "" {
 				m.ShareSize = 0
 			} else {
