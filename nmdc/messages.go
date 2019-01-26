@@ -285,17 +285,17 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 }
 
 type HubINFO struct {
-	Name  Name
-	Host  String
-	Desc  String
-	I1    int
-	I2    int
-	I3    int
-	I4    int
-	Soft  String
-	Owner string
-	State String
-	Code  string
+	Name     Name
+	Host     String
+	Desc     String
+	I1       int
+	I2       int
+	I3       int
+	I4       int
+	Soft     String
+	Owner    string
+	State    String
+	Encoding string
 }
 
 func (*HubINFO) Cmd() string {
@@ -334,7 +334,7 @@ func (h *HubINFO) MarshalNMDC() ([]byte, error) {
 		return nil, err
 	}
 	a = append(a, state)
-	a = append(a, []byte(h.Code))
+	a = append(a, []byte(h.Encoding))
 	buf := bytes.NewBuffer(bytes.Join(a, []byte("$")))
 	return buf.Bytes(), nil
 }
@@ -393,7 +393,7 @@ func (h *HubINFO) UnmarshalNMDC(data []byte) error {
 				return err
 			}
 		case 10:
-			h.Code = string(field)
+			h.Encoding = string(field)
 		}
 	}
 	return nil
