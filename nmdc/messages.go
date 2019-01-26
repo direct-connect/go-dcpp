@@ -26,6 +26,7 @@ func init() {
 	RegisterMessage(&Key{})
 	RegisterMessage(&Supports{})
 	RegisterMessage(&GetNickList{})
+	RegisterMessage(&HubINFO{})
 	RegisterMessage(&MyInfo{})
 	RegisterMessage(&OpList{})
 	RegisterMessage(&BotList{})
@@ -283,6 +284,121 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 	return nil
 }
 
+type HubINFO struct {
+	Name     Name
+	Host     String
+	Desc     String
+	I1       int
+	I2       int
+	I3       int
+	I4       int
+	Soft     String
+	Owner    string
+	State    String
+	Encoding string
+}
+
+func (*HubINFO) Cmd() string {
+	return "HubINFO"
+}
+
+func (h *HubINFO) MarshalNMDC() ([]byte, error) {
+	var a [][]byte
+	name, err := h.Name.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	a = append(a, name)
+	host, err := h.Host.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	a = append(a, host)
+	desc, err := h.Desc.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	a = append(a, desc)
+	a = append(a, []byte(strconv.Itoa(h.I1)))
+	a = append(a, []byte(strconv.Itoa(h.I2)))
+	a = append(a, []byte(strconv.Itoa(h.I3)))
+	a = append(a, []byte(strconv.Itoa(h.I4)))
+	soft, err := h.Soft.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	a = append(a, soft)
+	a = append(a, []byte(h.Owner))
+	state, err := h.State.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	a = append(a, state)
+	a = append(a, []byte(h.Encoding))
+	buf := bytes.NewBuffer(bytes.Join(a, []byte("$")))
+	return buf.Bytes(), nil
+}
+
+func (h *HubINFO) UnmarshalNMDC(data []byte) error {
+	fields := bytes.SplitN(data, []byte("$"), 12)
+	if len(fields) != 11 {
+		return fmt.Errorf("hub info contain: %v parameters", len(fields))
+	}
+	for i, field := range fields {
+		switch i {
+		case 0:
+			if err := h.Name.UnmarshalNMDC(field); err != nil {
+				return err
+			}
+		case 1:
+			if err := h.Host.UnmarshalNMDC(field); err != nil {
+				return err
+			}
+		case 2:
+			if err := h.Desc.UnmarshalNMDC(field); err != nil {
+				return err
+			}
+		case 3:
+			i1, err := strconv.Atoi(strings.TrimSpace(string(field)))
+			if err != nil {
+				return errors.New("invalid i1")
+			}
+			h.I1 = int(i1)
+		case 4:
+			i2, err := strconv.Atoi(strings.TrimSpace(string(field)))
+			if err != nil {
+				return errors.New("invalid i2")
+			}
+			h.I2 = int(i2)
+		case 5:
+			i3, err := strconv.Atoi(strings.TrimSpace(string(field)))
+			if err != nil {
+				return errors.New("invalid i3")
+			}
+			h.I3 = int(i3)
+		case 6:
+			i4, err := strconv.Atoi(strings.TrimSpace(string(field)))
+			if err != nil {
+				return errors.New("invalid i4")
+			}
+			h.I4 = int(i4)
+		case 7:
+			if err := h.Soft.UnmarshalNMDC(field); err != nil {
+				return err
+			}
+		case 8:
+			h.Owner = string(field)
+		case 9:
+			if err := h.State.UnmarshalNMDC(field); err != nil {
+				return err
+			}
+		case 10:
+			h.Encoding = string(field)
+		}
+	}
+	return nil
+}
+
 type UserMode byte
 
 const (
@@ -378,7 +494,6 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 }
 
 func (m *MyInfo) UnmarshalNMDC(data []byte) error {
-	// $ALL johndoe <++ V:0.673,M:P,H:0/1/0,S:2>$ $LAN(T3)0x31$example@example.com$1234$
 	if !bytes.HasPrefix(data, []byte("$ALL ")) {
 		return errors.New("invalid info command: wrong prefix")
 	}

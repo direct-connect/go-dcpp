@@ -13,7 +13,23 @@ var casesUnmarshal = []struct {
 	expData string
 	msg     Message
 }{
-	// TODO: $HubINFO Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= & KCAHDEP$Public HUB$CP1251|
+	{
+		typ:  "HubINFO",
+		data: `Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= &KCAHDEP$Public HUB$CP1251`,
+		msg: &HubINFO{
+			Name:     "Angels vs Demons",
+			Host:     "dc.milenahub.ru",
+			Desc:     "Cogitationis poenam nemo patitur.",
+			I1:       20480,
+			I2:       0,
+			I3:       0,
+			I4:       0,
+			Soft:     "Verlihub 1.1.0.12",
+			Owner:    "=FAUST= &KCAHDEP",
+			State:    "Public HUB",
+			Encoding: "CP1251",
+		},
+	},
 	{
 		typ:  "MyINFO",
 		data: `$ALL johndoe RU<ApexDC++ V:0.4.0,M:P,H:27/1/3,S:92,L:512>$ $LAN(T3)K$example@example.com$1234$`,
