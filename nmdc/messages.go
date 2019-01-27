@@ -286,13 +286,13 @@ func (m *GetNickList) UnmarshalNMDC(data []byte) error {
 
 type HubINFO struct {
 	Name     Name
-	Host     String
+	Host     string
 	Desc     String
 	I1       int
 	I2       int
 	I3       int
 	I4       int
-	Soft     String
+	Soft     string
 	Owner    string
 	State    String
 	Encoding string
@@ -309,11 +309,7 @@ func (h *HubINFO) MarshalNMDC() ([]byte, error) {
 		return nil, err
 	}
 	a = append(a, name)
-	host, err := h.Host.MarshalNMDC()
-	if err != nil {
-		return nil, err
-	}
-	a = append(a, host)
+	a = append(a, []byte(h.Host))
 	desc, err := h.Desc.MarshalNMDC()
 	if err != nil {
 		return nil, err
@@ -323,11 +319,7 @@ func (h *HubINFO) MarshalNMDC() ([]byte, error) {
 	a = append(a, []byte(strconv.Itoa(h.I2)))
 	a = append(a, []byte(strconv.Itoa(h.I3)))
 	a = append(a, []byte(strconv.Itoa(h.I4)))
-	soft, err := h.Soft.MarshalNMDC()
-	if err != nil {
-		return nil, err
-	}
-	a = append(a, soft)
+	a = append(a, []byte(h.Soft))
 	a = append(a, []byte(h.Owner))
 	state, err := h.State.MarshalNMDC()
 	if err != nil {
@@ -351,9 +343,7 @@ func (h *HubINFO) UnmarshalNMDC(data []byte) error {
 				return err
 			}
 		case 1:
-			if err := h.Host.UnmarshalNMDC(field); err != nil {
-				return err
-			}
+			h.Host = string(field)
 		case 2:
 			if err := h.Desc.UnmarshalNMDC(field); err != nil {
 				return err
@@ -383,9 +373,7 @@ func (h *HubINFO) UnmarshalNMDC(data []byte) error {
 			}
 			h.I4 = int(i4)
 		case 7:
-			if err := h.Soft.UnmarshalNMDC(field); err != nil {
-				return err
-			}
+			h.Soft = string(field)
 		case 8:
 			h.Owner = string(field)
 		case 9:

@@ -8,13 +8,16 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	SchemaNMDC = "dchub://"
+	SchemaNMDC  = "dchub://"
+	DefaultPort = 411
 )
 
 const (
@@ -27,11 +30,46 @@ const (
 
 var Debug bool
 
+func ParseAddr(addr string) (*url.URL, error) {
+	if !strings.Contains(addr, "://") {
+		addr = SchemaNMDC + addr
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme+"://" != SchemaNMDC {
+		return u, fmt.Errorf("unsupported protocol: %q", u.Scheme)
+	}
+	u.Path = strings.TrimRight(u.Path, "/")
+	return u, nil
+}
+
+func NormalizeAddr(addr string) (string, error) {
+	u, err := ParseAddr(addr)
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}
+
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
-	addr = strings.TrimPrefix(addr, SchemaNMDC)
+	u, err := ParseAddr(addr)
+	if err != nil {
+		return nil, err
+	}
 
-	conn, err := net.Dial("tcp", addr)
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		var err2 error
+		host, port, err2 = net.SplitHostPort(u.Host + ":" + strconv.Itoa(DefaultPort))
+		if err2 != nil {
+			return nil, err
+		}
+	}
+
+	conn, err := net.Dial("tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		return nil, err
 	}

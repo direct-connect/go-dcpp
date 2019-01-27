@@ -13,6 +13,8 @@ var casesUnmarshal = []struct {
 	expData string
 	msg     Message
 }{
+	// TODO: $HubINFO OZERKI$dc.ozerki.pro$Main Russian D�++ Hub$5000$0$1$2721$PtokaX$|
+	// TODO: $HubINFO Free$localhost:411$Online!$900$0$0$1000$VerliHub$$|
 	{
 		typ:  "HubINFO",
 		data: `Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= &KCAHDEP$Public HUB$CP1251`,

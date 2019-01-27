@@ -30,7 +30,7 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 		}
 		info := &HubInfo{
 			Name: hub.Name,
-			Desc: hub.Topic,
+			Desc: hub.Desc,
 			Addr: []string{addr},
 			Server: &Software{
 				Name: hub.Server.Name,
@@ -39,6 +39,18 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			},
 			Users: make([]HubUser, 0, len(hub.Users)),
 		}
+		if hub.Addr != "" {
+			if uri, err := nmdc.NormalizeAddr(hub.Addr); err == nil && uri != addr {
+				info.Addr = append(info.Addr, uri)
+			}
+		}
+		for _, a := range hub.Failover {
+			uri, err := nmdc.NormalizeAddr(a)
+			if err == nil {
+				info.Addr = append(info.Addr, uri)
+			}
+		}
+
 		for _, u := range hub.Users {
 			info.Users = append(info.Users, HubUser{
 				Name:  string(u.Name),

@@ -50,3 +50,11 @@ func (c *Conn) SendClientInfo(deadline time.Time, info *MyInfo) error {
 	}
 	return c.Flush()
 }
+
+func (c *Conn) SendPingerInfo(deadline time.Time, info *MyInfo) error {
+	err := c.WriteMsg(&RawCommand{Name: "BotINFO", Data: []byte(info.Name)})
+	if err != nil {
+		return err
+	}
+	return c.SendClientInfo(deadline, info)
+}
