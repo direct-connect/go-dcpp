@@ -118,8 +118,15 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 				return
 			case <-ticker.C:
 			}
-			// empty message serves as keep-alive for ADC
-			_ = c.writeRawPacket(nil)
+			// empty packet serves as keep-alive for ADC
+			err := c.writeRawPacket(nil)
+			if err == nil {
+				err = c.Flush()
+			}
+			if err != nil {
+				_ = c.Close()
+				return
+			}
 		}
 	}()
 }
@@ -307,10 +314,6 @@ func (c *Conn) WritePacket(p Packet) error {
 }
 
 func (c *Conn) writeRawPacket(s []byte) error {
-	if Debug {
-		log.Println("->", string(s))
-	}
-
 	// make sure connection is not in binary mode
 	c.bin.RLock()
 	defer c.bin.RUnlock()
@@ -320,6 +323,9 @@ func (c *Conn) writeRawPacket(s []byte) error {
 
 	if err := c.write.err; err != nil {
 		return err
+	}
+	if Debug {
+		log.Println("->", string(s))
 	}
 	_, err := c.write.w.Write(s)
 	if err != nil {

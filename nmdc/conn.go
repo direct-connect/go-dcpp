@@ -106,8 +106,14 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 			case <-ticker.C:
 			}
 			// empty message serves as keep-alive for NMDC
-			_ = c.writeRaw([]byte("|"))
-			_ = c.Flush()
+			err := c.writeRaw([]byte("|"))
+			if err == nil {
+				err = c.Flush()
+			}
+			if err != nil {
+				_ = c.Close()
+				return
+			}
 		}
 	}()
 }
@@ -148,7 +154,7 @@ func (c *Conn) WriteMsg(m Message) error {
 	return err
 }
 
-func (c *Conn) writeRaw(s []byte) error {
+func (c *Conn) writeRaw(data []byte) error {
 	// make sure connection is not in binary mode
 	c.bin.RLock()
 	defer c.bin.RUnlock()
@@ -160,9 +166,9 @@ func (c *Conn) writeRaw(s []byte) error {
 		return err
 	}
 	if Debug {
-		log.Println("->", string(s))
+		log.Println("->", string(data))
 	}
-	_, err := c.write.w.Write(s)
+	_, err := c.write.w.Write(data)
 	if err != nil {
 		c.write.err = err
 	}
@@ -177,6 +183,9 @@ func (c *Conn) Flush() error {
 	c.write.Lock()
 	defer c.write.Unlock()
 
+	if err := c.write.err; err != nil {
+		return err
+	}
 	if err := c.write.w.Flush(); err != nil {
 		return err
 	}
