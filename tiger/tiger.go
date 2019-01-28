@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"hash"
 
-	th "github.com/dennwc/go-dcpp/tiger/go-tiger"
+	th "github.com/direct-connect/go-dcpp/tiger/go-tiger"
 )
 
 // Returns a new hash.Hash that calculates the Tiger/192 hash digest.

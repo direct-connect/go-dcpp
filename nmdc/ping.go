@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dennwc/go-dcpp/version"
+	"github.com/direct-connect/go-dcpp/version"
 )
 
 type Software struct {

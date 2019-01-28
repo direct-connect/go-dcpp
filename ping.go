@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dennwc/go-dcpp/nmdc"
+	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
 // Ping fetches the information about the specified hub.

@@ -11,9 +11,9 @@ import (
 
 	"golang.org/x/net/http2"
 
-	"github.com/dennwc/go-dcpp/adc"
-	"github.com/dennwc/go-dcpp/adc/types"
-	"github.com/dennwc/go-dcpp/version"
+	"github.com/direct-connect/go-dcpp/adc"
+	"github.com/direct-connect/go-dcpp/adc/types"
+	"github.com/direct-connect/go-dcpp/version"
 )
 
 type Info struct {

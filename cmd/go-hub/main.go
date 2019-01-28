@@ -20,7 +20,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dennwc/go-dcpp/hub"
+	"github.com/direct-connect/go-dcpp/hub"
 )
 
 var (

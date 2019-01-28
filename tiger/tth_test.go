@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/dennwc/go-dcpp/tiger"
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var tthCases = []struct {

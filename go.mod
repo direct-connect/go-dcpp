@@ -1,4 +1,4 @@
-module github.com/dennwc/go-dcpp
+module github.com/direct-connect/go-dcpp
 
 require (
 	github.com/go-irc/irc v2.1.0+incompatible

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/dennwc/go-dcpp/adc"
-	"github.com/dennwc/go-dcpp/adc/types"
+	"github.com/direct-connect/go-dcpp/adc"
+	"github.com/direct-connect/go-dcpp/adc/types"
 )
 
 var casesDecode = []struct {

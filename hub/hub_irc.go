@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-irc/irc"
 
-	"github.com/dennwc/go-dcpp/version"
+	"github.com/direct-connect/go-dcpp/version"
 )
 
 const (

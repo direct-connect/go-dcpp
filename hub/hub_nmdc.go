@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dennwc/go-dcpp/nmdc"
+	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
 const nmdcFakeToken = "nmdc"

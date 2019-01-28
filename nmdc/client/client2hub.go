@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dennwc/go-dcpp/nmdc"
-	"github.com/dennwc/go-dcpp/version"
+	"github.com/direct-connect/go-dcpp/nmdc"
+	"github.com/direct-connect/go-dcpp/version"
 )
 
 // DialHub connects to a hub and runs a handshake.

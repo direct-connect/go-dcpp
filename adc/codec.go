@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dennwc/go-dcpp/tiger"
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var (

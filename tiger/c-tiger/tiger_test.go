@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	tigerc "github.com/dennwc/go-dcpp/tiger/c-tiger"
-	tigerg "github.com/dennwc/go-dcpp/tiger/go-tiger"
+	tigerc "github.com/direct-connect/go-dcpp/tiger/c-tiger"
+	tigerg "github.com/direct-connect/go-dcpp/tiger/go-tiger"
 )
 
 func hashG(p []byte) (out tigerc.TH) {

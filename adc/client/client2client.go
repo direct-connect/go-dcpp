@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dennwc/go-dcpp/adc"
+	"github.com/direct-connect/go-dcpp/adc"
 )
 
 var (

@@ -1,8 +1,8 @@
 package adc
 
 import (
-	"github.com/dennwc/go-dcpp/adc/types"
-	"github.com/dennwc/go-dcpp/tiger"
+	"github.com/direct-connect/go-dcpp/adc/types"
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var (
