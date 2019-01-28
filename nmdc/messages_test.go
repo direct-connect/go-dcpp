@@ -61,16 +61,6 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
-		typ:  "Lock",
-		name: "with Ref",
-		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Pk=DCPLUSPLUS0.777Ref=dchub://example.org:411`,
-		msg: &Lock{
-			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
-			PK:   "DCPLUSPLUS0.777",
-			Ref:  "dchub://example.org:411",
-		},
-	},
-	{
 		typ:     "HubINFO",
 		name:    "9 fields",
 		data:    `OZERKI$dc.ozerki.pro$Main Russian D�++ Hub$5000$0$1$2721$PtokaX$`,
