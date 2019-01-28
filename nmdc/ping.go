@@ -101,6 +101,9 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 	for {
 		msg, err := c.ReadMsg(time.Time{})
 		if err == io.EOF {
+			if listEnd {
+				return &hub, nil
+			}
 			if lastMsg != "" {
 				return nil, fmt.Errorf("connection closed: %s", lastMsg)
 			}
@@ -161,11 +164,9 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			}
 			hub.Users = append(hub.Users, *msg)
 		case *OpList:
-			var arr []string
 			for _, name := range msg.List {
-				arr = append(arr, string(name))
+				hub.Ops = append(hub.Ops, string(name))
 			}
-			hub.Ops = arr
 		case *BotList:
 			var arr []string
 			for _, name := range msg.List {
@@ -187,14 +188,10 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			}
 			hub.Encoding = msg.Encoding
 			hub.Owner = msg.Owner
-		case *RawCommand:
-			switch msg.Name {
-			case "UserIP":
-				// TODO: some implementations seem to end the list with this message
-			case "Failover":
-				// TODO: implement
-				hub.Failover = strings.Split(string(msg.Data), ",")
-			}
+		case *FailOver:
+			hub.Failover = append(hub.Failover, msg.Host...)
+		case *UserIP:
+			// TODO: some implementations seem to end the list with this message
 		}
 	}
 }
