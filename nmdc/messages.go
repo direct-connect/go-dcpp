@@ -30,11 +30,13 @@ func init() {
 	RegisterMessage(&MyInfo{})
 	RegisterMessage(&OpList{})
 	RegisterMessage(&BotList{})
+	RegisterMessage(&UserIP{})
 	RegisterMessage(&ConnectToMe{})
 	RegisterMessage(&RevConnectToMe{})
 	RegisterMessage(&PrivateMessage{})
 	RegisterMessage(&Failed{})
 	RegisterMessage(&Error{})
+	RegisterMessage(&FailOver{})
 }
 
 type Message interface {
@@ -208,7 +210,7 @@ func (m *HubTopic) UnmarshalNMDC(data []byte) error {
 type Lock struct {
 	Lock string
 	PK   string
-	// TODO: Ref
+	Ref  string
 }
 
 func (*Lock) Cmd() string {
@@ -216,21 +218,34 @@ func (*Lock) Cmd() string {
 }
 
 func (m *Lock) MarshalNMDC() ([]byte, error) {
-	if len(m.PK) == 0 {
-		return []byte(m.Lock), nil
+	lock := []string{m.Lock}
+	if len(m.PK) != 0 {
+		lock = append(lock, " Pk=", m.PK)
+	} else {
+		lock = append(lock, " ")
 	}
-	return []byte(strings.Join([]string{
-		m.Lock, " Pk=", m.PK,
-	}, "")), nil
+	if len(m.Ref) != 0 {
+		lock = append(lock, "Ref=", m.Ref)
+	}
+	return []byte(strings.Join(lock, "")), nil
 }
 
 func (m *Lock) UnmarshalNMDC(data []byte) error {
-	i := bytes.Index(data, []byte(" Pk="))
+	i := bytes.Index(data, []byte(" "))
 	if i >= 0 {
-		m.PK = string(data[i+4:])
-		data = data[:i]
+		m.Lock = string(data[:i])
 	}
-	m.Lock = string(data)
+	data = data[i+1:]
+	if bytes.HasPrefix(data, []byte("Pk=")) {
+		data = bytes.TrimPrefix(data, []byte("Pk="))
+	}
+	i = bytes.Index(data, []byte("Ref="))
+	if i >= 0 {
+		m.PK = string(data[:i])
+		m.Ref = string(data[i+4:])
+	} else {
+		m.PK = string(data)
+	}
 	return nil
 }
 
@@ -302,50 +317,50 @@ func (*HubINFO) Cmd() string {
 	return "HubINFO"
 }
 
-func (h *HubINFO) MarshalNMDC() ([]byte, error) {
+func (m *HubINFO) MarshalNMDC() ([]byte, error) {
 	var a [][]byte
-	name, err := h.Name.MarshalNMDC()
+	name, err := m.Name.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	a = append(a, name)
-	a = append(a, []byte(h.Host))
-	desc, err := h.Desc.MarshalNMDC()
+	a = append(a, []byte(m.Host))
+	desc, err := m.Desc.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	a = append(a, desc)
-	a = append(a, []byte(strconv.Itoa(h.I1)))
-	a = append(a, []byte(strconv.Itoa(h.I2)))
-	a = append(a, []byte(strconv.Itoa(h.I3)))
-	a = append(a, []byte(strconv.Itoa(h.I4)))
-	a = append(a, []byte(h.Soft))
-	a = append(a, []byte(h.Owner))
-	state, err := h.State.MarshalNMDC()
+	a = append(a, []byte(strconv.Itoa(m.I1)))
+	a = append(a, []byte(strconv.Itoa(m.I2)))
+	a = append(a, []byte(strconv.Itoa(m.I3)))
+	a = append(a, []byte(strconv.Itoa(m.I4)))
+	a = append(a, []byte(m.Soft))
+	a = append(a, []byte(m.Owner))
+	state, err := m.State.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	a = append(a, state)
-	a = append(a, []byte(h.Encoding))
+	a = append(a, []byte(m.Encoding))
 	buf := bytes.NewBuffer(bytes.Join(a, []byte("$")))
 	return buf.Bytes(), nil
 }
 
-func (h *HubINFO) UnmarshalNMDC(data []byte) error {
+func (m *HubINFO) UnmarshalNMDC(data []byte) error {
 	fields := bytes.SplitN(data, []byte("$"), 12)
-	if len(fields) != 11 {
+	if len(fields) > 11 {
 		return fmt.Errorf("hub info contain: %v parameters", len(fields))
 	}
 	for i, field := range fields {
 		switch i {
 		case 0:
-			if err := h.Name.UnmarshalNMDC(field); err != nil {
+			if err := m.Name.UnmarshalNMDC(field); err != nil {
 				return err
 			}
 		case 1:
-			h.Host = string(field)
+			m.Host = string(field)
 		case 2:
-			if err := h.Desc.UnmarshalNMDC(field); err != nil {
+			if err := m.Desc.UnmarshalNMDC(field); err != nil {
 				return err
 			}
 		case 3:
@@ -353,35 +368,35 @@ func (h *HubINFO) UnmarshalNMDC(data []byte) error {
 			if err != nil {
 				return errors.New("invalid i1")
 			}
-			h.I1 = int(i1)
+			m.I1 = int(i1)
 		case 4:
 			i2, err := strconv.Atoi(strings.TrimSpace(string(field)))
 			if err != nil {
 				return errors.New("invalid i2")
 			}
-			h.I2 = int(i2)
+			m.I2 = int(i2)
 		case 5:
 			i3, err := strconv.Atoi(strings.TrimSpace(string(field)))
 			if err != nil {
 				return errors.New("invalid i3")
 			}
-			h.I3 = int(i3)
+			m.I3 = int(i3)
 		case 6:
 			i4, err := strconv.Atoi(strings.TrimSpace(string(field)))
 			if err != nil {
 				return errors.New("invalid i4")
 			}
-			h.I4 = int(i4)
+			m.I4 = int(i4)
 		case 7:
-			h.Soft = string(field)
+			m.Soft = string(field)
 		case 8:
-			h.Owner = string(field)
+			m.Owner = string(field)
 		case 9:
-			if err := h.State.UnmarshalNMDC(field); err != nil {
+			if err := m.State.UnmarshalNMDC(field); err != nil {
 				return err
 			}
 		case 10:
-			h.Encoding = string(field)
+			m.Encoding = string(field)
 		}
 	}
 	return nil
@@ -526,12 +541,11 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 				return fmt.Errorf("unknown field before connection %v", string(field))
 			}
 		case 2:
-			if len(field) == 0 {
-				return errors.New("invalid info connection")
+			if len(field) > 0 {
+				l := len(field)
+				m.Flag = UserFlag(field[l-1])
+				m.Conn = string(field[:l-1])
 			}
-			l := len(field)
-			m.Flag = UserFlag(field[l-1])
-			m.Conn = string(field[:l-1])
 		case 3:
 			m.Email = string(field)
 		case 4:
@@ -670,6 +684,38 @@ func (m *BotList) UnmarshalNMDC(data []byte) error {
 		return nil
 	}
 	return ((*OpList)(m)).UnmarshalNMDC(data)
+}
+
+type UserIP struct {
+	Name Name
+	IP   string
+}
+
+func (*UserIP) Cmd() string {
+	return "UserIP"
+}
+
+func (m *UserIP) MarshalNMDC() ([]byte, error) {
+	name, err := m.Name.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	if len(m.IP) == 0 {
+		return name, nil
+	}
+	return bytes.Join([][]byte{name, []byte(m.IP)}, []byte(" ")), nil
+}
+
+func (m *UserIP) UnmarshalNMDC(data []byte) error {
+	i := bytes.Index(data, []byte(" "))
+	if i >= 0 {
+		m.IP = string(data[i+1:])
+		data = data[:i]
+	}
+	if err := m.Name.UnmarshalNMDC(data); err != nil {
+		return err
+	}
+	return nil
 }
 
 type ConnectToMe struct {
@@ -822,23 +868,23 @@ type Failed struct {
 	Text String
 }
 
-func (f *Failed) Cmd() string {
+func (m *Failed) Cmd() string {
 	return "Failed"
 }
 
-func (f *Failed) MarshalNMDC() ([]byte, error) {
-	if f.Text == "" {
+func (m *Failed) MarshalNMDC() ([]byte, error) {
+	if m.Text == "" {
 		return nil, nil
 	}
-	text, err := f.Text.MarshalNMDC()
+	text, err := m.Text.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	return []byte(text), nil
 }
 
-func (f *Failed) UnmarshalNMDC(text []byte) error {
-	if err := f.Text.UnmarshalNMDC(text); err != nil {
+func (m *Failed) UnmarshalNMDC(text []byte) error {
+	if err := m.Text.UnmarshalNMDC(text); err != nil {
 		return err
 	}
 	return nil
@@ -848,24 +894,44 @@ type Error struct {
 	Text String
 }
 
-func (e *Error) Cmd() string {
+func (m *Error) Cmd() string {
 	return "Error"
 }
 
-func (e *Error) MarshalNMDC() ([]byte, error) {
-	if e.Text == "" {
+func (m *Error) MarshalNMDC() ([]byte, error) {
+	if m.Text == "" {
 		return nil, nil
 	}
-	text, err := e.Text.MarshalNMDC()
+	text, err := m.Text.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	return []byte(text), nil
 }
 
-func (e *Error) UnmarshalNMDC(text []byte) error {
-	if err := e.Text.UnmarshalNMDC(text); err != nil {
+func (m *Error) UnmarshalNMDC(text []byte) error {
+	if err := m.Text.UnmarshalNMDC(text); err != nil {
 		return err
+	}
+	return nil
+}
+
+type FailOver struct {
+	Host []string
+}
+
+func (*FailOver) Cmd() string {
+	return "FailOver"
+}
+
+func (m *FailOver) MarshalNMDC() ([]byte, error) {
+	return []byte(strings.Join(m.Host, ",")), nil
+}
+
+func (m *FailOver) UnmarshalNMDC(data []byte) error {
+	hosts := bytes.Split(data, []byte(","))
+	for _, host := range hosts {
+		m.Host = append(m.Host, string(host))
 	}
 	return nil
 }
