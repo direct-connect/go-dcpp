@@ -218,17 +218,14 @@ func (*Lock) Cmd() string {
 }
 
 func (m *Lock) MarshalNMDC() ([]byte, error) {
-	if len(m.PK) == 0 {
-		if len(m.Ref) == 0 {
-			return []byte(m.Lock), nil
-		}
-		return []byte(strings.Join([]string{
-			m.Lock, "Ref=", m.Ref,
-		}, "")), nil
+	lock := []string{m.Lock}
+	if len(m.PK) != 0 {
+		lock = append(lock, " Pk="+m.PK)
 	}
-	return []byte(strings.Join([]string{
-		m.Lock, " Pk=", m.PK, "Ref=", m.Ref,
-	}, "")), nil
+	if len(m.Ref) != 0 {
+		lock = append(lock, "Ref="+m.Ref)
+	}
+	return []byte(strings.Join(lock, "")), nil
 }
 
 func (m *Lock) UnmarshalNMDC(data []byte) error {
@@ -484,11 +481,7 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	buf.WriteString(strings.Join(a, ","))
 	buf.WriteString(">")
 	buf.WriteString("$ $")
-	var flag string
-	if m.Flag != 0 {
-		flag = string(m.Flag)
-	}
-	buf.WriteString(m.Conn + flag)
+	buf.WriteString(m.Conn + string(m.Flag))
 	buf.WriteString("$")
 	buf.WriteString(m.Email)
 	buf.WriteString("$")

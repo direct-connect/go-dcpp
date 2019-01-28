@@ -17,9 +17,11 @@ var casesUnmarshal = []struct {
 		typ:  "FailOver",
 		data: `example.com,example.org:5555,adc://example.net:6666`,
 		msg: &FailOver{
-			Host: []string{"example.com",
+			Host: []string{
+				"example.com",
 				"example.org:5555",
-				"adc://example.net:6666"},
+				"adc://example.net:6666",
+			},
 		},
 	},
 	{
@@ -172,7 +174,7 @@ var casesUnmarshal = []struct {
 		typ:     "MyINFO",
 		name:    "only name",
 		data:    `$ALL #GlobalOpChat $ $$$0$`,
-		expData: `$ALL #GlobalOpChat < V:,M:,H:0/0/0,S:0>$ $$$0$`,
+		expData: "$ALL #GlobalOpChat < V:,M:,H:0/0/0,S:0>$ $\x00$$0$",
 		msg: &MyInfo{
 			Name: "#GlobalOpChat",
 			Mode: UserModeUnknown,
