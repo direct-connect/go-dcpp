@@ -220,26 +220,32 @@ func (*Lock) Cmd() string {
 func (m *Lock) MarshalNMDC() ([]byte, error) {
 	lock := []string{m.Lock}
 	if len(m.PK) != 0 {
-		lock = append(lock, " Pk="+m.PK)
+		lock = append(lock, " Pk=", m.PK)
+	} else {
+		lock = append(lock, " ")
 	}
 	if len(m.Ref) != 0 {
-		lock = append(lock, "Ref="+m.Ref)
+		lock = append(lock, "Ref=", m.Ref)
 	}
 	return []byte(strings.Join(lock, "")), nil
 }
 
 func (m *Lock) UnmarshalNMDC(data []byte) error {
-	i := bytes.Index(data, []byte(" Pk="))
+	i := bytes.Index(data, []byte(" "))
 	if i >= 0 {
-		j := bytes.Index(data, []byte("Ref="))
-		if j > i {
-			m.PK = string(data[i+4 : j])
-			m.Ref = string(data[j+4:])
-			data = data[:i]
-		}
-		data = data[:i]
+		m.Lock = string(data[:i])
 	}
-	m.Lock = string(data)
+	data = data[i+1:]
+	if bytes.HasPrefix(data, []byte("Pk=")) {
+		data = bytes.TrimPrefix(data, []byte("Pk="))
+	}
+	i = bytes.Index(data, []byte("Ref="))
+	if i >= 0 {
+		m.PK = string(data[:i])
+		m.Ref = string(data[i+4:])
+	} else {
+		m.PK = string(data)
+	}
 	return nil
 }
 

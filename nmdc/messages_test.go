@@ -34,6 +34,35 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "Lock",
+		name: "without Pk",
+		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Ref=dchub://example.org:411`,
+		msg: &Lock{
+			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
+			Ref:  "dchub://example.org:411",
+		},
+	},
+	{
+		typ:  "Lock",
+		name: "without Ref",
+		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Pk=DCPLUSPLUS0.777`,
+		msg: &Lock{
+			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
+			PK:   "DCPLUSPLUS0.777",
+		},
+	},
+	{
+		typ:  "Lock",
+		name: "with Ref",
+		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Pk=DCPLUSPLUS0.777Ref=dchub://example.org:411`,
+		msg: &Lock{
+			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
+			PK:   "DCPLUSPLUS0.777",
+			Ref:  "dchub://example.org:411",
+		},
+	},
+	{
+		typ:  "Lock",
+		name: "with Ref",
 		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Pk=DCPLUSPLUS0.777Ref=dchub://example.org:411`,
 		msg: &Lock{
 			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
