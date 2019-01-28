@@ -13,11 +13,68 @@ var casesUnmarshal = []struct {
 	expData string
 	msg     Message
 }{
-	// TODO: $HubINFO OZERKI$dc.ozerki.pro$Main Russian D�++ Hub$5000$0$1$2721$PtokaX$|
-	// TODO: $HubINFO Free$localhost:411$Online!$900$0$0$1000$VerliHub$$|
+	{
+		typ:  "FailOver",
+		data: `example.com,example.org:5555,adc://example.net:6666`,
+		msg: &FailOver{
+			Host: []string{"example.com",
+				"example.org:5555",
+				"adc://example.net:6666"},
+		},
+	},
+	{
+		typ:  "UserIP",
+		data: `johndoe 192.168.1.2`,
+		msg: &UserIP{
+			Name: "johndoe",
+			IP:   "192.168.1.2",
+		},
+	},
+	{
+		typ:  "Lock",
+		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Pk=DCPLUSPLUS0.777Ref=dchub://example.org:411`,
+		msg: &Lock{
+			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
+			PK:   "DCPLUSPLUS0.777",
+			Ref:  "dchub://example.org:411",
+		},
+	},
+	{
+		typ:     "HubINFO",
+		name:    "9 fields",
+		data:    `OZERKI$dc.ozerki.pro$Main Russian D�++ Hub$5000$0$1$2721$PtokaX$`,
+		expData: `OZERKI$dc.ozerki.pro$Main Russian D�++ Hub$5000$0$1$2721$PtokaX$$$`,
+		msg: &HubINFO{
+			Name: "OZERKI",
+			Host: "dc.ozerki.pro",
+			Desc: "Main Russian D�++ Hub",
+			I1:   5000,
+			I2:   0,
+			I3:   1,
+			I4:   2721,
+			Soft: "PtokaX",
+		},
+	},
+	{
+		typ:     "HubINFO",
+		name:    "10 fields",
+		data:    `Free$localhost:411$Online!$900$0$0$1000$VerliHub$$`,
+		expData: `Free$localhost:411$Online!$900$0$0$1000$VerliHub$$$`,
+		msg: &HubINFO{
+			Name: "Free",
+			Host: "localhost:411",
+			Desc: "Online!",
+			I1:   900,
+			I2:   0,
+			I3:   0,
+			I4:   1000,
+			Soft: "VerliHub",
+		},
+	},
 	{
 		typ:  "HubINFO",
-		data: `Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= &KCAHDEP$Public HUB$CP1251`,
+		name: "all fields",
+		data: `Angels vs Demons$dc.milenahub.ru$Cogitationis poenam nemo patitur.$20480$0$0$0$Verlihub 1.1.0.12$=FAUST= & KCAHDEP$Public HUB$CP1251`,
 		msg: &HubINFO{
 			Name:     "Angels vs Demons",
 			Host:     "dc.milenahub.ru",
@@ -27,7 +84,7 @@ var casesUnmarshal = []struct {
 			I3:       0,
 			I4:       0,
 			Soft:     "Verlihub 1.1.0.12",
-			Owner:    "=FAUST= &KCAHDEP",
+			Owner:    "=FAUST= & KCAHDEP",
 			State:    "Public HUB",
 			Encoding: "CP1251",
 		},
@@ -109,6 +166,16 @@ var casesUnmarshal = []struct {
 			Conn:      "0.01",
 			Flag:      '.',
 			ShareSize: 37038592310,
+		},
+	},
+	{
+		typ:     "MyINFO",
+		name:    "only name",
+		data:    `$ALL #GlobalOpChat $ $$$0$`,
+		expData: `$ALL #GlobalOpChat < V:,M:,H:0/0/0,S:0>$ $$$0$`,
+		msg: &MyInfo{
+			Name: "#GlobalOpChat",
+			Mode: UserModeUnknown,
 		},
 	},
 	{
