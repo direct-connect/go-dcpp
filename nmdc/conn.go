@@ -137,6 +137,12 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+		// skip one tick
+		select {
+		case <-c.closed:
+			return
+		case <-ticker.C:
+		}
 		for {
 			select {
 			case <-c.closed:
@@ -144,10 +150,7 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 			case <-ticker.C:
 			}
 			// empty message serves as keep-alive for NMDC
-			err := c.writeRaw([]byte("|"))
-			if err == nil {
-				err = c.Flush()
-			}
+			err := c.writeOneRaw([]byte("|"))
 			if err != nil {
 				_ = c.Close()
 				return
@@ -192,14 +195,7 @@ func (c *Conn) WriteMsg(m Message) error {
 	return err
 }
 
-func (c *Conn) writeRaw(data []byte) error {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
-	c.write.Lock()
-	defer c.write.Unlock()
-
+func (c *Conn) writeRawUnsafe(data []byte) error {
 	if err := c.write.err; err != nil {
 		return err
 	}
@@ -213,24 +209,59 @@ func (c *Conn) writeRaw(data []byte) error {
 	return err
 }
 
-func (c *Conn) Flush() error {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
-	c.write.Lock()
-	defer c.write.Unlock()
-
+func (c *Conn) flushUnsafe() error {
 	if err := c.write.err; err != nil {
 		return err
 	}
-	if err := c.write.w.Flush(); err != nil {
-		return err
+	err := c.write.w.Flush()
+	if err != nil {
+		c.write.err = err
 	}
 	if Debug {
 		log.Println("-> [flushed]")
 	}
-	return nil
+	return err
+}
+
+func (c *Conn) writeMsgLock() func() {
+	// make sure connection is not in binary mode
+	c.bin.RLock()
+	c.write.Lock()
+	return func() {
+		c.write.Unlock()
+		c.bin.RUnlock()
+	}
+}
+
+func (c *Conn) readMsgLock() func() {
+	// make sure connection is not in binary mode
+	c.bin.RLock()
+	c.read.Lock()
+	return func() {
+		c.read.Unlock()
+		c.bin.RUnlock()
+	}
+}
+
+func (c *Conn) writeRaw(data []byte) error {
+	defer c.writeMsgLock()()
+
+	return c.writeRawUnsafe(data)
+}
+
+func (c *Conn) writeOneRaw(data []byte) error {
+	defer c.writeMsgLock()()
+
+	if err := c.writeRawUnsafe(data); err != nil {
+		return err
+	}
+	return c.flushUnsafe()
+}
+
+func (c *Conn) Flush() error {
+	defer c.writeMsgLock()()
+
+	return c.flushUnsafe()
 }
 
 func (c *Conn) peek() ([]byte, error) {
@@ -253,12 +284,7 @@ func (c *Conn) discard(n int) {
 }
 
 func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
-	c.read.Lock()
-	defer c.read.Unlock()
+	defer c.readMsgLock()()
 
 	if err := c.read.err; err != nil {
 		return err
