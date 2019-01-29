@@ -20,7 +20,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/hub"
+	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
 var (
@@ -28,14 +30,29 @@ var (
 	f_sign  = flag.String("sign", "127.0.0.1", "host or IP to sign TLS certs for")
 	f_name  = flag.String("name", "GoTestHub", "hub name")
 	f_desc  = flag.String("desc", "Hybrid hub", "hub description")
+	f_debug = flag.Bool("debug", false, "log protocol commands")
 	f_pprof = flag.Bool("pprof", false, "run pprof")
 )
 
 func main() {
-	if *f_pprof {
-		go http.ListenAndServe(":6060", nil)
-	}
 	flag.Parse()
+	if *f_pprof {
+		go func() {
+			host, _, _ := net.SplitHostPort(*f_host)
+			if host == "" {
+				host = *f_sign
+			}
+			const pprofPort = ":6060"
+			fmt.Println("enabling profiler on", host+pprofPort)
+			if err := http.ListenAndServe(pprofPort, nil); err != nil {
+				log.Println("cannot enable profiler:", err)
+			}
+		}()
+	}
+	if *f_debug {
+		nmdc.Debug = true
+		adc.Debug = true
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -58,8 +75,8 @@ func run() error {
 
 	_, port, _ := net.SplitHostPort(*f_host)
 	addr := *f_sign + ":" + port
-	log.Println("listening on", *f_host)
-	log.Printf(`
+	fmt.Println("listening on", *f_host)
+	fmt.Printf(`
 
 [ Hub URIs ]
 adcs://%s?kp=%s
@@ -127,7 +144,7 @@ func loadCert() (*tls.Certificate, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	log.Println("generated cert for", *f_sign)
+	fmt.Println("generated cert for", *f_sign)
 	return &rootTLSCert, kp, nil
 }
 
