@@ -221,7 +221,11 @@ func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
+	h.nmdcBroadcastUserJoin(peer, notify)
 	for _, p := range notify {
+		if _, ok := p.(*nmdcPeer); ok {
+			continue
+		}
 		_ = p.PeersJoin([]Peer{peer})
 	}
 }
@@ -231,7 +235,11 @@ func (h *Hub) broadcastUserLeave(peer Peer, name string, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
+	h.nmdcBroadcastUserLeave(name, notify)
 	for _, p := range notify {
+		if _, ok := p.(*nmdcPeer); ok {
+			continue
+		}
 		_ = p.PeersLeave([]Peer{peer})
 	}
 }

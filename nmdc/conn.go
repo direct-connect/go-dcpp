@@ -154,7 +154,7 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 			case <-ticker.C:
 			}
 			// empty message serves as keep-alive for NMDC
-			err := c.writeOneRaw([]byte("|"))
+			err := c.WriteOneRaw([]byte("|"))
 			if err != nil {
 				_ = c.Close()
 				return
@@ -170,7 +170,7 @@ func (c *Conn) WriteMsg(m Message) error {
 	if err != nil {
 		return err
 	}
-	return c.writeRaw(data)
+	return c.WriteRaw(data)
 }
 
 // WriteOneMsg writes a single message to the connection's buffer
@@ -180,7 +180,7 @@ func (c *Conn) WriteOneMsg(m Message) error {
 	if err != nil {
 		return err
 	}
-	return c.writeOneRaw(data)
+	return c.WriteOneRaw(data)
 }
 
 func (c *Conn) Flush() error {
@@ -281,13 +281,13 @@ func (c *Conn) readMsgLock() func() {
 	}
 }
 
-func (c *Conn) writeRaw(data []byte) error {
+func (c *Conn) WriteRaw(data []byte) error {
 	defer c.writeMsgLock()()
 
 	return c.writeRawUnsafe(data)
 }
 
-func (c *Conn) writeOneRaw(data []byte) error {
+func (c *Conn) WriteOneRaw(data []byte) error {
 	defer c.writeMsgLock()()
 
 	if err := c.writeRawUnsafe(data); err != nil {

@@ -189,16 +189,16 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 	if err != nil {
 		return fmt.Errorf("expected version: %v", err)
 	}
-	var user nmdc.MyInfo
-	err = c.ReadMsgTo(deadline, &user)
+	curName := peer.user.Name
+	err = c.ReadMsgTo(deadline, &peer.user)
 	if err != nil {
 		return fmt.Errorf("expected user info: %v", err)
-	} else if user.Name != peer.user.Name {
+	} else if curName != peer.user.Name {
 		return errors.New("nick mismatch")
 	}
-	peer.user = user
+	peer.setUser(&peer.user)
 
-	err = c.WriteMsg(&peer.user)
+	err = c.WriteRaw(peer.userRaw)
 	if err != nil {
 		return err
 	}
@@ -275,6 +275,41 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	}
 }
 
+func (h *Hub) nmdcBroadcastUserJoin(peer Peer, notify []Peer) {
+	var join []byte
+	if p2, ok := peer.(*nmdcPeer); ok {
+		join = p2.rawInfo()
+	} else {
+		u := peer.User().toNMDC()
+		data, err := nmdc.Marshal(&u)
+		if err != nil {
+			panic(err)
+		}
+		join = data
+	}
+	for _, p := range notify {
+		p2, ok := p.(*nmdcPeer)
+		if !ok {
+			continue
+		}
+		_ = p2.writeOneRaw(join)
+	}
+}
+
+func (h *Hub) nmdcBroadcastUserLeave(name string, notify []Peer) {
+	quit, err := nmdc.Marshal(&nmdc.Quit{Name: nmdc.Name(name)})
+	if err != nil {
+		panic(err)
+	}
+	for _, p := range notify {
+		p2, ok := p.(*nmdcPeer)
+		if !ok {
+			continue
+		}
+		_ = p2.writeOneRaw(quit)
+	}
+}
+
 var _ Peer = (*nmdcPeer)(nil)
 
 const (
@@ -293,11 +328,23 @@ type nmdcPeer struct {
 
 	mu      sync.RWMutex
 	user    nmdc.MyInfo
+	userRaw []byte
 	closeMu sync.Mutex
 }
 
 func (p *nmdcPeer) getState() uint32 {
 	return atomic.LoadUint32(&p.state)
+}
+
+func (p *nmdcPeer) setUser(u *nmdc.MyInfo) {
+	if u != &p.user {
+		p.user = *u
+	}
+	data, err := nmdc.Marshal(u)
+	if err != nil {
+		panic(err)
+	}
+	p.userRaw = data
 }
 
 func (p *nmdcPeer) User() User {
@@ -321,6 +368,13 @@ func (p *nmdcPeer) Name() string {
 	name := p.user.Name
 	p.mu.RUnlock()
 	return string(name)
+}
+
+func (p *nmdcPeer) rawInfo() []byte {
+	p.mu.RLock()
+	data := p.userRaw
+	p.mu.RUnlock()
+	return data
 }
 
 func (p *nmdcPeer) Info() nmdc.MyInfo {
@@ -366,6 +420,17 @@ func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
 	return nil
 }
 
+func (p *nmdcPeer) writeOneRaw(data []byte) error {
+	if p.getState() == nmdcPeerClosed {
+		return errors.New("connection closed")
+	}
+	if err := p.conn.WriteOneRaw(data); err != nil {
+		_ = p.Close()
+		return err
+	}
+	return nil
+}
+
 func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
 	if p.getState() == nmdcPeerClosed {
 		return errors.New("connection closed")
@@ -384,46 +449,53 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 	return p.peersJoin(peers, false)
 }
 
+func (u User) toNMDC() nmdc.MyInfo {
+	flag := nmdc.FlagStatusNormal
+	if u.IPv4 {
+		flag |= nmdc.FlagIPv4
+	}
+	if u.IPv6 {
+		flag |= nmdc.FlagIPv6
+	}
+	if u.TLS {
+		flag |= nmdc.FlagTLS
+	}
+	return nmdc.MyInfo{
+		Name:      nmdc.Name(u.Name),
+		Client:    u.App.Name,
+		Version:   u.App.Vers,
+		Email:     u.Email,
+		ShareSize: u.Share,
+		Flag:      flag,
+
+		// TODO
+		Mode:  nmdc.UserModeActive,
+		Hubs:  [3]int{1, 0, 0},
+		Slots: 1,
+		Conn:  "LAN(T3)",
+	}
+}
+
 func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	if p.getState() == nmdcPeerClosed {
 		return errors.New("connection closed")
 	}
 	write := p.writeOne
+	writeRaw := p.writeOneRaw
 	if initial {
 		write = p.conn.WriteMsg
+		writeRaw = p.conn.WriteRaw
 	}
 	for _, peer := range peers {
-		var u nmdc.MyInfo
 		if p2, ok := peer.(*nmdcPeer); ok {
-			u = p2.Info()
-		} else {
-			info := peer.User()
-			flag := nmdc.FlagStatusNormal
-			if info.IPv4 {
-				flag |= nmdc.FlagIPv4
+			data := p2.rawInfo()
+			if err := writeRaw(data); err != nil {
+				return err
 			}
-			if info.IPv6 {
-				flag |= nmdc.FlagIPv6
-			}
-			if info.TLS {
-				flag |= nmdc.FlagTLS
-			}
-			u = nmdc.MyInfo{
-				Name:      nmdc.Name(info.Name),
-				Client:    info.App.Name,
-				Version:   info.App.Vers,
-				Email:     info.Email,
-				ShareSize: info.Share,
-				Flag:      flag,
-
-				// TODO
-				Mode:  nmdc.UserModeActive,
-				Hubs:  [3]int{1, 0, 0},
-				Slots: 1,
-				Conn:  "LAN(T3)",
-			}
+			continue
 		}
-		if err := write(&u); err != nil {
+		info := peer.User().toNMDC()
+		if err := write(&info); err != nil {
 			return err
 		}
 	}

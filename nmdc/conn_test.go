@@ -62,7 +62,7 @@ func BenchmarkConnWriteLinear(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err := c.writeRaw(data)
+		err := c.WriteRaw(data)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -84,7 +84,7 @@ func BenchmarkConnWrite(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err := c.writeOneRaw(data)
+		err := c.WriteOneRaw(data)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -111,7 +111,7 @@ func BenchmarkConnWriteConcurrent(b *testing.B) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_ = c.writeOneRaw(data)
+			_ = c.WriteOneRaw(data)
 		}()
 	}
 	b.ResetTimer()
