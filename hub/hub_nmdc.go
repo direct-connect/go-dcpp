@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/direct-connect/go-dcpp/nmdc"
@@ -113,7 +114,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.Unlock()
 
 	err = h.nmdcAccept(peer, our)
-	if err != nil {
+	if err != nil || peer.getState() == nmdcPeerClosed {
 		h.peers.Lock()
 		delete(h.peers.logging, name)
 		h.peers.Unlock()
@@ -133,11 +134,13 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	// add user to the hub
 	h.peers.bySID[peer.sid] = peer
 	h.peers.byName[name] = peer
+	atomic.StoreUint32(&peer.state, nmdcPeerJoining)
 	h.peers.Unlock()
 
 	// notify other users about the new one
 	// TODO: this will block the client
 	h.broadcastUserJoin(peer, list)
+	atomic.StoreUint32(&peer.state, nmdcPeerNormal)
 
 	if err := peer.conn.Flush(); err != nil {
 		_ = peer.closeOn(list)
@@ -211,13 +214,13 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 	}
 
 	// send user list (except his own info)
-	err = peer.PeersJoin(h.Peers())
+	err = peer.peersJoin(h.Peers(), true)
 	if err != nil {
 		return err
 	}
 
-	// write his info and flush
-	err = peer.PeersJoin([]Peer{peer})
+	// write his info
+	err = peer.peersJoin([]Peer{peer}, true)
 	if err != nil {
 		return err
 	}
@@ -274,8 +277,16 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 
 var _ Peer = (*nmdcPeer)(nil)
 
+const (
+	nmdcPeerConnecting = iota
+	nmdcPeerJoining
+	nmdcPeerNormal
+	nmdcPeerClosed
+)
+
 type nmdcPeer struct {
 	BasePeer
+	state uint32 // atomic
 
 	conn *nmdc.Conn
 	fea  nmdc.Features
@@ -283,7 +294,10 @@ type nmdcPeer struct {
 	mu      sync.RWMutex
 	user    nmdc.MyInfo
 	closeMu sync.Mutex
-	closed  bool
+}
+
+func (p *nmdcPeer) getState() uint32 {
+	return atomic.LoadUint32(&p.state)
 }
 
 func (p *nmdcPeer) User() User {
@@ -317,15 +331,20 @@ func (p *nmdcPeer) Info() nmdc.MyInfo {
 }
 
 func (p *nmdcPeer) closeOn(list []Peer) error {
+	switch p.getState() {
+	case nmdcPeerClosed, nmdcPeerJoining:
+		return nil
+	}
 	p.closeMu.Lock()
 	defer p.closeMu.Unlock()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if p.closed {
+	switch p.getState() {
+	case nmdcPeerClosed, nmdcPeerJoining:
 		return nil
 	}
 	err := p.conn.Close()
-	p.closed = true
+	atomic.StoreUint32(&p.state, nmdcPeerClosed)
 
 	name := string(p.user.Name)
 	p.hub.leave(p, p.sid, name, list)
@@ -337,6 +356,9 @@ func (p *nmdcPeer) Close() error {
 }
 
 func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
+	if p.getState() == nmdcPeerClosed {
+		return errors.New("connection closed")
+	}
 	if err := p.conn.WriteOneMsg(msg); err != nil {
 		_ = p.Close()
 		return err
@@ -345,6 +367,9 @@ func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
 }
 
 func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
+	if p.getState() == nmdcPeerClosed {
+		return errors.New("connection closed")
+	}
 	// should only be used for closing the connection
 	if err := p.conn.WriteMsg(msg); err != nil {
 		return err
@@ -356,6 +381,17 @@ func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
 }
 
 func (p *nmdcPeer) PeersJoin(peers []Peer) error {
+	return p.peersJoin(peers, false)
+}
+
+func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
+	if p.getState() == nmdcPeerClosed {
+		return errors.New("connection closed")
+	}
+	write := p.writeOne
+	if initial {
+		write = p.conn.WriteMsg
+	}
 	for _, peer := range peers {
 		var u nmdc.MyInfo
 		if p2, ok := peer.(*nmdcPeer); ok {
@@ -387,22 +423,25 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 				Conn:  "LAN(T3)",
 			}
 		}
-		if err := p.conn.WriteMsg(&u); err != nil {
+		if err := write(&u); err != nil {
 			return err
 		}
 	}
-	return p.conn.Flush()
+	return nil
 }
 
 func (p *nmdcPeer) PeersLeave(peers []Peer) error {
+	if p.getState() == nmdcPeerClosed {
+		return errors.New("connection closed")
+	}
 	for _, peer := range peers {
-		if err := p.conn.WriteMsg(&nmdc.Quit{
+		if err := p.writeOne(&nmdc.Quit{
 			Name: nmdc.Name(peer.Name()),
 		}); err != nil {
 			return err
 		}
 	}
-	return p.conn.Flush()
+	return nil
 }
 
 func (p *nmdcPeer) ChatMsg(from Peer, text string) error {
