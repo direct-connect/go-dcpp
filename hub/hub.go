@@ -253,11 +253,13 @@ func (h *Hub) sendMOTD(peer Peer) error {
 	return peer.HubChatMsg("Welcome!")
 }
 
-func (h *Hub) leave(peer Peer, sid adc.SID, name string) {
+func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	h.peers.Lock()
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)
-	notify := h.listPeers()
+	if notify == nil {
+		notify = h.listPeers()
+	}
 	h.peers.Unlock()
 
 	h.broadcastUserLeave(peer, name, notify)

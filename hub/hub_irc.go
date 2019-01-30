@@ -348,7 +348,7 @@ func (p *ircPeer) Close() error {
 	err := p.conn.Close()
 	p.closed = true
 
-	p.hub.leave(p, p.sid, p.name)
+	p.hub.leave(p, p.sid, p.name, nil)
 	return err
 }
 

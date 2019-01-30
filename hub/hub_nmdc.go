@@ -137,6 +137,11 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	// TODO: this will block the client
 	h.broadcastUserJoin(peer, list)
 
+	if err := peer.conn.Flush(); err != nil {
+		_ = peer.closeOn(list)
+		return nil, err
+	}
+
 	return peer, nil
 }
 
@@ -309,7 +314,7 @@ func (p *nmdcPeer) Info() nmdc.MyInfo {
 	return u
 }
 
-func (p *nmdcPeer) Close() error {
+func (p *nmdcPeer) closeOn(list []Peer) error {
 	p.closeMu.Lock()
 	defer p.closeMu.Unlock()
 	p.mu.RLock()
@@ -321,8 +326,12 @@ func (p *nmdcPeer) Close() error {
 	p.closed = true
 
 	name := string(p.user.Name)
-	p.hub.leave(p, p.sid, name)
+	p.hub.leave(p, p.sid, name, list)
 	return err
+}
+
+func (p *nmdcPeer) Close() error {
+	return p.closeOn(nil)
 }
 
 func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
