@@ -91,6 +91,7 @@ func NewConn(conn net.Conn) (*Conn, error) {
 
 // Conn is a NMDC protocol connection.
 type Conn struct {
+	cmu    sync.Mutex
 	closed chan struct{}
 
 	// bin should be acquired as RLock on commands read/write
@@ -123,7 +124,9 @@ func (c *Conn) RemoteAddr() net.Addr {
 
 // Close closes the connection.
 func (c *Conn) Close() error {
-	// should not hold the mutex
+	c.cmu.Lock()
+	defer c.cmu.Unlock()
+	// should not hold any other mutex
 	select {
 	case <-c.closed:
 		return nil
