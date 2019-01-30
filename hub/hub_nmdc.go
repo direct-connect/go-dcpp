@@ -275,41 +275,6 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	}
 }
 
-func (h *Hub) nmdcBroadcastUserJoin(peer Peer, notify []Peer) {
-	var join []byte
-	if p2, ok := peer.(*nmdcPeer); ok {
-		join = p2.rawInfo()
-	} else {
-		u := peer.User().toNMDC()
-		data, err := nmdc.Marshal(&u)
-		if err != nil {
-			panic(err)
-		}
-		join = data
-	}
-	for _, p := range notify {
-		p2, ok := p.(*nmdcPeer)
-		if !ok {
-			continue
-		}
-		_ = p2.writeOneRaw(join)
-	}
-}
-
-func (h *Hub) nmdcBroadcastUserLeave(name string, notify []Peer) {
-	quit, err := nmdc.Marshal(&nmdc.Quit{Name: nmdc.Name(name)})
-	if err != nil {
-		panic(err)
-	}
-	for _, p := range notify {
-		p2, ok := p.(*nmdcPeer)
-		if !ok {
-			continue
-		}
-		_ = p2.writeOneRaw(quit)
-	}
-}
-
 var _ Peer = (*nmdcPeer)(nil)
 
 const (
@@ -445,6 +410,17 @@ func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
 	return nil
 }
 
+func (p *nmdcPeer) BroadcastJoin(peers []Peer) {
+	join := p.rawInfo()
+	for _, p2 := range peers {
+		if p2, ok := p2.(*nmdcPeer); ok {
+			_ = p2.writeOneRaw(join)
+			continue
+		}
+		_ = p2.PeersJoin([]Peer{p})
+	}
+}
+
 func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 	return p.peersJoin(peers, false)
 }
@@ -500,6 +476,22 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 		}
 	}
 	return nil
+}
+
+func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
+	quit, err := nmdc.Marshal(&nmdc.Quit{
+		Name: nmdc.Name(p.Name()),
+	})
+	if err != nil {
+		panic(err)
+	}
+	for _, p2 := range peers {
+		if p2, ok := p2.(*nmdcPeer); ok {
+			_ = p2.writeOneRaw(quit)
+			continue
+		}
+		_ = p2.PeersLeave([]Peer{p})
+	}
 }
 
 func (p *nmdcPeer) PeersLeave(peers []Peer) error {

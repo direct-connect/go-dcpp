@@ -443,6 +443,12 @@ func (p *adcPeer) Close() error {
 	return err
 }
 
+func (p *adcPeer) BroadcastJoin(peers []Peer) {
+	for _, p2 := range peers {
+		_ = p2.PeersJoin([]Peer{p})
+	}
+}
+
 func (p *adcPeer) PeersJoin(peers []Peer) error {
 	for _, peer := range peers {
 		var u adc.User
@@ -483,6 +489,12 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 		}
 	}
 	return p.conn.Flush()
+}
+
+func (p *adcPeer) BroadcastLeave(peers []Peer) {
+	for _, p2 := range peers {
+		_ = p2.PeersLeave([]Peer{p})
+	}
 }
 
 func (p *adcPeer) PeersLeave(peers []Peer) error {

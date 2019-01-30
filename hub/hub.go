@@ -221,27 +221,15 @@ func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
-	h.nmdcBroadcastUserJoin(peer, notify)
-	for _, p := range notify {
-		if _, ok := p.(*nmdcPeer); ok {
-			continue
-		}
-		_ = p.PeersJoin([]Peer{peer})
-	}
+	peer.BroadcastJoin(notify)
 }
 
-func (h *Hub) broadcastUserLeave(peer Peer, name string, notify []Peer) {
-	log.Printf("%s: disconnected: %s %s", peer.RemoteAddr(), peer.SID(), name)
+func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
+	log.Printf("%s: disconnected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {
 		notify = h.Peers()
 	}
-	h.nmdcBroadcastUserLeave(name, notify)
-	for _, p := range notify {
-		if _, ok := p.(*nmdcPeer); ok {
-			continue
-		}
-		_ = p.PeersLeave([]Peer{peer})
-	}
+	peer.BroadcastLeave(notify)
 }
 
 func (h *Hub) broadcastChat(from Peer, text string, notify []Peer) {
@@ -270,7 +258,7 @@ func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	}
 	h.peers.Unlock()
 
-	h.broadcastUserLeave(peer, name, notify)
+	h.broadcastUserLeave(peer, notify)
 }
 
 func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
@@ -281,7 +269,7 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	notify := h.listPeers()
 	h.peers.Unlock()
 
-	h.broadcastUserLeave(peer, name, notify)
+	h.broadcastUserLeave(peer, notify)
 }
 
 func (h *Hub) connectReq(from, to Peer, addr, token string, secure bool) {
@@ -317,6 +305,8 @@ type Peer interface {
 
 	PeersJoin(peers []Peer) error
 	PeersLeave(peers []Peer) error
+	BroadcastJoin(peers []Peer)
+	BroadcastLeave(peers []Peer)
 	//PeersUpdate(peers []Peer) error
 
 	ChatMsg(from Peer, text string) error
