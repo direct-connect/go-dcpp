@@ -117,6 +117,8 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		h.peers.Lock()
 		delete(h.peers.logging, name)
 		h.peers.Unlock()
+
+		_ = peer.writeOneNow(&nmdc.Failed{Text: "handshake failed"})
 		return nil, err
 	}
 
@@ -335,14 +337,22 @@ func (p *nmdcPeer) Close() error {
 }
 
 func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
-	return p.conn.WriteOneMsg(msg)
+	if err := p.conn.WriteOneMsg(msg); err != nil {
+		_ = p.Close()
+		return err
+	}
+	return nil
 }
 
 func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
-	if err := p.conn.WriteOneMsg(msg); err != nil {
+	// should only be used for closing the connection
+	if err := p.conn.WriteMsg(msg); err != nil {
 		return err
 	}
-	return p.conn.Flush()
+	if err := p.conn.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *nmdcPeer) PeersJoin(peers []Peer) error {
