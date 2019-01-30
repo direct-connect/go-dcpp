@@ -33,5 +33,8 @@ func (h *Hub) ServeHTTP2(conn net.Conn) error {
 
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	st := h.Stats()
+	hd := w.Header()
+	hd.Set("Content-Type", "application/json")
+	hd.Set("Server", st.Soft.Name+"/"+st.Soft.Vers)
 	_ = json.NewEncoder(w).Encode(st)
 }
