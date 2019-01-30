@@ -41,7 +41,7 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 	if err := conf.validate(); err != nil {
 		return nil, err
 	}
-	mutual, err := hubHanshake(conn, conf)
+	mutual, hub, err := hubHanshake(conn, conf)
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -49,6 +49,7 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 	c := &Conn{
 		conn:    conn,
 		fea:     mutual,
+		hub:     *hub,
 		closing: make(chan struct{}),
 		closed:  make(chan struct{}),
 	}
@@ -63,7 +64,7 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 	return c, nil
 }
 
-func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
+func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, *HubInfo, error) {
 	deadline := time.Now().Add(time.Second * 5)
 
 	ext := []string{
@@ -74,7 +75,7 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 
 	_, err := conn.SendClientHandshake(deadline, conf.Name, ext...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	deadline = deadline.Add(time.Second * 5)
 
@@ -82,13 +83,16 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, error) {
 	for _, e := range ext {
 		our.Set(e)
 	}
-	var mutual nmdc.Features
+	var (
+		mutual nmdc.Features
+		hub    HubInfo
+	)
 
 handshake:
 	for {
 		msg, err := conn.ReadMsg(deadline)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		switch msg := msg.(type) {
 		case *nmdc.ChatMessage:
@@ -100,16 +104,18 @@ handshake:
 			mutual = our.IntersectList(msg.Ext)
 			if _, ok := mutual[nmdc.FeaNoHello]; !ok {
 				// TODO: support hello as well
-				return nil, fmt.Errorf("no hello is not supported: %v", msg.Ext)
+				return nil, nil, fmt.Errorf("no hello is not supported: %v", msg.Ext)
 			}
+		case *nmdc.HubName:
+			hub.Name = msg.Name
 		case *nmdc.Hello:
 			if string(msg.Name) != conf.Name {
-				return nil, fmt.Errorf("unexpected name in hello: %q", msg.Name)
+				return nil, nil, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
 			break handshake
 		default:
-			// TODO: HubName, GetPass, ...?
-			return nil, fmt.Errorf("unexpected command in handshake: %#v", msg)
+			// TODO: HubTopic, GetPass, ...?
+			return nil, nil, fmt.Errorf("unexpected command in handshake: %#v", msg)
 		}
 	}
 
@@ -127,9 +133,9 @@ handshake:
 		ShareSize: 13 * 1023 * 1023 * 1023,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return mutual, nil
+	return mutual, &hub, nil
 }
 
 func initConn(c *Conn) error {
@@ -208,6 +214,15 @@ func (c *Conn) OnlinePeers() []*Peer {
 	return list
 }
 
+func (c *Conn) SendChatMsg(msg string) error {
+	c.imu.RLock()
+	name := c.user.Name
+	c.imu.RUnlock()
+	return c.conn.WriteOneMsg(&nmdc.ChatMessage{
+		Name: name, Text: nmdc.String(msg),
+	})
+}
+
 func (c *Conn) readLoop() {
 	defer close(c.closed)
 	for {
@@ -258,7 +273,7 @@ func (c *Conn) readLoop() {
 			}
 			c.peers.RUnlock()
 		default:
-			log.Printf("unhandled command: %T %+v", msg, msg)
+			log.Printf("unhandled command: %T %q", msg, msg.Cmd())
 		}
 	}
 }
