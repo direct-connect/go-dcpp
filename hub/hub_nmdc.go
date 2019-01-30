@@ -45,21 +45,15 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	}
 
 	deadline := time.Now().Add(time.Second * 5)
-	msg, err := c.ReadMsg(deadline)
+	var sup nmdc.Supports
+	err = c.ReadMsgTo(deadline, &sup)
 	if err != nil {
 		return nil, fmt.Errorf("expected supports: %v", err)
 	}
-	sup, ok := msg.(*nmdc.Supports)
-	if !ok {
-		return nil, fmt.Errorf("expected supports from the client, got: %#v", msg)
-	}
-	msg, err = c.ReadMsg(deadline)
+	var key nmdc.Key
+	err = c.ReadMsgTo(deadline, &key)
 	if err != nil {
 		return nil, fmt.Errorf("expected key: %v", err)
-	}
-	key, ok := msg.(*nmdc.Key)
-	if !ok {
-		return nil, fmt.Errorf("expected key from the client, got: %#v", msg)
 	} else if key.Key != lock.Key().Key {
 		return nil, errors.New("wrong key")
 	}
@@ -73,15 +67,11 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	} else if _, ok := mutual[nmdc.FeaNoGetINFO]; !ok {
 		return nil, errors.New("NoGetINFO is not supported")
 	}
-	msg, err = c.ReadMsg(deadline)
+	var nick nmdc.ValidateNick
+	err = c.ReadMsgTo(deadline, &nick)
 	if err != nil {
 		return nil, fmt.Errorf("expected validate: %v", err)
-	}
-	nick, ok := msg.(*nmdc.ValidateNick)
-	if !ok {
-		return nil, fmt.Errorf("expected validate from the client, got: %#v", msg)
-	}
-	if nick.Name == "" {
+	} else if nick.Name == "" {
 		return nil, errors.New("empty nickname")
 	}
 
@@ -177,35 +167,26 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 		return err
 	}
 
-	msg, err := c.ReadMsg(deadline)
+	var vers nmdc.Version
+	err = c.ReadMsgTo(deadline, &vers)
 	if err != nil {
 		return fmt.Errorf("expected version: %v", err)
-	}
-	vers, ok := msg.(*nmdc.Version)
-	if !ok {
-		return fmt.Errorf("expected version from the client, got: %#v", msg)
 	} else if vers.Vers != "1,0091" && vers.Vers != "1.0091" {
 		return fmt.Errorf("unexpected version: %q", vers)
 	}
-	msg, err = c.ReadMsg(deadline)
+	var nicks nmdc.GetNickList
+	err = c.ReadMsgTo(deadline, &nicks)
 	if err != nil {
 		return fmt.Errorf("expected version: %v", err)
 	}
-	_, ok = msg.(*nmdc.GetNickList)
-	if !ok {
-		return fmt.Errorf("expected nick list request from the client, got: %#v", msg)
-	}
-	msg, err = c.ReadMsg(deadline)
+	var user nmdc.MyInfo
+	err = c.ReadMsgTo(deadline, &user)
 	if err != nil {
 		return fmt.Errorf("expected user info: %v", err)
-	}
-	user, ok := msg.(*nmdc.MyInfo)
-	if !ok {
-		return fmt.Errorf("expected user info from the client, got: %#v", msg)
 	} else if user.Name != peer.user.Name {
-		return errors.New("nick missmatch")
+		return errors.New("nick mismatch")
 	}
-	peer.user = *user
+	peer.user = user
 
 	err = c.WriteMsg(&peer.user)
 	if err != nil {
