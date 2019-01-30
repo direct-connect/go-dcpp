@@ -104,7 +104,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.RUnlock()
 
 	if sameName1 || sameName2 {
-		_ = peer.writeOne(&nmdc.ValidateDenide{nick.Name})
+		_ = peer.writeOneNow(&nmdc.ValidateDenide{nick.Name})
 		return nil, errNickTaken
 	}
 
@@ -115,7 +115,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 
-		_ = peer.writeOne(&nmdc.ValidateDenide{nick.Name})
+		_ = peer.writeOneNow(&nmdc.ValidateDenide{nick.Name})
 		return nil, errNickTaken
 	}
 	// bind nick, still no one will see us yet
@@ -345,8 +345,11 @@ func (p *nmdcPeer) Close() error {
 }
 
 func (p *nmdcPeer) writeOne(msg nmdc.Message) error {
-	err := p.conn.WriteMsg(msg)
-	if err != nil {
+	return p.conn.WriteOneMsg(msg)
+}
+
+func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
+	if err := p.conn.WriteOneMsg(msg); err != nil {
 		return err
 	}
 	return p.conn.Flush()
@@ -439,9 +442,9 @@ func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 }
 
 func (p *nmdcPeer) failed(text string) error {
-	return p.writeOne(&nmdc.Failed{Text: nmdc.String(text)})
+	return p.writeOneNow(&nmdc.Failed{Text: nmdc.String(text)})
 }
 
 func (p *nmdcPeer) error(text string) error {
-	return p.writeOne(&nmdc.Error{Text: nmdc.String(text)})
+	return p.writeOneNow(&nmdc.Error{Text: nmdc.String(text)})
 }

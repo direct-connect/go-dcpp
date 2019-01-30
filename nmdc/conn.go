@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -79,7 +80,8 @@ func Dial(addr string) (*Conn, error) {
 // NewConn runs an NMDC protocol over a specified connection.
 func NewConn(conn net.Conn) (*Conn, error) {
 	c := &Conn{
-		conn: conn,
+		conn:   conn,
+		closed: make(chan struct{}),
 	}
 	c.write.w = bufio.NewWriter(conn)
 	c.read.r = conn
@@ -98,6 +100,10 @@ type Conn struct {
 	conn net.Conn
 
 	write struct {
+		active     int32 // atomic
+		schedule   chan<- struct{}
+		unschedule chan<- struct{}
+
 		sync.Mutex
 		err error
 		w   *bufio.Writer
@@ -117,23 +123,18 @@ func (c *Conn) RemoteAddr() net.Addr {
 
 // Close closes the connection.
 func (c *Conn) Close() error {
-	if c.closed != nil {
-		select {
-		case <-c.closed:
-		default:
-			close(c.closed)
-		}
+	// should not hold the mutex
+	select {
+	case <-c.closed:
+		return nil
+	default:
+		close(c.closed)
 	}
 	return c.conn.Close()
 }
 
 // KeepAlive starts sending keep-alive messages on the connection.
 func (c *Conn) KeepAlive(interval time.Duration) {
-	if c.closed != nil {
-		// already enabled
-		return
-	}
-	c.closed = make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -159,40 +160,30 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 	}()
 }
 
+// WriteMsg writes a single message to the connection's buffer.
+// Caller should call Flush or FlushLazy to schedule the write.
 func (c *Conn) WriteMsg(m Message) error {
-	var (
-		data []byte
-		err  error
-	)
-	if cm, ok := m.(*ChatMessage); ok {
-		// special case
-		data, err = cm.MarshalNMDC()
-	} else {
-		data, err = m.MarshalNMDC()
-		if err == nil {
-			name := m.Cmd()
-			n := 1 + len(name) + 1
-			if len(data) != 0 {
-				n += 1 + len(data)
-			}
-			buf := make([]byte, n)
-			i := 0
-			buf[i] = '$'
-			i++
-			i += copy(buf[i:], name)
-			if len(data) != 0 {
-				buf[i] = ' '
-				i++
-				i += copy(buf[i:], data)
-			}
-			buf[i] = '|'
-			data = buf
-		}
+	data, err := Marshal(m)
+	if err != nil {
+		return err
 	}
-	if err == nil {
-		err = c.writeRaw(data)
+	return c.writeRaw(data)
+}
+
+// WriteOneMsg writes a single message to the connection's buffer
+// and schedules the write.
+func (c *Conn) WriteOneMsg(m Message) error {
+	data, err := Marshal(m)
+	if err != nil {
+		return err
 	}
-	return err
+	return c.writeOneRaw(data)
+}
+
+func (c *Conn) Flush() error {
+	defer c.writeMsgLock()()
+
+	return c.flushUnsafe()
 }
 
 func (c *Conn) writeRawUnsafe(data []byte) error {
@@ -205,17 +196,24 @@ func (c *Conn) writeRawUnsafe(data []byte) error {
 	_, err := c.write.w.Write(data)
 	if err != nil {
 		c.write.err = err
+		_ = c.Close()
 	}
 	return err
 }
 
 func (c *Conn) flushUnsafe() error {
+	if c.write.schedule != nil {
+		close(c.write.unschedule)
+		c.write.schedule = nil
+		c.write.unschedule = nil
+	}
 	if err := c.write.err; err != nil {
 		return err
 	}
 	err := c.write.w.Flush()
 	if err != nil {
 		c.write.err = err
+		_ = c.Close()
 	}
 	if Debug {
 		log.Println("-> [flushed]")
@@ -223,11 +221,48 @@ func (c *Conn) flushUnsafe() error {
 	return err
 }
 
+func (c *Conn) scheduleFlush() error {
+	if err := c.write.err; err != nil {
+		return err
+	}
+	if c.write.schedule != nil {
+		select {
+		case c.write.schedule <- struct{}{}:
+		default:
+		}
+		return nil
+	}
+	const delay = time.Millisecond * 15
+	re := make(chan struct{}, 1)
+	un := make(chan struct{})
+	c.write.schedule = re
+	c.write.unschedule = un
+	timer := time.NewTimer(delay)
+	go func() {
+		defer timer.Stop()
+		for {
+			select {
+			case <-c.closed:
+				return
+			case <-un:
+				return
+			case <-timer.C:
+				_ = c.Flush()
+				return
+			case <-re:
+			}
+		}
+	}()
+	return nil
+}
+
 func (c *Conn) writeMsgLock() func() {
+	atomic.AddInt32(&c.write.active, 1)
 	// make sure connection is not in binary mode
 	c.bin.RLock()
 	c.write.Lock()
 	return func() {
+		atomic.AddInt32(&c.write.active, -1)
 		c.write.Unlock()
 		c.bin.RUnlock()
 	}
@@ -255,13 +290,11 @@ func (c *Conn) writeOneRaw(data []byte) error {
 	if err := c.writeRawUnsafe(data); err != nil {
 		return err
 	}
-	return c.flushUnsafe()
-}
-
-func (c *Conn) Flush() error {
-	defer c.writeMsgLock()()
-
-	return c.flushUnsafe()
+	if atomic.LoadInt32(&c.write.active) > 1 {
+		// next one will flush
+		return nil
+	}
+	return c.scheduleFlush()
 }
 
 func (c *Conn) peek() ([]byte, error) {

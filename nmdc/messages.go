@@ -57,6 +57,34 @@ func RegisterMessage(m Message) {
 	messages[name] = rt
 }
 
+func Marshal(m Message) ([]byte, error) {
+	if cm, ok := m.(*ChatMessage); ok {
+		// special case
+		return cm.MarshalNMDC()
+	}
+	data, err := m.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	name := m.Cmd()
+	n := 1 + len(name) + 1
+	if len(data) != 0 {
+		n += 1 + len(data)
+	}
+	buf := make([]byte, n)
+	i := 0
+	buf[i] = '$'
+	i++
+	i += copy(buf[i:], name)
+	if len(data) != 0 {
+		buf[i] = ' '
+		i++
+		i += copy(buf[i:], data)
+	}
+	buf[i] = '|'
+	return buf, nil
+}
+
 type RawCommand struct {
 	Name string
 	Data []byte
