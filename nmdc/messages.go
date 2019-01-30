@@ -37,6 +37,7 @@ func init() {
 	RegisterMessage(&Failed{})
 	RegisterMessage(&Error{})
 	RegisterMessage(&FailOver{})
+	RegisterMessage(&MCTo{})
 }
 
 type Message interface {
@@ -554,10 +555,12 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 			} else {
 				desc = field[:i]
 				tag := field[i+1:]
-				if len(tag) == 0 || tag[len(tag)-1] != '>' {
+				if len(tag) == 0 {
 					return errors.New("invalid info tag")
+				} else if tag[len(tag)-1] == '>' {
+					tag = tag[:len(tag)-1]
 				}
-				if err := m.unmarshalTag(tag[:len(tag)-1]); err != nil {
+				if err := m.unmarshalTag(tag); err != nil {
 					return err
 				}
 			}
@@ -591,12 +594,17 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 }
 
 func (m *MyInfo) unmarshalTag(tag []byte) error {
-	var client []byte
-	var tags [][]byte
-	i := bytes.Index(tag, []byte(" V:"))
-	if i < 0 {
-		tags = bytes.Split(tag, []byte(","))
-	} else {
+	var (
+		client []byte
+		tags   [][]byte
+		i      int
+	)
+	if i = bytes.Index(tag, []byte(" V:")); i < 0 {
+		if i = bytes.Index(tag, []byte(" v:")); i < 0 {
+			tags = bytes.Split(tag, []byte(","))
+		}
+	}
+	if i > 0 {
 		client = tag[:i]
 		tags = bytes.Split(tag[i+1:], []byte(","))
 	}
@@ -608,16 +616,15 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 		} else if i >= 0 {
 			name := string(field[:i])
 			value := string(field[i+1:])
-			switch name {
-			case "V":
+			if name == "V" || name == "v" {
 				m.Version = value
-			case "M":
+			} else if name == "M" || name == "m" {
 				if len([]byte(value)) == 1 {
 					m.Mode = UserMode(value[0])
 				} else {
 					m.Mode = UserModeUnknown
 				}
-			case "H":
+			} else if name == "H" || name == "h" {
 				hubs := strings.Split(value, "/")
 				if len(hubs) > 3 {
 					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
@@ -629,17 +636,19 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 					}
 					m.Hubs[i] = h
 				}
-			case "S":
+			} else if name == "S" || name == "s" {
 				slots, err := strconv.Atoi(strings.TrimSpace(value))
 				if err != nil {
 					return errors.New("invalid info slots")
 				}
 				m.Slots = int(slots)
-			default:
+			} else {
 				other[name] = value
 			}
 		} else {
-			return fmt.Errorf("unknown field in tag: %q", field)
+			if len(field) != 0 {
+				return fmt.Errorf("unknown field in tag: %q", field)
+			}
 		}
 	}
 	m.Client = string(client)
@@ -960,6 +969,59 @@ func (m *FailOver) UnmarshalNMDC(data []byte) error {
 	hosts := bytes.Split(data, []byte(","))
 	for _, host := range hosts {
 		m.Host = append(m.Host, string(host))
+	}
+	return nil
+}
+
+type MCTo struct {
+	Target, Sender Name
+	Text           String
+}
+
+func (*MCTo) Cmd() string {
+	return "MCTo"
+}
+
+func (m *MCTo) MarshalNMDC() ([]byte, error) {
+	target, err := m.Target.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf := bytes.NewBuffer(nil)
+	buf.Write(target)
+	sender, err := m.Sender.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.WriteString(" $")
+	buf.Write(sender)
+	text, err := m.Text.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.WriteString(" ")
+	buf.Write(text)
+	return buf.Bytes(), nil
+}
+
+func (m *MCTo) UnmarshalNMDC(data []byte) error {
+	i := bytes.Index(data, []byte(" $"))
+	if i < 0 {
+		return errors.New("invalid PrivateMessage")
+	}
+	if err := m.Target.UnmarshalNMDC(data[:i]); err != nil {
+		return err
+	}
+	data = data[i+2:]
+	i = bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid PrivateMessage")
+	}
+	if err := m.Sender.UnmarshalNMDC(data[:i]); err != nil {
+		return err
+	}
+	if err := m.Text.UnmarshalNMDC(data[i+1:]); err != nil {
+		return err
 	}
 	return nil
 }
