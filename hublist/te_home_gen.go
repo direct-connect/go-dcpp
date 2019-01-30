@@ -4,7 +4,6 @@ package hublist
 
 type teHub struct {
 	Address     string  `json:"address"`
-	Asn         string  `json:"asn"`
 	Bots        int     `json:"bots"`
 	Country     string  `json:"country"`
 	Description string  `json:"description"`

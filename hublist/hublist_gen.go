@@ -3,7 +3,6 @@
 package hublist
 
 type Hub struct {
-	ASN         string `xml:"ASN,attr"`
 	Address     string `xml:"Address,attr"`
 	Bots        int    `xml:"Bots,attr"`
 	Country     string `xml:"Country,attr"`

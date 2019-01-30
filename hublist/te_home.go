@@ -39,7 +39,6 @@ func teGet(ctx context.Context) ([]teHub, error) {
 func (h teHub) toHub() Hub {
 	return Hub{
 		Address:     h.Address,
-		ASN:         h.Asn,
 		Bots:        h.Bots,
 		Country:     h.Country,
 		Description: h.Description,
