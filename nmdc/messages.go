@@ -605,8 +605,7 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 	}
 	if i < 0 {
 		tags = bytes.Split(tag, []byte(","))
-	}
-	if i > 0 {
+	} else {
 		client = tag[:i]
 		tags = bytes.Split(tag[i+1:], []byte(","))
 	}
@@ -615,7 +614,15 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 		i = bytes.Index(field, []byte(":"))
 		if i < 0 && r < 1 {
 			client = field
-		} else if i >= 0 {
+			continue
+		}
+		if i < 0 {
+			if len(field) == 0 {
+				continue
+			}
+			return fmt.Errorf("unknown field in tag: %q", field)
+		}
+		if i >= 0 {
 			name := string(field[:i])
 			value := string(field[i+1:])
 			switch name {
@@ -624,9 +631,9 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 			case "M", "m":
 				if len([]byte(value)) == 1 {
 					m.Mode = UserMode(value[0])
-				} else {
-					m.Mode = UserModeUnknown
+					continue
 				}
+				m.Mode = UserModeUnknown
 			case "H", "h":
 				hubs := strings.Split(value, "/")
 				if len(hubs) > 3 {
@@ -647,10 +654,6 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 				m.Slots = int(slots)
 			default:
 				other[name] = value
-			}
-		} else {
-			if len(field) != 0 {
-				return fmt.Errorf("unknown field in tag: %q", field)
 			}
 		}
 	}
