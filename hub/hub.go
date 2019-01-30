@@ -72,12 +72,18 @@ type Hub struct {
 }
 
 type Stats struct {
-	Name  string   `json:"name"`
-	Desc  string   `json:"desc,omitempty"`
-	Users int      `json:"users"`
-	Enc   string   `json:"enc,omitempty"`
-	Soft  Software `json:"soft"`
-	// TODO: uptime
+	Name     string   `json:"name"`
+	Desc     string   `json:"desc,omitempty"`
+	Icon     string   `json:"icon,omitempty"`
+	Website  string   `json:"website,omitempty"`
+	Email    string   `json:"email,omitempty"`
+	Users    int      `json:"users"`
+	MaxUsers int      `json:"max-users,omitempty"`
+	Share    uint64   `json:"share,omitempty"`     // MB
+	MaxShare uint64   `json:"max-share,omitempty"` // MB
+	Enc      string   `json:"encoding,omitempty"`
+	Soft     Software `json:"soft"`
+	Uptime   uint64   `json:"uptime,omitempty"`
 }
 
 func (h *Hub) Stats() Stats {
