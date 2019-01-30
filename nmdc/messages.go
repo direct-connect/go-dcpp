@@ -557,7 +557,8 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 				tag := field[i+1:]
 				if len(tag) == 0 {
 					return errors.New("invalid info tag")
-				} else if tag[len(tag)-1] == '>' {
+				}
+				if tag[len(tag)-1] == '>' {
 					tag = tag[:len(tag)-1]
 				}
 				if err := m.unmarshalTag(tag); err != nil {
@@ -597,12 +598,13 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 	var (
 		client []byte
 		tags   [][]byte
-		i      int
 	)
-	if i = bytes.Index(tag, []byte(" V:")); i < 0 {
-		if i = bytes.Index(tag, []byte(" v:")); i < 0 {
-			tags = bytes.Split(tag, []byte(","))
-		}
+	i := bytes.Index(tag, []byte(" V:"))
+	if i < 0 {
+		i = bytes.Index(tag, []byte(" v:"))
+	}
+	if i < 0 {
+		tags = bytes.Split(tag, []byte(","))
 	}
 	if i > 0 {
 		client = tag[:i]
@@ -616,15 +618,16 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 		} else if i >= 0 {
 			name := string(field[:i])
 			value := string(field[i+1:])
-			if name == "V" || name == "v" {
+			switch name {
+			case "V", "v":
 				m.Version = value
-			} else if name == "M" || name == "m" {
+			case "M", "m":
 				if len([]byte(value)) == 1 {
 					m.Mode = UserMode(value[0])
 				} else {
 					m.Mode = UserModeUnknown
 				}
-			} else if name == "H" || name == "h" {
+			case "H", "h":
 				hubs := strings.Split(value, "/")
 				if len(hubs) > 3 {
 					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
@@ -636,13 +639,13 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 					}
 					m.Hubs[i] = h
 				}
-			} else if name == "S" || name == "s" {
+			case "S", "s":
 				slots, err := strconv.Atoi(strings.TrimSpace(value))
 				if err != nil {
 					return errors.New("invalid info slots")
 				}
 				m.Slots = int(slots)
-			} else {
+			default:
 				other[name] = value
 			}
 		} else {

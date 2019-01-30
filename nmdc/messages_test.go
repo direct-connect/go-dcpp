@@ -158,11 +158,11 @@ var casesUnmarshal = []struct {
 	{
 		typ:     "MyINFO",
 		name:    "nil field in tag",
-		data:    `$ALL whist RU [29]�������� ������� ������� ���������.<GreylynkDC++ v:2.3.5,$ $LAN(T1)A$$65075277005$`,
-		expData: `$ALL whist RU [29]�������� ������� ������� ���������.<GreylynkDC++ V:2.3.5,M:,H:0/0/0,S:0>$ $LAN(T1)A$$65075277005$`,
+		data:    `$ALL whist RU [29]some desc<GreylynkDC++ v:2.3.5,$ $LAN(T1)A$$65075277005$`,
+		expData: `$ALL whist RU [29]some desc<GreylynkDC++ V:2.3.5,M:,H:0/0/0,S:0>$ $LAN(T1)A$$65075277005$`,
 		msg: &MyInfo{
 			Name:      "whist",
-			Desc:      "RU [29]�������� ������� ������� ���������.",
+			Desc:      "RU [29]some desc",
 			Client:    "GreylynkDC++",
 			Version:   "2.3.5",
 			Mode:      UserModeUnknown,
@@ -242,11 +242,11 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "MCTo",
-		data: `target $sender message message`,
+		data: `target $sender some message`,
 		msg: &MCTo{
 			Target: "target",
 			Sender: "sender",
-			Text:   "message message",
+			Text:   "some message",
 		},
 	},
 }
