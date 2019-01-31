@@ -68,14 +68,16 @@ func run() error {
 	conf := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 	}
-	h := hub.NewHub(hub.Info{
-		Name: *f_name,
-		Desc: *f_desc,
-	}, conf)
-
 	_, port, _ := net.SplitHostPort(*f_host)
 	addr := *f_sign + ":" + port
 	fmt.Println("listening on", *f_host)
+
+	h := hub.NewHub(hub.Info{
+		Name: *f_name,
+		Desc: *f_desc,
+		Addr: addr,
+	}, conf)
+
 	fmt.Printf(`
 
 [ Hub URIs ]

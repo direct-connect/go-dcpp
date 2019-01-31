@@ -19,6 +19,7 @@ import (
 type Info struct {
 	Name string
 	Desc string
+	Addr string
 	Soft Software
 }
 
@@ -74,6 +75,7 @@ type Hub struct {
 type Stats struct {
 	Name     string   `json:"name"`
 	Desc     string   `json:"desc,omitempty"`
+	Addr     []string `json:"addr,omitempty"`
 	Icon     string   `json:"icon,omitempty"`
 	Website  string   `json:"website,omitempty"`
 	Email    string   `json:"email,omitempty"`
@@ -86,17 +88,28 @@ type Stats struct {
 	Uptime   uint64   `json:"uptime,omitempty"`
 }
 
+func (st *Stats) DefaultAddr() string {
+	if len(st.Addr) == 0 {
+		return ""
+	}
+	return st.Addr[0]
+}
+
 func (h *Hub) Stats() Stats {
 	h.peers.RLock()
 	users := len(h.peers.byName)
 	h.peers.RUnlock()
-	return Stats{
+	st := Stats{
 		Name:  h.info.Name,
 		Desc:  h.info.Desc,
 		Users: users,
 		Enc:   "utf8",
 		Soft:  h.info.Soft,
 	}
+	if h.info.Addr != "" {
+		st.Addr = append(st.Addr, h.info.Addr)
+	}
+	return st
 }
 
 func (h *Hub) nextSID() adc.SID {

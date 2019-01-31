@@ -245,9 +245,10 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	// send hub info
 	err = peer.conn.WriteInfoMsg(adc.HubInfo{
 		Name:        st.Name,
+		Desc:        st.Desc,
 		Application: st.Soft.Name,
 		Version:     st.Soft.Vers,
-		Desc:        st.Desc,
+		Address:     st.DefaultAddr(),
 		Users:       st.Users,
 	})
 	if err != nil {
