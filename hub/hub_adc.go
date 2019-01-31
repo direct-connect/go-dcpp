@@ -408,9 +408,13 @@ func (p *adcPeer) User() User {
 			Name: u.Application,
 			Vers: u.Version,
 		},
-		IPv4: u.Features.Has(adc.FeaTCP4),
-		IPv6: u.Features.Has(adc.FeaTCP6),
-		TLS:  u.Features.Has(adc.FeaADC0),
+		HubsNormal:     u.HubsNormal,
+		HubsOperator:   u.HubsOperator,
+		HubsRegistered: u.HubsRegistered,
+		Slots:          u.Slots,
+		IPv4:           u.Features.Has(adc.FeaTCP4),
+		IPv6:           u.Features.Has(adc.FeaTCP6),
+		TLS:            u.Features.Has(adc.FeaADC0),
 	}
 }
 
@@ -462,12 +466,16 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 			//       virtually leave and rejoin with a new CID
 			cid := adc.CID(tiger.HashBytes([]byte(info.Name + "\x00" + addr)))
 			u = adc.User{
-				Name:        info.Name,
-				Id:          cid,
-				Application: info.App.Name,
-				Version:     info.App.Vers,
-				ShareSize:   int64(info.Share),
-				Email:       info.Email,
+				Name:           info.Name,
+				Id:             cid,
+				Application:    info.App.Name,
+				Version:        info.App.Vers,
+				HubsNormal:     info.HubsNormal,
+				HubsOperator:   info.HubsOperator,
+				HubsRegistered: info.HubsRegistered,
+				Slots:          info.Slots,
+				ShareSize:      int64(info.Share),
+				Email:          info.Email,
 			}
 			if info.TLS {
 				u.Features = append(u.Features, adc.FeaADC0)
