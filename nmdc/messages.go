@@ -22,6 +22,7 @@ func init() {
 	RegisterMessage(&ValidateNick{})
 	RegisterMessage(&ValidateDenide{})
 	RegisterMessage(&Quit{})
+	RegisterMessage(&BotINFO{})
 	RegisterMessage(&Lock{})
 	RegisterMessage(&Key{})
 	RegisterMessage(&Supports{})
@@ -195,6 +196,14 @@ type Quit struct {
 
 func (*Quit) Cmd() string {
 	return "Quit"
+}
+
+type BotINFO struct {
+	Name
+}
+
+func (*BotINFO) Cmd() string {
+	return "BotINFO"
 }
 
 type Version struct {

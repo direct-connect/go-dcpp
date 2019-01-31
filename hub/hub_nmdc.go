@@ -26,6 +26,8 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 	peer, err := h.nmdcHandshake(c)
 	if err != nil {
 		return err
+	} else if peer == nil {
+		return nil // pingers
 	}
 	defer peer.Close()
 	return h.nmdcServePeer(peer)
@@ -61,11 +63,12 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	our := nmdc.Features{
 		nmdc.FeaNoHello:   {},
 		nmdc.FeaNoGetINFO: {},
+		nmdc.FeaBotINFO:   {},
 	}
 	mutual := our.IntersectList(sup.Ext)
-	if _, ok := mutual[nmdc.FeaNoHello]; !ok {
+	if !mutual.Has(nmdc.FeaNoHello) {
 		return nil, errors.New("NoHello is not supported")
-	} else if _, ok := mutual[nmdc.FeaNoGetINFO]; !ok {
+	} else if !mutual.Has(nmdc.FeaNoGetINFO) {
 		return nil, errors.New("NoGetINFO is not supported")
 	}
 	var nick nmdc.ValidateNick
@@ -87,6 +90,31 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	}
 	peer.user.Name = nick.Name
 	name := string(nick.Name)
+
+	if mutual.Has(nmdc.FeaBotINFO) {
+		// it's a pinger - don't bother binding the nickname
+		delete(our, nmdc.FeaBotINFO)
+		our.Set(nmdc.FeaHubINFO)
+		err = h.nmdcAccept(peer, our)
+		if err != nil {
+			return nil, err
+		}
+		var bot nmdc.BotINFO
+		if err := c.ReadMsgTo(deadline, &bot); err != nil {
+			return nil, err
+		}
+		st := h.Stats()
+		err = c.WriteMsg(&nmdc.HubINFO{
+			Name:     nmdc.Name(st.Name),
+			Desc:     nmdc.String(st.Desc),
+			Soft:     st.Soft.Name + " " + st.Soft.Vers,
+			Encoding: "UTF8",
+		})
+		if err == nil {
+			err = c.Flush()
+		}
+		return nil, err
+	}
 
 	// do not lock for writes first
 	h.peers.RLock()
@@ -181,7 +209,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 	err = c.ReadMsgTo(deadline, &vers)
 	if err != nil {
 		return fmt.Errorf("expected version: %v", err)
-	} else if vers.Vers != "1,0091" && vers.Vers != "1.0091" {
+	} else if vers.Vers != "1,0091" && vers.Vers != "1.0091" && vers.Vers != "1,0098" {
 		return fmt.Errorf("unexpected version: %q", vers)
 	}
 	var nicks nmdc.GetNickList

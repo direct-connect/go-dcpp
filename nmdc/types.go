@@ -32,6 +32,11 @@ func (s *String) UnmarshalNMDC(data []byte) error {
 
 type Features map[string]struct{}
 
+func (f Features) Has(name string) bool {
+	_, ok := f[name]
+	return ok
+}
+
 func (f Features) Set(name string) {
 	f[name] = struct{}{}
 }
