@@ -611,15 +611,15 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 	}
 	other := make(map[string]string)
 	for r, field := range tags {
+		if len(field) == 0 {
+			continue
+		}
 		i = bytes.Index(field, []byte(":"))
 		if i < 0 && r < 1 {
 			client = field
 			continue
 		}
 		if i < 0 {
-			if len(field) == 0 {
-				continue
-			}
 			return fmt.Errorf("unknown field in tag: %q", field)
 		}
 		if i >= 0 {
