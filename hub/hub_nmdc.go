@@ -348,13 +348,15 @@ func (p *nmdcPeer) User() User {
 			Name: u.Client,
 			Vers: u.Version,
 		},
-		Hubs:  u.Hubs,
-		Slots: u.Slots,
-		Email: u.Email,
-		Share: u.ShareSize,
-		IPv4:  u.Flag.IsSet(nmdc.FlagIPv4),
-		IPv6:  u.Flag.IsSet(nmdc.FlagIPv6),
-		TLS:   u.Flag.IsSet(nmdc.FlagTLS),
+		HubsNormal:     u.Hubs[0],
+		HubsOperator:   u.Hubs[1],
+		HubsRegistered: u.Hubs[2],
+		Slots:          u.Slots,
+		Email:          u.Email,
+		Share:          u.ShareSize,
+		IPv4:           u.Flag.IsSet(nmdc.FlagIPv4),
+		IPv6:           u.Flag.IsSet(nmdc.FlagIPv6),
+		TLS:            u.Flag.IsSet(nmdc.FlagTLS),
 	}
 }
 
@@ -467,10 +469,14 @@ func (u User) toNMDC() nmdc.MyInfo {
 		flag |= nmdc.FlagTLS
 	}
 	return nmdc.MyInfo{
-		Name:      nmdc.Name(u.Name),
-		Client:    u.App.Name,
-		Version:   u.App.Vers,
-		Hubs:      u.Hubs,
+		Name:    nmdc.Name(u.Name),
+		Client:  u.App.Name,
+		Version: u.App.Vers,
+		Hubs: [3]int{
+			u.HubsNormal,
+			u.HubsOperator,
+			u.HubsRegistered,
+		},
 		Slots:     u.Slots,
 		Email:     u.Email,
 		ShareSize: u.Share,

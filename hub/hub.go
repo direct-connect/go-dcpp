@@ -286,15 +286,17 @@ type Software struct {
 }
 
 type User struct {
-	Name  string
-	App   Software
-	Hubs  [3]int
-	Slots int
-	Share uint64
-	Email string
-	IPv4  bool
-	IPv6  bool
-	TLS   bool
+	Name           string
+	App            Software
+	HubsNormal     int
+	HubsOperator   int
+	HubsRegistered int
+	Slots          int
+	Share          uint64
+	Email          string
+	IPv4           bool
+	IPv6           bool
+	TLS            bool
 }
 
 type Peer interface {

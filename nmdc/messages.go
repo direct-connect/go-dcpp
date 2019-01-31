@@ -630,39 +630,38 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 		}
 		if i < 0 {
 			return fmt.Errorf("unknown field in tag: %q", field)
-		} else {
-			name := string(field[:i])
-			value := string(field[i+1:])
-			switch name {
-			case "V", "v":
-				m.Version = value
-			case "M", "m":
-				if len([]byte(value)) == 1 {
-					m.Mode = UserMode(value[0])
-					continue
-				}
-				m.Mode = UserModeUnknown
-			case "H", "h":
-				hubs := strings.Split(value, "/")
-				if len(hubs) > 3 {
-					return fmt.Errorf("hubs info contain: %v operators", len(hubs))
-				}
-				for i, inf := range hubs {
-					h, err := strconv.Atoi(strings.TrimSpace(inf))
-					if err != nil {
-						return fmt.Errorf("invalid info hubs: %v", err)
-					}
-					m.Hubs[i] = h
-				}
-			case "S", "s":
-				slots, err := strconv.Atoi(strings.TrimSpace(value))
-				if err != nil {
-					return errors.New("invalid info slots")
-				}
-				m.Slots = int(slots)
-			default:
-				other[name] = value
+		}
+		name := string(field[:i])
+		value := string(field[i+1:])
+		switch name {
+		case "V", "v":
+			m.Version = value
+		case "M", "m":
+			if len([]byte(value)) == 1 {
+				m.Mode = UserMode(value[0])
+				continue
 			}
+			m.Mode = UserModeUnknown
+		case "H", "h":
+			hubs := strings.Split(value, "/")
+			if len(hubs) > 3 {
+				return fmt.Errorf("hubs info contain: %v operators", len(hubs))
+			}
+			for i, inf := range hubs {
+				h, err := strconv.Atoi(strings.TrimSpace(inf))
+				if err != nil {
+					return fmt.Errorf("invalid info hubs: %v", err)
+				}
+				m.Hubs[i] = h
+			}
+		case "S", "s":
+			slots, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return errors.New("invalid info slots")
+			}
+			m.Slots = int(slots)
+		default:
+			other[name] = value
 		}
 	}
 	m.Client = string(client)
