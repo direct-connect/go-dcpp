@@ -420,10 +420,11 @@ func (m *Disconnect) UnmarshalAdc(data []byte) error {
 var _ Message = HubInfo{}
 
 type HubInfo struct {
-	Name    string   `adc:"NI"`
-	Version string   `adc:"VE"`
-	Desc    string   `adc:"DE"`
-	Type    UserType `adc:"CT"`
+	Name        string   `adc:"NI,req"`
+	Version     string   `adc:"VE,req"`
+	Application string   `adc:"AP"`
+	Desc        string   `adc:"DE"`
+	Type        UserType `adc:"CT"`
 
 	// PING extension
 
@@ -431,7 +432,7 @@ type HubInfo struct {
 	Website    string `adc:"WS"` // Hub Website
 	Network    string `adc:"NE"` // Hub Network
 	Owner      string `adc:"OW"` // Hub Owner name
-	Users      int    `adc:"UC"` // Current User count
+	Users      int    `adc:"UC"` // Current User count, required
 	Share      int    `adc:"SS"` // Total share size
 	Files      int    `adc:"SF"` // Total files shared
 	MinShare   int    `adc:"MS"` // Minimum share required to enter hub ( bytes )
