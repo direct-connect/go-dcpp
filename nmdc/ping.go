@@ -138,15 +138,17 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 				return nil, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
 			err = c.SendPingerInfo(time.Time{}, &MyInfo{
-				Name:      Name(name),
-				Client:    version.Name,
-				Version:   version.Vers,
-				Mode:      UserModePassive,
-				Hubs:      [3]int{1, 0, 0},
-				Slots:     1,
-				ShareSize: 13 * 1023 * 1023 * 1023,
-				Conn:      "Cable",
-				Flag:      FlagStatusServer,
+				Name:           Name(name),
+				Client:         version.Name,
+				Version:        version.Vers,
+				Mode:           UserModePassive,
+				HubsNormal:     1,
+				HubsRegistered: 0,
+				HubsOperator:   0,
+				Slots:          1,
+				ShareSize:      13 * 1023 * 1023 * 1023,
+				Conn:           "Cable",
+				Flag:           FlagStatusServer,
 			})
 			if err != nil {
 				return nil, err
