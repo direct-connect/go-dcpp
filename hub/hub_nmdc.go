@@ -348,6 +348,8 @@ func (p *nmdcPeer) User() User {
 			Name: u.Client,
 			Vers: u.Version,
 		},
+		Hubs:  u.Hubs,
+		Slots: u.Slots,
 		Email: u.Email,
 		Share: u.ShareSize,
 		IPv4:  u.Flag.IsSet(nmdc.FlagIPv4),
@@ -468,15 +470,15 @@ func (u User) toNMDC() nmdc.MyInfo {
 		Name:      nmdc.Name(u.Name),
 		Client:    u.App.Name,
 		Version:   u.App.Vers,
+		Hubs:      u.Hubs,
+		Slots:     u.Slots,
 		Email:     u.Email,
 		ShareSize: u.Share,
 		Flag:      flag,
 
 		// TODO
-		Mode:  nmdc.UserModeActive,
-		Hubs:  [3]int{1, 0, 0},
-		Slots: 1,
-		Conn:  "LAN(T3)",
+		Mode: nmdc.UserModeActive,
+		Conn: "LAN(T3)",
 	}
 }
 

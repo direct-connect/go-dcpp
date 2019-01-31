@@ -630,8 +630,7 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 		}
 		if i < 0 {
 			return fmt.Errorf("unknown field in tag: %q", field)
-		}
-		if i >= 0 {
+		} else {
 			name := string(field[:i])
 			value := string(field[i+1:])
 			switch name {

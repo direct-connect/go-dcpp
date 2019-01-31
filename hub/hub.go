@@ -288,6 +288,8 @@ type Software struct {
 type User struct {
 	Name  string
 	App   Software
+	Hubs  [3]int
+	Slots int
 	Share uint64
 	Email string
 	IPv4  bool
