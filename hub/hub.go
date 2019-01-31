@@ -302,8 +302,8 @@ type User struct {
 	Name           string
 	App            Software
 	HubsNormal     int
-	HubsOperator   int
 	HubsRegistered int
+	HubsOperator   int
 	Slots          int
 	Share          uint64
 	Email          string

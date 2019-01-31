@@ -349,9 +349,9 @@ func (p *nmdcPeer) User() User {
 			Name: u.Client,
 			Vers: u.Version,
 		},
-		HubsNormal:     u.Hubs[0],
-		HubsOperator:   u.Hubs[1],
-		HubsRegistered: u.Hubs[2],
+		HubsNormal:     u.HubsNormal,
+		HubsRegistered: u.HubsRegistered,
+		HubsOperator:   u.HubsOperator,
 		Slots:          u.Slots,
 		Email:          u.Email,
 		Share:          u.ShareSize,
@@ -470,18 +470,16 @@ func (u User) toNMDC() nmdc.MyInfo {
 		flag |= nmdc.FlagTLS
 	}
 	return nmdc.MyInfo{
-		Name:    nmdc.Name(u.Name),
-		Client:  u.App.Name,
-		Version: u.App.Vers,
-		Hubs: [3]int{
-			u.HubsNormal,
-			u.HubsOperator,
-			u.HubsRegistered,
-		},
-		Slots:     u.Slots,
-		Email:     u.Email,
-		ShareSize: u.Share,
-		Flag:      flag,
+		Name:           nmdc.Name(u.Name),
+		Client:         u.App.Name,
+		Version:        u.App.Vers,
+		HubsNormal:     u.HubsNormal,
+		HubsRegistered: u.HubsRegistered,
+		HubsOperator:   u.HubsOperator,
+		Slots:          u.Slots,
+		Email:          u.Email,
+		ShareSize:      u.Share,
+		Flag:           flag,
 
 		// TODO
 		Mode: nmdc.UserModeActive,

@@ -469,18 +469,20 @@ const (
 )
 
 type MyInfo struct {
-	Name      Name
-	Desc      String
-	Client    string
-	Version   string
-	Mode      UserMode
-	Hubs      [3]int
-	Slots     int
-	Other     map[string]string
-	Conn      string
-	Flag      UserFlag
-	Email     string
-	ShareSize uint64
+	Name           Name
+	Desc           String
+	Client         string
+	Version        string
+	Mode           UserMode
+	HubsNormal     int
+	HubsRegistered int
+	HubsOperator   int
+	Slots          int
+	Other          map[string]string
+	Conn           string
+	Flag           UserFlag
+	Email          string
+	ShareSize      uint64
 }
 
 func (*MyInfo) Cmd() string {
@@ -513,9 +515,10 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	} else {
 		a = append(a, "M:")
 	}
-	var hubs []string
-	for _, inf := range m.Hubs {
-		hubs = append(hubs, strconv.Itoa(inf))
+	hubs := []string{
+		strconv.Itoa(m.HubsNormal),
+		strconv.Itoa(m.HubsRegistered),
+		strconv.Itoa(m.HubsOperator),
 	}
 	a = append(a, "H:"+strings.Join(hubs, "/"))
 	a = append(a, "S:"+strconv.Itoa(m.Slots))
@@ -647,13 +650,21 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 			if len(hubs) > 3 {
 				return fmt.Errorf("hubs info contain: %v operators", len(hubs))
 			}
-			for i, inf := range hubs {
-				h, err := strconv.Atoi(strings.TrimSpace(inf))
-				if err != nil {
-					return fmt.Errorf("invalid info hubs: %v", err)
-				}
-				m.Hubs[i] = h
+			normal, err := strconv.Atoi(strings.TrimSpace(hubs[0]))
+			if err != nil {
+				return fmt.Errorf("invalid info hubs normal: %v", err)
 			}
+			m.HubsNormal = normal
+			registered, err := strconv.Atoi(strings.TrimSpace(hubs[1]))
+			if err != nil {
+				return fmt.Errorf("invalid info hubs registered: %v", err)
+			}
+			m.HubsRegistered = registered
+			operator, err := strconv.Atoi(strings.TrimSpace(hubs[2]))
+			if err != nil {
+				return fmt.Errorf("invalid info hubs operator: %v", err)
+			}
+			m.HubsOperator = operator
 		case "S", "s":
 			slots, err := strconv.Atoi(strings.TrimSpace(value))
 			if err != nil {
