@@ -193,6 +193,30 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:  "Search",
+		data: `192.168.1.5:412 T?T?500000?1?Gentoo$2005`,
+		msg: &Search{
+			Address:        "192.168.1.5:412",
+			SizeRestricted: true,
+			IsMaxSize:      true,
+			Size:           500000,
+			DataType:       DataTypeAnyFileType,
+			SearchPattern:  "Gentoo 2005",
+		},
+	},
+	{
+		typ:  "Search",
+		data: `Hub:SomeNick F?T?0?9?TTH:TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA`,
+		msg: &Search{
+			Nick:           "SomeNick",
+			SizeRestricted: false,
+			IsMaxSize:      true,
+			Size:           0,
+			DataType:       DataTypeTTH,
+			SearchPattern:  "TTH:TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA",
+		},
+	},
+	{
 		typ:  "MCTo",
 		data: `target $sender some message`,
 		msg: &MCTo{
