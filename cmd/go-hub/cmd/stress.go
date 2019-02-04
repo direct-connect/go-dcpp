@@ -28,6 +28,7 @@ func init() {
 	fOut := stressCmd.Flags().String("out", "online.csv", "name for an output file")
 	fMsg := stressCmd.Flags().Bool("msg", false, "send chat messages")
 	fDur := stressCmd.Flags().Duration("dur", time.Second*30, "test duration")
+	fAll := stressCmd.Flags().Bool("all", false, "do not disconnect, join from all routines")
 	Root.AddCommand(stressCmd)
 	stressCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		var wg sync.WaitGroup
@@ -60,7 +61,7 @@ func init() {
 			}
 		}
 
-		connect := func(done <-chan struct{}) {
+		connect := func(done <-chan struct{}) bool {
 			name := fmt.Sprintf(*fName+"%x", rand.Int())
 
 			//start := time.Now()
@@ -71,7 +72,7 @@ func init() {
 			if err != nil {
 				atomic.AddInt32(&errors, +1)
 				log.Println("handshake failed:", err)
-				return
+				return true
 			}
 			defer c.Close()
 			atomic.AddInt32(&success, +1)
@@ -79,15 +80,20 @@ func init() {
 			defer atomic.AddInt32(&connected, -1)
 			for old := atomic.LoadInt32(&max); old < cn && !atomic.CompareAndSwapInt32(&max, old, cn); old = atomic.LoadInt32(&max) {
 			}
+			if *fAll {
+				<-done
+				return false
+			}
 
 			for rand.Intn(10) < 5 {
 				if *fMsg {
 					_ = c.SendChatMsg(strconv.FormatUint(rand.Uint64(), 16))
 				}
 				if !sleep(done) {
-					return
+					return false
 				}
 			}
+			return true
 		}
 
 		done := make(chan struct{})
@@ -96,20 +102,28 @@ func init() {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-
-				for {
-					if !sleep(done) {
-						return
-					}
+				if *fAll {
 					connect(done)
+					return
+				}
+				for connect(done) {
 				}
 			}()
 		}
 		const dt = time.Second / 2
+		var (
+			oldSuccess int32
+			oldErrors  int32
+		)
 		for i := 0; i < int(*fDur/dt); i++ {
 			time.Sleep(dt)
+			sn, en := atomic.LoadInt32(&success), atomic.LoadInt32(&errors)
+			dsn, den := sn-oldSuccess, en-oldErrors
+			oldSuccess, oldErrors = sn, en
 			_ = cw.Write([]string{
 				strconv.FormatInt(int64(atomic.LoadInt32(&connected)), 10),
+				strconv.FormatInt(int64(dsn), 10),
+				strconv.FormatInt(int64(den), 10),
 			})
 		}
 		close(done)
