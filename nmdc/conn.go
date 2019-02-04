@@ -307,6 +307,13 @@ func (c *Conn) peek() ([]byte, error) {
 	c.read.i = 0
 	c.read.buf = c.read.buf[:cap(c.read.buf)]
 	n, err := c.read.r.Read(c.read.buf)
+	if err != nil {
+		select {
+		case <-c.closed:
+			err = io.EOF
+		default:
+		}
+	}
 	c.read.buf = c.read.buf[:n]
 	return c.read.buf, err
 }
@@ -395,7 +402,6 @@ func (c *Conn) readUntilAny(chars string, max int) ([]byte, error) {
 	for {
 		b, err := c.peek()
 		if err != nil {
-			// TODO: handle EOF
 			return nil, err
 		}
 		i := bytes.IndexAny(b, chars)
@@ -467,7 +473,9 @@ func (c *Conn) readRawCommand() (*RawCommand, error) {
 	c.discard(1) // trim '$'
 
 	buf, err := c.readUntilAny("|", maxCmd)
-	if err != nil {
+	if err == io.EOF {
+		return nil, io.EOF
+	} else if err != nil {
 		return nil, fmt.Errorf("cannot parse command: %v", err)
 	}
 	if Debug {

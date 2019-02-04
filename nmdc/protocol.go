@@ -2,6 +2,7 @@ package nmdc
 
 import (
 	"errors"
+	"io"
 	"strings"
 	"time"
 )
@@ -9,7 +10,9 @@ import (
 func (c *Conn) SendClientHandshake(deadline time.Time, name string, ext ...string) (*Lock, error) {
 	var lock Lock
 	err := c.ReadMsgTo(deadline, &lock)
-	if err != nil {
+	if err == io.EOF {
+		return nil, io.ErrUnexpectedEOF
+	} else if err != nil {
 		return nil, err
 	}
 	if !strings.HasPrefix(lock.Lock, "EXTENDEDPROTOCOL") {

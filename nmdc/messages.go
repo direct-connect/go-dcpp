@@ -122,6 +122,13 @@ type ChatMessage struct {
 	Text String
 }
 
+func (m *ChatMessage) String() string {
+	if m.Name == "" {
+		return string(m.Text)
+	}
+	return "<" + string(m.Name) + "> " + string(m.Text)
+}
+
 func (m *ChatMessage) Cmd() string {
 	return "" // special case
 }

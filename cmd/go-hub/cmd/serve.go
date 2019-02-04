@@ -22,7 +22,7 @@ const Version = version.Vers
 var Root = &cobra.Command{
 	Use: "go-hub <command>",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Hub version: %s\nGo runtime: %s\n\n",
+		fmt.Printf("Version:\t%s\nGo runtime:\t%s\n\n",
 			Version, runtime.Version(),
 		)
 	},

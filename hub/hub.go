@@ -3,6 +3,7 @@ package hub
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -130,7 +131,7 @@ func (h *Hub) ListenAndServe(addr string) error {
 			return err
 		}
 		go func() {
-			if err := h.Serve(conn); err != nil {
+			if err := h.Serve(conn); err != nil && err != io.EOF {
 				log.Printf("%s: %v", conn.RemoteAddr(), err)
 			}
 		}()

@@ -3,6 +3,7 @@ package client
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"sync"
@@ -91,7 +92,9 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, *HubInfo, error)
 handshake:
 	for {
 		msg, err := conn.ReadMsg(deadline)
-		if err != nil {
+		if err == io.EOF {
+			return nil, nil, io.ErrUnexpectedEOF
+		} else if err != nil {
 			return nil, nil, err
 		}
 		switch msg := msg.(type) {
@@ -126,11 +129,11 @@ handshake:
 		Flag:    nmdc.FlagStatusNormal | nmdc.FlagIPv4 | nmdc.FlagTLSDownload,
 
 		// TODO
-		Mode:      nmdc.UserModePassive,
-		Hubs:      [3]int{1, 0, 0},
-		Slots:     1,
-		Conn:      "LAN(T3)",
-		ShareSize: 13 * 1023 * 1023 * 1023,
+		Mode:       nmdc.UserModePassive,
+		HubsNormal: 1,
+		Slots:      1,
+		Conn:       "LAN(T3)",
+		ShareSize:  13 * 1023 * 1023 * 1023,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -182,6 +185,10 @@ type Conn struct {
 		sync.RWMutex
 		byName map[nmdc.Name]*Peer
 	}
+	on struct {
+		chat      func(m *nmdc.ChatMessage) error
+		unhandled func(m nmdc.Message) error
+	}
 }
 
 func (c *Conn) HubInfo() HubInfo {
@@ -202,6 +209,14 @@ func (c *Conn) Close() error {
 	err := c.conn.Close()
 	<-c.closed
 	return err
+}
+
+func (c *Conn) OnChatMessage(fnc func(m *nmdc.ChatMessage) error) {
+	c.on.chat = fnc
+}
+
+func (c *Conn) OnUnhandled(fnc func(m nmdc.Message) error) {
+	c.on.unhandled = fnc
 }
 
 func (c *Conn) OnlinePeers() []*Peer {
@@ -227,8 +242,10 @@ func (c *Conn) readLoop() {
 	defer close(c.closed)
 	for {
 		msg, err := c.conn.ReadMsg(time.Time{})
-		if err != nil {
-			log.Println(err)
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Println("read msg:", err)
 			return
 		}
 		switch msg := msg.(type) {
@@ -241,10 +258,11 @@ func (c *Conn) readLoop() {
 			c.hub.Topic = msg.Text
 			c.imu.Unlock()
 		case *nmdc.ChatMessage:
-			if msg.Name != "" {
-				fmt.Printf("%s\n", msg.Text)
-			} else {
-				fmt.Printf("<%s> %s\n", msg.Name, msg.Text)
+			if c.on.chat != nil {
+				if err = c.on.chat(msg); err != nil {
+					log.Println("chat msg:", err)
+					return
+				}
 			}
 		case *nmdc.OpList:
 			c.peers.RLock()
@@ -273,7 +291,12 @@ func (c *Conn) readLoop() {
 			}
 			c.peers.RUnlock()
 		default:
-			log.Printf("unhandled command: %T %q", msg, msg.Cmd())
+			if c.on.unhandled != nil {
+				if err = c.on.unhandled(msg); err != nil {
+					log.Println("unhandled msg:", err)
+					return
+				}
+			}
 		}
 	}
 }
