@@ -46,8 +46,9 @@ type Config struct {
 	Email   string `yaml:"email"`
 	MOTD    string `yaml:"motd"`
 	Serve   struct {
-		Host string `yaml:"host"`
-		Port int    `yaml:"port"`
+		Host string     `yaml:"host"`
+		Port int        `yaml:"port"`
+		TLS  *TLSConfig `yaml:"tls"`
 	} `yaml:"serve"`
 }
 
@@ -118,9 +119,16 @@ func init() {
 		if err != nil {
 			return err
 		}
-		cert, kp, err := loadCert(conf.Serve.Host)
+		noTLS := conf.Serve.TLS == nil
+		cert, kp, err := loadCert(conf)
 		if err != nil {
 			return err
+		}
+		if noTLS {
+			viper.Set("serve.tls", conf.Serve.TLS)
+			if err = viper.WriteConfig(); err != nil {
+				return err
+			}
 		}
 
 		tlsConf := &tls.Config{

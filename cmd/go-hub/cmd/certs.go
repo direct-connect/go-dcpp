@@ -11,22 +11,37 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log"
+	"io/ioutil"
 	"math/big"
 	"net"
 	"time"
 )
 
-func loadCert(host string) (*tls.Certificate, string, error) {
+type TLSConfig struct {
+	Cert string `yaml:"cert"`
+	Key  string `yaml:"key"`
+}
+
+func (c *TLSConfig) Load() (cert, key []byte, _ error) {
+	var err error
+	cert, err = ioutil.ReadFile(c.Cert)
+	if err != nil {
+		return
+	}
+	key, err = ioutil.ReadFile(c.Key)
+	return
+}
+
+func (c *TLSConfig) Generate(host string) (cert, key []byte, _ error) {
 	// generate a new key-pair
 	rootKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	rootCertTmpl, err := CertTemplate()
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	// describe what the certificate will be used for
 	rootCertTmpl.IsCA = true
@@ -40,7 +55,7 @@ func loadCert(host string) (*tls.Certificate, string, error) {
 
 	_, rootCertPEM, err := CreateCert(rootCertTmpl, rootCertTmpl, &rootKey.PublicKey, rootKey)
 	if err != nil {
-		log.Fatalf("error creating cert: %v", err)
+		return nil, nil, fmt.Errorf("error creating cert: %v", err)
 	}
 
 	// PEM encode the private key
@@ -48,15 +63,48 @@ func loadCert(host string) (*tls.Certificate, string, error) {
 		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(rootKey),
 	})
 
-	h := sha256.Sum256(rootCertPEM)
-	kp := "SHA256/" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:])
+	err = ioutil.WriteFile(c.Cert, rootCertPEM, 0600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error writing cert: %v", err)
+	}
+	err = ioutil.WriteFile(c.Key, rootKeyPEM, 0600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error writing key: %v", err)
+	}
 
-	// Create a TLS cert using the private key and certificate
-	rootTLSCert, err := tls.X509KeyPair(rootCertPEM, rootKeyPEM)
+	return rootCertPEM, rootKeyPEM, nil
+}
+
+func loadCert(conf *Config) (*tls.Certificate, string, error) {
+	tc := conf.Serve.TLS
+	var (
+		cert, key []byte
+		err       error
+	)
+	if tc != nil {
+		cert, key, err = tc.Load()
+		fmt.Println("using certs:", tc.Cert, tc.Key)
+	} else {
+		tc = &TLSConfig{
+			Cert: "hub.cert",
+			Key:  "hub.key",
+		}
+		conf.Serve.TLS = tc
+		cert, key, err = tc.Generate(conf.Serve.Host)
+		fmt.Println("generated cert for", conf.Serve.Host)
+	}
 	if err != nil {
 		return nil, "", err
 	}
-	fmt.Println("generated cert for", host)
+
+	h := sha256.Sum256(cert)
+	kp := "SHA256/" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:])
+
+	// Create a TLS cert using the private key and certificate
+	rootTLSCert, err := tls.X509KeyPair(cert, key)
+	if err != nil {
+		return nil, "", err
+	}
 	return &rootTLSCert, kp, nil
 }
 
