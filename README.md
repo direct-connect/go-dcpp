@@ -6,6 +6,25 @@ Requires Go 1.11+.
 
 ## Hub
 
+**Features:**
+
+- Fully multi-threaded.
+- Support NMDC, ADC and IRC users on the same hub.
+- Uses a single port for all protocols (protocol auto-detection).
+- Supports TLS for ADC and NMDC.
+- Automatic TLS certificate generation.
+- HTTP pinger support.
+
+**TODO:**
+
+- Search between NMDC and ADC.
+- User registration.
+- Operators.
+- User/Op commands.
+- Extensions and scripts.
+- Spam filters.
+- Get certificates from LetsEncrypt.
+
 ### Building on Linux
 
 Download and install Go 1.11+ from [this page](https://golang.org/dl/),
