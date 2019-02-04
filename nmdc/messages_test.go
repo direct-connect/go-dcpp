@@ -278,6 +278,26 @@ var casesUnmarshal = []struct {
 			Text:   "some message",
 		},
 	},
+	{
+		typ:  "UserCommand",
+		name: "raw",
+		data: `1 3 # Ledokol Menu\.:: Ranks\All time user location statistics $<%[mynick]> +cchist`,
+		msg: &UserCommand{
+			Type:    TypeRaw,
+			Context: ContextHub | ContextUser,
+			Path:    []string{"# Ledokol Menu", ".:: Ranks", "All time user location statistics"},
+			Command: "<%[mynick]> +cchist",
+		},
+	},
+	{
+		typ:  "UserCommand",
+		name: "erase",
+		data: `255 1`,
+		msg: &UserCommand{
+			Type:    TypeErase,
+			Context: ContextHub,
+		},
+	},
 }
 
 func getTHPointer(s string) *tiger.Hash {
