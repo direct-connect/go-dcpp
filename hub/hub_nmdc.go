@@ -320,6 +320,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 
+	err = h.nmdcSendUserCommand(peer)
+	if err != nil {
+		return err
+	}
+
 	// send user list (except his own info)
 	err = peer.peersJoin(h.Peers(), true)
 	if err != nil {
@@ -471,6 +476,29 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			log.Printf("%s: nmdc: $%s %v|", peer.RemoteAddr(), msg.Cmd(), string(data))
 		}
 	}
+}
+
+func (h *Hub) nmdcSendUserCommand(p *nmdcPeer) error {
+	for name, c := range h.cmds.byName {
+		if c.Path == nil {
+			continue
+		}
+		var path []nmdc.String
+		for _, p := range c.Path {
+			path = append(path, nmdc.String(p))
+		}
+		command := nmdc.String("<%[mynick]> !" + name + "|")
+		err := p.conn.WriteMsg(&nmdc.UserCommand{
+			Type:    nmdc.TypeRaw,
+			Context: nmdc.ContextHub,
+			Path:    path,
+			Command: command,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var _ Peer = (*nmdcPeer)(nil)
