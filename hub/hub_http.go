@@ -9,6 +9,8 @@ import (
 	"golang.org/x/net/http2"
 )
 
+const HTTPInfoPathV0 = "/api/v0/hubinfo.json"
+
 func (h *Hub) initHTTP() {
 	if h.tls == nil {
 		return
@@ -17,10 +19,12 @@ func (h *Hub) initHTTP() {
 	h.h2 = &http2.Server{}
 	htls := h.tls.Clone()
 	htls.NextProtos = nil
+	mux := http.NewServeMux()
+	mux.HandleFunc(HTTPInfoPathV0, h.ServeHTTP)
 	h.h2conf = &http2.ServeConnOpts{
 		BaseConfig: &http.Server{
 			TLSConfig: htls,
-			Handler:   h,
+			Handler:   mux,
 		},
 	}
 }
