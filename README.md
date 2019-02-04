@@ -56,6 +56,14 @@ go build cmd\go-hub
 
 ### Running the hub
 
+First, run the hub configuration:
+
+```
+./go-hub init
+```
+
+This will create a file called `hub.yml` with the default configuration.
+
 To run the hub:
 
 ```

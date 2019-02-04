@@ -4,12 +4,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"runtime"
+	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/hub"
@@ -33,26 +34,101 @@ var serveCmd = &cobra.Command{
 	Short: "run the hub",
 }
 
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "configure the hub",
+}
+
+type Config struct {
+	Name    string `yaml:"name"`
+	Desc    string `yaml:"desc"`
+	Website string `yaml:"website"`
+	Email   string `yaml:"email"`
+	MOTD    string `yaml:"motd"`
+	Serve   struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	} `yaml:"serve"`
+}
+
+const defaultConfig = "hub.yml"
+
+func initConfig(path string) error {
+	return viper.WriteConfigAs(path)
+}
+
+func readConfig() (*Config, error) {
+	err := viper.ReadInConfig()
+	if err == nil {
+		fmt.Println("loaded config:", viper.ConfigFileUsed())
+	}
+	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+		if err = initConfig(defaultConfig); err != nil {
+			return nil, err
+		}
+		err = viper.ReadInConfig()
+		if err == nil {
+			fmt.Println("initialized config:", viper.ConfigFileUsed())
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	var c Config
+	if err := viper.Unmarshal(&c); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 func init() {
-	fDebug := serveCmd.Flags().Bool("debug", false, "print protocol logs to stderr")
-	fPProf := serveCmd.Flags().Bool("pprof", false, "enable profiler endpoint")
-	fName := serveCmd.Flags().String("name", "GoHub", "name of the hub")
-	fDesc := serveCmd.Flags().String("desc", "Hybrid hub", "description of the hub")
-	fSign := serveCmd.Flags().String("sign", "127.0.0.1", "host or IP to sign TLS certs for")
-	fHost := serveCmd.Flags().String("host", ":1411", "host to listen on")
+	viper.AddConfigPath(".")
+	if runtime.GOOS != "windows" {
+		viper.AddConfigPath("/etc/go-hub")
+	}
+	viper.SetConfigName("hub")
+	viper.SetDefault("motd", "Welcome!")
+
+	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if err := initConfig(defaultConfig); err != nil {
+			return err
+		}
+		fmt.Println("initialized config:", defaultConfig)
+		return nil
+	}
+	Root.AddCommand(initCmd)
+
+	flags := serveCmd.Flags()
+
+	fDebug := flags.Bool("debug", false, "print protocol logs to stderr")
+	fPProf := flags.Bool("pprof", false, "enable profiler endpoint")
+
+	flags.String("name", "GoHub", "name of the hub")
+	viper.BindPFlag("name", flags.Lookup("name"))
+	flags.String("desc", "Hybrid hub", "description of the hub")
+	viper.BindPFlag("desc", flags.Lookup("desc"))
+	flags.String("host", "127.0.0.1", "host or IP to sign TLS certs for")
+	viper.BindPFlag("serve.host", flags.Lookup("host"))
+	flags.Int("port", 1411, "port to listen on")
+	viper.BindPFlag("serve.port", flags.Lookup("port"))
 	Root.AddCommand(serveCmd)
+
 	serveCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		cert, kp, err := loadCert(*fSign)
+		conf, err := readConfig()
+		if err != nil {
+			return err
+		}
+		cert, kp, err := loadCert(conf.Serve.Host)
 		if err != nil {
 			return err
 		}
 
-		conf := &tls.Config{
+		tlsConf := &tls.Config{
 			Certificates: []tls.Certificate{*cert},
 		}
-		_, port, _ := net.SplitHostPort(*fHost)
-		addr := *fSign + ":" + port
-		fmt.Println("listening on", *fHost)
+		host := ":" + strconv.Itoa(conf.Serve.Port)
+		addr := conf.Serve.Host + host
+		fmt.Println("listening on", host)
 
 		if *fDebug {
 			fmt.Println("WARNING: protocol debug enabled")
@@ -71,10 +147,13 @@ func init() {
 		}
 
 		h := hub.NewHub(hub.Info{
-			Name: *fName,
-			Desc: *fDesc,
-			Addr: addr,
-		}, conf)
+			Name:    conf.Name,
+			Desc:    conf.Desc,
+			Website: conf.Website,
+			Email:   conf.Email,
+			MOTD:    conf.MOTD,
+			Addr:    addr,
+		}, tlsConf)
 
 		fmt.Printf(`
 
@@ -102,6 +181,6 @@ https://%s%s
 
 			addr, hub.HTTPInfoPathV0,
 		)
-		return h.ListenAndServe(*fHost)
+		return h.ListenAndServe(host)
 	}
 }

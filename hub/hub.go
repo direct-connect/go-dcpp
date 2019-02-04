@@ -18,10 +18,13 @@ import (
 )
 
 type Info struct {
-	Name string
-	Desc string
-	Addr string
-	Soft Software
+	Name    string
+	Desc    string
+	Addr    string
+	Website string
+	Email   string
+	Soft    Software
+	MOTD    string
 }
 
 func NewHub(info Info, tls *tls.Config) *Hub {
@@ -101,11 +104,13 @@ func (h *Hub) Stats() Stats {
 	users := len(h.peers.byName)
 	h.peers.RUnlock()
 	st := Stats{
-		Name:  h.info.Name,
-		Desc:  h.info.Desc,
-		Users: users,
-		Enc:   "utf8",
-		Soft:  h.info.Soft,
+		Name:    h.info.Name,
+		Desc:    h.info.Desc,
+		Website: h.info.Website,
+		Email:   h.info.Email,
+		Users:   users,
+		Enc:     "utf8",
+		Soft:    h.info.Soft,
 	}
 	if h.info.Addr != "" {
 		st.Addr = append(st.Addr, h.info.Addr)
@@ -260,7 +265,11 @@ func (h *Hub) privateChat(from, to Peer, text string) {
 }
 
 func (h *Hub) sendMOTD(peer Peer) error {
-	return peer.HubChatMsg("Welcome!")
+	motd := h.info.MOTD
+	if motd == "" {
+		motd = "Welcome!"
+	}
+	return peer.HubChatMsg(motd)
 }
 
 func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
