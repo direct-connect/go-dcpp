@@ -988,7 +988,7 @@ type Search struct {
 	IsMaxSize      bool
 	Size           uint64
 	DataType       DataType
-	SearchPattern  string
+	Pattern        string
 }
 
 func (*Search) Cmd() string {
@@ -1021,7 +1021,7 @@ func (m *Search) MarshalNMDC() ([]byte, error) {
 	}
 	a = append(a, []byte(strconv.FormatUint(m.Size, 10)))
 	a = append(a, []byte{byte(m.DataType)})
-	str := strings.Replace(m.SearchPattern, " ", "$", len(m.SearchPattern))
+	str := strings.Replace(m.Pattern, " ", "$", len(m.Pattern))
 	pattern := []byte(str)
 	a = append(a, []byte(String(pattern)))
 	buf.Write(bytes.Join(a, []byte("?")))
@@ -1057,13 +1057,13 @@ func (m *Search) unmarshalString(data []byte) error {
 	for i, field := range fields {
 		switch i {
 		case 0:
-			flag, err := unmarshalSizeFlag(field)
+			flag, err := unmarshalBoolFlag(field)
 			if err != nil {
 				return err
 			}
 			m.SizeRestricted = flag
 		case 1:
-			flag, err := unmarshalSizeFlag(field)
+			flag, err := unmarshalBoolFlag(field)
 			if err != nil {
 				return err
 			}
@@ -1088,20 +1088,23 @@ func (m *Search) unmarshalString(data []byte) error {
 			if err != nil {
 				return err
 			}
-			m.SearchPattern = strings.Replace(string(str), "$", " ", len(str))
+			m.Pattern = strings.Replace(string(str), "$", " ", len(str))
 		}
 	}
 	return nil
 }
 
-func unmarshalSizeFlag(data []byte) (bool, error) {
+func unmarshalBoolFlag(data []byte) (bool, error) {
 	if len([]byte(data)) != 1 {
-		return false, fmt.Errorf("invalid size flag")
+		return false, fmt.Errorf("invalid bool flag")
 	}
 	if data[0] == 'T' {
 		return true, nil
 	}
-	return false, nil
+	if data[0] == 'F' {
+		return false, nil
+	}
+	return false, fmt.Errorf("invalid bool flag")
 }
 
 type FailOver struct {

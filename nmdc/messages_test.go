@@ -201,7 +201,7 @@ var casesUnmarshal = []struct {
 			IsMaxSize:      true,
 			Size:           500000,
 			DataType:       DataTypeAnyFileType,
-			SearchPattern:  "Gentoo 2005",
+			Pattern:        "Gentoo 2005",
 		},
 	},
 	{
@@ -213,7 +213,7 @@ var casesUnmarshal = []struct {
 			IsMaxSize:      true,
 			Size:           0,
 			DataType:       DataTypeTTH,
-			SearchPattern:  "TTH:TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA",
+			Pattern:        "TTH:TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA",
 		},
 	},
 	{
