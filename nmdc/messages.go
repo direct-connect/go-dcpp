@@ -37,6 +37,7 @@ func init() {
 	RegisterMessage(&PrivateMessage{})
 	RegisterMessage(&Failed{})
 	RegisterMessage(&Error{})
+	RegisterMessage(&Search{})
 	RegisterMessage(&FailOver{})
 	RegisterMessage(&MCTo{})
 }
@@ -982,6 +983,146 @@ func (m *Error) UnmarshalNMDC(text []byte) error {
 		return err
 	}
 	return nil
+}
+
+type DataType byte
+
+const (
+	DataTypeAnyFileType     = DataType('1')
+	DataTypeAudioFiles      = DataType('2')
+	DataTypeCompressedFiles = DataType('3')
+	DataTypeDocumentFiles   = DataType('4')
+	DataTypeExecutableFiles = DataType('5')
+	DataTypePictureFiles    = DataType('6')
+	DataTypeVideoFiles      = DataType('7')
+	DataTypeFolders         = DataType('8')
+	DataTypeTTH             = DataType('9')
+)
+
+type Search struct {
+	Address        string
+	Nick           Name
+	SizeRestricted bool
+	IsMaxSize      bool
+	Size           uint64
+	DataType       DataType
+	Pattern        string
+}
+
+func (*Search) Cmd() string {
+	return "Search"
+}
+
+func (m *Search) MarshalNMDC() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	if m.Address != "" {
+		buf.Write([]byte(m.Address))
+	} else {
+		nick, err := m.Nick.MarshalNMDC()
+		if err != nil {
+			return nil, err
+		}
+		buf.Write([]byte("Hub:"))
+		buf.Write(nick)
+	}
+	buf.WriteByte(' ')
+	var a [][]byte
+	if m.SizeRestricted == true {
+		a = append(a, []byte{'T'})
+	} else {
+		a = append(a, []byte{'F'})
+	}
+	if m.IsMaxSize == true {
+		a = append(a, []byte{'T'})
+	} else {
+		a = append(a, []byte{'F'})
+	}
+	a = append(a, []byte(strconv.FormatUint(m.Size, 10)))
+	a = append(a, []byte{byte(m.DataType)})
+	str := strings.Replace(m.Pattern, " ", "$", len(m.Pattern))
+	pattern := []byte(str)
+	a = append(a, []byte(String(pattern)))
+	buf.Write(bytes.Join(a, []byte("?")))
+	return buf.Bytes(), nil
+}
+
+func (m *Search) UnmarshalNMDC(data []byte) error {
+	fields := bytes.SplitN(data, []byte(" "), 3)
+	if len(fields) != 2 {
+		return errors.New("invalid search command")
+	}
+	if bytes.HasPrefix(fields[0], []byte("Hub:")) {
+		field := bytes.TrimPrefix(fields[0], []byte("Hub:"))
+		err := m.Nick.UnmarshalNMDC(field)
+		if err != nil {
+			return err
+		}
+	} else {
+		m.Address = string(fields[0])
+	}
+	err := m.unmarshalString(fields[1])
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *Search) unmarshalString(data []byte) error {
+	fields := bytes.SplitN(data, []byte("?"), 6)
+	if len(fields) != 5 {
+		return errors.New("invalid search string")
+	}
+	for i, field := range fields {
+		switch i {
+		case 0:
+			flag, err := unmarshalBoolFlag(field)
+			if err != nil {
+				return err
+			}
+			m.SizeRestricted = flag
+		case 1:
+			flag, err := unmarshalBoolFlag(field)
+			if err != nil {
+				return err
+			}
+			m.IsMaxSize = flag
+		case 2:
+			if len(field) == 0 {
+				continue
+			}
+			size, err := strconv.ParseUint(strings.TrimSpace(string(field)), 10, 64)
+			if err != nil {
+				return err
+			}
+			m.Size = size
+		case 3:
+			if len([]byte(field)) != 1 {
+				return fmt.Errorf("invalid data type")
+			}
+			m.DataType = DataType(field[0])
+		case 4:
+			var str String
+			err := str.UnmarshalNMDC(field)
+			if err != nil {
+				return err
+			}
+			m.Pattern = strings.Replace(string(str), "$", " ", len(str))
+		}
+	}
+	return nil
+}
+
+func unmarshalBoolFlag(data []byte) (bool, error) {
+	if len([]byte(data)) != 1 {
+		return false, fmt.Errorf("invalid bool flag")
+	}
+	if data[0] == 'T' {
+		return true, nil
+	}
+	if data[0] == 'F' {
+		return false, nil
+	}
+	return false, fmt.Errorf("invalid bool flag")
 }
 
 type FailOver struct {
