@@ -353,7 +353,7 @@ func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 			m, ok := msg.(*ChatMessage)
 			if !ok {
 				if msg != nil {
-					return errors.New("expected chat message, got command")
+					return errors.New("expected command, got chat message")
 				}
 				m = &ChatMessage{}
 				*ptr = m
@@ -458,9 +458,11 @@ func (c *Conn) readChatMsg(m *ChatMessage) error {
 	}
 	msg = msg[:len(msg)-1] // trim '|'
 	// TODO: convert to UTF8
-	if err = m.Text.UnmarshalNMDC(msg); err != nil {
+	var text String
+	if err = text.UnmarshalNMDC(msg); err != nil {
 		return err
 	}
+	m.Text = string(text)
 	if Debug {
 		data, _ := m.MarshalNMDC()
 		log.Println("<-", string(data))

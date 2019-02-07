@@ -84,7 +84,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	}
 	mutual, nick, err := h.nmdcLock(deadline, c, our)
 	if err != nil {
-		_ = c.WriteMsg(&nmdc.Failed{Err: err})
+		_ = c.WriteMsg(&nmdc.ChatMessage{Text: err.Error()})
 		_ = c.Flush()
 		return nil, err
 	}
@@ -158,12 +158,11 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		delete(h.peers.logging, name)
 		h.peers.Unlock()
 
-		if err == nil {
-			err = errors.New("handshake failed: connection is closed")
-		} else {
-			err = errors.New("handshake failed: " + err.Error())
+		str := "connection is closed"
+		if err != nil {
+			str = err.Error()
 		}
-		_ = peer.writeOneNow(&nmdc.Failed{Err: err})
+		_ = peer.writeOneNow(&nmdc.ChatMessage{Text: "handshake failed: " + str})
 		return nil, err
 	}
 
@@ -285,7 +284,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if string(msg.Name) != peer.Name() {
 				return errors.New("invalid name in the chat message")
 			}
-			go h.broadcastChat(peer, string(msg.Text), nil)
+			go h.broadcastChat(peer, msg.Text, nil)
 		case *nmdc.ConnectToMe:
 			targ := h.byName(string(msg.Targ))
 			if targ == nil {
@@ -561,7 +560,7 @@ func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 func (p *nmdcPeer) ChatMsg(from Peer, text string) error {
 	return p.writeOne(&nmdc.ChatMessage{
 		Name: nmdc.Name(from.Name()),
-		Text: nmdc.String(text),
+		Text: text,
 	})
 }
 
@@ -574,7 +573,7 @@ func (p *nmdcPeer) PrivateMsg(from Peer, text string) error {
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
-	return p.writeOne(&nmdc.ChatMessage{Text: nmdc.String(text)})
+	return p.writeOne(&nmdc.ChatMessage{Text: text})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {

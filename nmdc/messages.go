@@ -120,14 +120,14 @@ func (m *RawCommand) Decode() (Message, error) {
 
 type ChatMessage struct {
 	Name Name
-	Text String
+	Text string
 }
 
 func (m *ChatMessage) String() string {
 	if m.Name == "" {
-		return string(m.Text)
+		return m.Text
 	}
-	return "<" + string(m.Name) + "> " + string(m.Text)
+	return "<" + string(m.Name) + "> " + m.Text
 }
 
 func (m *ChatMessage) Cmd() string {
@@ -145,7 +145,7 @@ func (m *ChatMessage) MarshalNMDC() ([]byte, error) {
 		buf.Write(name)
 		buf.WriteString("> ")
 	}
-	text, err := m.Text.MarshalNMDC()
+	text, err := String(m.Text).MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}

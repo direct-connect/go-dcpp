@@ -123,7 +123,7 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 		case *ChatMessage:
 			// we save the last message since it usually describes
 			// an error before hub drops the connection
-			lastMsg = string(msg.Text)
+			lastMsg = msg.Text
 		case *Supports:
 			hub.Ext = msg.Ext
 		case *HubName:

@@ -234,7 +234,7 @@ func (c *Conn) SendChatMsg(msg string) error {
 	name := c.user.Name
 	c.imu.RUnlock()
 	return c.conn.WriteOneMsg(&nmdc.ChatMessage{
-		Name: name, Text: nmdc.String(msg),
+		Name: name, Text: msg,
 	})
 }
 
