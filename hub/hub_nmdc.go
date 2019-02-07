@@ -33,51 +33,62 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 	return h.nmdcServePeer(peer)
 }
 
-func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
+func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn, our nmdc.Features) (nmdc.Features, nmdc.Name, error) {
 	lock := &nmdc.Lock{
 		Lock: "EXTENDEDPROTOCOL_godcpp", // TODO: randomize
 		PK:   h.info.Soft.Name + " " + h.info.Soft.Vers,
 	}
 	err := c.WriteMsg(lock)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	err = c.Flush()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	deadline := time.Now().Add(time.Second * 5)
 	var sup nmdc.Supports
 	err = c.ReadMsgTo(deadline, &sup)
 	if err != nil {
-		return nil, fmt.Errorf("expected supports: %v", err)
+		return nil, "", fmt.Errorf("expected supports: %v", err)
 	}
 	var key nmdc.Key
 	err = c.ReadMsgTo(deadline, &key)
 	if err != nil {
-		return nil, fmt.Errorf("expected key: %v", err)
+		return nil, "", fmt.Errorf("expected key: %v", err)
 	} else if key.Key != lock.Key().Key {
-		return nil, errors.New("wrong key")
+		return nil, "", errors.New("wrong key")
 	}
+	mutual := our.IntersectList(sup.Ext)
+	if !mutual.Has(nmdc.FeaNoHello) {
+		return nil, "", errors.New("NoHello is not supported")
+	} else if !mutual.Has(nmdc.FeaNoGetINFO) {
+		return nil, "", errors.New("NoGetINFO is not supported")
+	}
+	var nick nmdc.ValidateNick
+	err = c.ReadMsgTo(deadline, &nick)
+	if err != nil {
+		return nil, "", fmt.Errorf("expected validate: %v", err)
+	} else if nick.Name == "" {
+		return nil, "", errors.New("empty nickname")
+	}
+	return mutual, nick.Name, nil
+}
+
+func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
+	deadline := time.Now().Add(time.Second * 5)
 	our := nmdc.Features{
 		nmdc.FeaNoHello:   {},
 		nmdc.FeaNoGetINFO: {},
 		nmdc.FeaBotINFO:   {},
 	}
-	mutual := our.IntersectList(sup.Ext)
-	if !mutual.Has(nmdc.FeaNoHello) {
-		return nil, errors.New("NoHello is not supported")
-	} else if !mutual.Has(nmdc.FeaNoGetINFO) {
-		return nil, errors.New("NoGetINFO is not supported")
-	}
-	var nick nmdc.ValidateNick
-	err = c.ReadMsgTo(deadline, &nick)
+	mutual, nick, err := h.nmdcLock(deadline, c, our)
 	if err != nil {
-		return nil, fmt.Errorf("expected validate: %v", err)
-	} else if nick.Name == "" {
-		return nil, errors.New("empty nickname")
+		_ = c.WriteMsg(&nmdc.Failed{Err: err})
+		_ = c.Flush()
+		return nil, err
 	}
+	name := string(nick)
 
 	peer := &nmdcPeer{
 		BasePeer: BasePeer{
@@ -88,8 +99,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		conn: c,
 		fea:  mutual,
 	}
-	peer.user.Name = nick.Name
-	name := string(nick.Name)
+	peer.user.Name = nick
 
 	if mutual.Has(nmdc.FeaBotINFO) {
 		// it's a pinger - don't bother binding the nickname
@@ -124,7 +134,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.RUnlock()
 
 	if sameName1 || sameName2 {
-		_ = peer.writeOneNow(&nmdc.ValidateDenide{nick.Name})
+		_ = peer.writeOneNow(&nmdc.ValidateDenide{nick})
 		return nil, errNickTaken
 	}
 
@@ -135,7 +145,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 
-		_ = peer.writeOneNow(&nmdc.ValidateDenide{nick.Name})
+		_ = peer.writeOneNow(&nmdc.ValidateDenide{nick})
 		return nil, errNickTaken
 	}
 	// bind nick, still no one will see us yet
@@ -148,7 +158,12 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		delete(h.peers.logging, name)
 		h.peers.Unlock()
 
-		_ = peer.writeOneNow(&nmdc.Failed{Text: "handshake failed"})
+		if err == nil {
+			err = errors.New("handshake failed: connection is closed")
+		} else {
+			err = errors.New("handshake failed: " + err.Error())
+		}
+		_ = peer.writeOneNow(&nmdc.Failed{Err: err})
 		return nil, err
 	}
 
@@ -579,10 +594,10 @@ func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	})
 }
 
-func (p *nmdcPeer) failed(text string) error {
-	return p.writeOneNow(&nmdc.Failed{Text: nmdc.String(text)})
+func (p *nmdcPeer) failed(e error) error {
+	return p.writeOneNow(&nmdc.Failed{Err: e})
 }
 
-func (p *nmdcPeer) error(text string) error {
-	return p.writeOneNow(&nmdc.Error{Text: nmdc.String(text)})
+func (p *nmdcPeer) error(e error) error {
+	return p.writeOneNow(&nmdc.Error{Err: e})
 }

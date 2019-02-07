@@ -934,7 +934,7 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 }
 
 type Failed struct {
-	Text String
+	Err error
 }
 
 func (m *Failed) Cmd() string {
@@ -942,10 +942,10 @@ func (m *Failed) Cmd() string {
 }
 
 func (m *Failed) MarshalNMDC() ([]byte, error) {
-	if m.Text == "" {
+	if m.Err == nil {
 		return nil, nil
 	}
-	text, err := m.Text.MarshalNMDC()
+	text, err := String(m.Err.Error()).MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
@@ -953,14 +953,18 @@ func (m *Failed) MarshalNMDC() ([]byte, error) {
 }
 
 func (m *Failed) UnmarshalNMDC(text []byte) error {
-	if err := m.Text.UnmarshalNMDC(text); err != nil {
+	var str String
+	if err := str.UnmarshalNMDC(text); err != nil {
 		return err
+	}
+	if str != "" {
+		m.Err = errors.New(string(str))
 	}
 	return nil
 }
 
 type Error struct {
-	Text String
+	Err error
 }
 
 func (m *Error) Cmd() string {
@@ -968,10 +972,10 @@ func (m *Error) Cmd() string {
 }
 
 func (m *Error) MarshalNMDC() ([]byte, error) {
-	if m.Text == "" {
+	if m.Err == nil {
 		return nil, nil
 	}
-	text, err := m.Text.MarshalNMDC()
+	text, err := String(m.Err.Error()).MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
@@ -979,8 +983,12 @@ func (m *Error) MarshalNMDC() ([]byte, error) {
 }
 
 func (m *Error) UnmarshalNMDC(text []byte) error {
-	if err := m.Text.UnmarshalNMDC(text); err != nil {
+	var str String
+	if err := str.UnmarshalNMDC(text); err != nil {
 		return err
+	}
+	if str != "" {
+		m.Err = errors.New(string(str))
 	}
 	return nil
 }
