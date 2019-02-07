@@ -217,7 +217,7 @@ var casesUnmarshal = []struct {
 			IsMaxSize:      true,
 			Size:           0,
 			DataType:       DataTypeTTH,
-			Pattern:        "TTH:TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA",
+			Pattern:        "TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA",
 		},
 	},
 	{

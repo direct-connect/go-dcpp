@@ -1039,7 +1039,11 @@ func (m *Search) MarshalNMDC() ([]byte, error) {
 	}
 	a = append(a, []byte(strconv.FormatUint(m.Size, 10)))
 	a = append(a, []byte{byte(m.DataType)})
-	str := strings.Replace(m.Pattern, " ", "$", len(m.Pattern))
+	var str string
+	if m.DataType == DataTypeTTH {
+		str = "TTH:"
+	}
+	str = str + strings.Replace(m.Pattern, " ", "$", len(m.Pattern))
 	pattern := []byte(str)
 	a = append(a, []byte(String(pattern)))
 	buf.Write(bytes.Join(a, []byte("?")))
@@ -1106,7 +1110,14 @@ func (m *Search) unmarshalString(data []byte) error {
 			if err != nil {
 				return err
 			}
-			m.Pattern = strings.Replace(string(str), "$", " ", len(str))
+			pattern := string(str)
+			if m.DataType == DataTypeTTH {
+				if !strings.HasPrefix(pattern, "TTH:") {
+					return fmt.Errorf("invalid TTH search")
+				}
+				pattern = strings.TrimPrefix(pattern, "TTH:")
+			}
+			m.Pattern = strings.Replace(pattern, "$", " ", len(str))
 		}
 	}
 	return nil
