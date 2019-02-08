@@ -389,6 +389,7 @@ var (
 type ChatMessage struct {
 	Text String `adc:"#"`
 	PM   *SID   `adc:"PM"`
+	// TODO: TS
 }
 
 func (ChatMessage) Cmd() MsgType {

@@ -42,6 +42,9 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 	if err = h.sendMOTD(peer); err != nil {
 		return err
 	}
+	if h.conf.ChatLogJoin != 0 {
+		h.replayChat(peer, h.conf.ChatLogJoin)
+	}
 
 	return h.adcServePeer(peer)
 }
@@ -63,7 +66,7 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 			// TODO: read INF, update peer info
 			// TODO: update nick, make sure there is no duplicates
 			// TODO: disallow STA and some others
-			go h.adcBroadcast(p, peer, h.Peers())
+			h.adcBroadcast(p, peer, h.Peers())
 		case *adc.EchoPacket:
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed echo packet")
@@ -75,13 +78,13 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 				return err
 			}
 			// TODO: disallow INF, STA and some others
-			go h.adcDirect((*adc.DirectPacket)(p), peer)
+			h.adcDirect((*adc.DirectPacket)(p), peer)
 		case *adc.DirectPacket:
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed direct packet")
 			}
 			// TODO: disallow INF, STA and some others
-			go h.adcDirect(p, peer)
+			h.adcDirect(p, peer)
 		default:
 			data, _ := p.MarshalPacket()
 			log.Printf("%s: adc: %s", peer.RemoteAddr(), string(data))
@@ -301,18 +304,6 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 	if peers == nil {
 		peers = h.Peers()
 	}
-	var nmdc []Peer
-	for _, peer := range peers {
-		if p2, ok := peer.(*adcPeer); ok {
-			_ = p2.conn.WritePacket(p)
-			_ = p2.conn.Flush()
-		} else {
-			nmdc = append(nmdc, peer)
-		}
-	}
-	if len(nmdc) == 0 {
-		return
-	}
 	msg, err := p.Decode()
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
@@ -320,7 +311,21 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 	}
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
-		h.broadcastChat(from, string(msg.Text), nmdc)
+		text := string(msg.Text)
+		if strings.HasPrefix(text, "!") {
+			sub := strings.SplitN(text, " ", 2)
+			cmd := sub[0][1:]
+			args := ""
+			if len(sub) > 1 {
+				args = sub[1]
+			}
+			h.command(from, cmd, args)
+			return
+		}
+		h.broadcastChat(from, Message{
+			Name: from.Name(),
+			Text: text,
+		}, nil)
 	default:
 		// TODO: decode other packets
 	}
@@ -343,7 +348,10 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	}
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
-		h.privateChat(from, peer, string(msg.Text))
+		h.privateChat(from, peer, Message{
+			Name: from.Name(),
+			Text: string(msg.Text),
+		})
 	case adc.ConnectRequest:
 		info := from.Info()
 		pinf := peer.User()
@@ -518,9 +526,9 @@ func (p *adcPeer) PeersLeave(peers []Peer) error {
 	return p.conn.Flush()
 }
 
-func (p *adcPeer) ChatMsg(from Peer, text string) error {
+func (p *adcPeer) ChatMsg(from Peer, msg Message) error {
 	err := p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{
-		Text: adc.String(text),
+		Text: adc.String(msg.Text),
 	})
 	if err != nil {
 		return err
@@ -528,10 +536,10 @@ func (p *adcPeer) ChatMsg(from Peer, text string) error {
 	return p.conn.Flush()
 }
 
-func (p *adcPeer) PrivateMsg(from Peer, text string) error {
+func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 	src := from.SID()
 	err := p.conn.WriteDirect(src, p.sid, &adc.ChatMessage{
-		Text: adc.String(text), PM: &src,
+		Text: adc.String(msg.Text), PM: &src,
 	})
 	if err != nil {
 		return err

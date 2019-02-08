@@ -18,34 +18,41 @@ import (
 	"github.com/direct-connect/go-dcpp/version"
 )
 
-type Info struct {
-	Name    string
-	Desc    string
-	Addr    string
-	Website string
-	Email   string
-	Soft    Software
-	MOTD    string
+type Config struct {
+	Name        string
+	Desc        string
+	Addr        string
+	Website     string
+	Email       string
+	Soft        Software
+	MOTD        string
+	ChatLog     int
+	ChatLogJoin int
+	TLS         *tls.Config
 }
 
-func NewHub(info Info, tls *tls.Config) *Hub {
-	if info.Soft == (Software{}) {
-		info.Soft = Software{
-			Name: version.Name,
-			Vers: version.Vers,
-		}
+func NewHub(conf Config) *Hub {
+	if conf.Soft.Name == "" {
+		conf.Soft.Name = version.Name
 	}
-	if tls != nil {
-		tls.NextProtos = []string{"adc", "nmdc"}
+	if conf.Soft.Vers == "" {
+		conf.Soft.Vers = version.Vers
+	}
+	if conf.ChatLog < 0 {
+		conf.ChatLog = 0
+	}
+	if conf.TLS != nil {
+		conf.TLS.NextProtos = []string{"adc", "nmdc"}
 	}
 	h := &Hub{
 		created: time.Now(),
-		info:    info,
-		tls:     tls,
+		conf:    conf,
+		tls:     conf.TLS,
 	}
 	h.peers.logging = make(map[string]struct{})
 	h.peers.byName = make(map[string]Peer)
 	h.peers.bySID = make(map[adc.SID]Peer)
+	h.chat.log.limit = conf.ChatLog
 	h.initADC()
 	h.initHTTP()
 
@@ -60,12 +67,17 @@ func NewHub(info Info, tls *tls.Config) *Hub {
 		Short: "show hub stats",
 		Func:  cmdStats,
 	})
+	h.registerCommand(Command{
+		Name:  "log",
+		Short: "replay chat log",
+		Func:  cmdChatLog,
+	})
 	return h
 }
 
 type Hub struct {
 	created time.Time
-	info    Info
+	conf    Config
 	tls     *tls.Config
 	h2      *http2.Server
 	h2conf  *http2.ServeConnOpts
@@ -90,6 +102,11 @@ type Hub struct {
 
 	cmds struct {
 		byName map[string]*Command
+	}
+
+	chat struct {
+		sync.RWMutex
+		log chatBuffer
 	}
 }
 
@@ -130,16 +147,16 @@ func (h *Hub) Stats() Stats {
 	users := len(h.peers.byName)
 	h.peers.RUnlock()
 	st := Stats{
-		Name:    h.info.Name,
-		Desc:    h.info.Desc,
-		Website: h.info.Website,
-		Email:   h.info.Email,
+		Name:    h.conf.Name,
+		Desc:    h.conf.Desc,
+		Website: h.conf.Website,
+		Email:   h.conf.Email,
 		Users:   users,
 		Enc:     "utf8",
-		Soft:    h.info.Soft,
+		Soft:    h.conf.Soft,
 	}
-	if h.info.Addr != "" {
-		st.Addr = append(st.Addr, h.info.Addr)
+	if h.conf.Addr != "" {
+		st.Addr = append(st.Addr, h.conf.Addr)
 	}
 	return st
 }
@@ -277,21 +294,48 @@ func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
 	peer.BroadcastLeave(notify)
 }
 
-func (h *Hub) broadcastChat(from Peer, text string, notify []Peer) {
+func (h *Hub) broadcastChat(from Peer, m Message, notify []Peer) {
+	m.Time = time.Now().UTC()
+	if h.conf.ChatLog > 0 {
+		h.chat.Lock()
+		h.chat.log.Append(m)
+		h.chat.Unlock()
+	}
 	if notify == nil {
 		notify = h.Peers()
 	}
 	for _, p := range notify {
-		_ = p.ChatMsg(from, text)
+		_ = p.ChatMsg(from, m)
 	}
 }
 
-func (h *Hub) privateChat(from, to Peer, text string) {
-	_ = to.PrivateMsg(from, text)
+func (h *Hub) privateChat(from, to Peer, m Message) {
+	m.Time = time.Now().UTC()
+	_ = to.PrivateMsg(from, m)
+}
+
+func (h *Hub) replayChat(peer Peer, n int) {
+	if h.conf.ChatLog <= 0 {
+		return
+	}
+	h.chat.RLock()
+	log := h.chat.log.Get(n)
+	h.chat.RUnlock()
+	for _, m := range log {
+		// TODO: replay messages from peers themselves, if they are still online
+		err := peer.HubChatMsg(fmt.Sprintf(
+			"[%s] <%s> %s",
+			m.Time.Format("15:04:05"),
+			m.Name, m.Text,
+		))
+		if err != nil {
+			return
+		}
+	}
 }
 
 func (h *Hub) sendMOTD(peer Peer) error {
-	motd := h.info.MOTD
+	motd := h.conf.MOTD
 	if motd == "" {
 		motd = "Welcome!"
 	}
@@ -397,8 +441,8 @@ type Peer interface {
 	BroadcastLeave(peers []Peer)
 	//PeersUpdate(peers []Peer) error
 
-	ChatMsg(from Peer, text string) error
-	PrivateMsg(from Peer, text string) error
+	ChatMsg(from Peer, m Message) error
+	PrivateMsg(from Peer, m Message) error
 	HubChatMsg(text string) error
 
 	ConnectTo(peer Peer, addr string, token string, secure bool) error

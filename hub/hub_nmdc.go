@@ -38,7 +38,7 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdc.Features, nmdc.Name, error) {
 	lock := &nmdc.Lock{
 		Lock: "EXTENDEDPROTOCOL_godcpp", // TODO: randomize
-		PK:   h.info.Soft.Name + " " + h.info.Soft.Vers,
+		PK:   h.conf.Soft.Name + " " + h.conf.Soft.Vers,
 	}
 	err := c.WriteMsg(lock)
 	if err != nil {
@@ -201,6 +201,10 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.broadcastUserJoin(peer, list)
 	atomic.StoreUint32(&peer.state, nmdcPeerNormal)
 
+	if h.conf.ChatLogJoin != 0 {
+		h.replayChat(peer, h.conf.ChatLogJoin)
+	}
+
 	if err := peer.conn.Flush(); err != nil {
 		_ = peer.closeOn(list)
 		return nil, err
@@ -220,7 +224,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	err = c.WriteMsg(&nmdc.HubName{
-		Name: nmdc.Name(h.info.Name),
+		Name: nmdc.Name(h.conf.Name),
 	})
 	if err != nil {
 		return err
@@ -262,7 +266,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	err = c.WriteMsg(&nmdc.HubTopic{
-		Text: h.info.Desc,
+		Text: h.conf.Desc,
 	})
 	if err != nil {
 		return err
@@ -338,7 +342,10 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				h.command(peer, cmd, args)
 				continue
 			}
-			h.broadcastChat(peer, msg.Text, nil)
+			h.broadcastChat(peer, Message{
+				Name: string(msg.Name),
+				Text: string(msg.Text),
+			}, nil)
 		case *nmdc.ConnectToMe:
 			targ := h.byName(string(msg.Targ))
 			if targ == nil {
@@ -366,7 +373,10 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if targ == nil {
 				continue
 			}
-			h.privateChat(peer, targ, string(msg.Text))
+			h.privateChat(peer, targ, Message{
+				Name: string(msg.From),
+				Text: string(msg.Text),
+			})
 		case *nmdc.Search:
 			if msg.Address != "" {
 				if err := verifyAddr(msg.Address); err != nil {
@@ -637,18 +647,18 @@ func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 	return nil
 }
 
-func (p *nmdcPeer) ChatMsg(from Peer, text string) error {
+func (p *nmdcPeer) ChatMsg(from Peer, msg Message) error {
 	return p.writeOne(&nmdc.ChatMessage{
-		Name: nmdc.Name(from.Name()),
-		Text: text,
+		Name: nmdc.Name(msg.Name),
+		Text: msg.Text,
 	})
 }
 
-func (p *nmdcPeer) PrivateMsg(from Peer, text string) error {
+func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 	return p.writeOne(&nmdc.PrivateMessage{
 		To:   nmdc.Name(p.Name()),
-		From: nmdc.Name(from.Name()),
-		Text: nmdc.String(text),
+		From: nmdc.Name(msg.Name),
+		Text: nmdc.String(msg.Text),
 	})
 }
 

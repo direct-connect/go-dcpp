@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -40,5 +41,23 @@ func cmdHelp(h *Hub, p Peer, args string) error {
 func cmdStats(h *Hub, p Peer, args string) error {
 	st := h.Stats()
 	h.cmdOutputJSON(p, st)
+	return nil
+}
+
+func cmdChatLog(h *Hub, p Peer, args string) error {
+	if h.conf.ChatLog == 0 {
+		h.cmdOutput(p, "chat log is disabled on this hub")
+		return nil
+	}
+	n := 0
+	if args != "" {
+		v, err := strconv.Atoi(args)
+		if err != nil {
+			return err
+		}
+		n = v
+	}
+	h.cmdOutput(p, "replaying last messages")
+	h.replayChat(p, n)
 	return nil
 }

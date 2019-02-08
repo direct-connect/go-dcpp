@@ -47,9 +47,15 @@ func (h *Hub) ServeIRC(conn net.Conn) error {
 			}
 			dst, msg := m.Params[0], m.Params[1]
 			if dst == ircHubChan {
-				go h.broadcastChat(peer, msg, nil)
+				h.broadcastChat(peer, Message{
+					Name: peer.Name(),
+					Text: msg,
+				}, nil)
 			} else if dst := h.byName(dst); dst != nil {
-				go h.privateChat(peer, dst, msg)
+				h.privateChat(peer, dst, Message{
+					Name: peer.Name(),
+					Text: msg,
+				})
 			}
 		case "QUIT":
 			return nil
@@ -166,13 +172,13 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Params: []string{
 			peer.name,
 			fmt.Sprintf("Welcome to the %s Internet Relay Chat Network %s",
-				h.info.Name, peer.name),
+				h.conf.Name, peer.name),
 		},
 	})
 	if err != nil {
 		return err
 	}
-	vers := h.info.Soft.Name + "-" + h.info.Soft.Vers
+	vers := h.conf.Soft.Name + "-" + h.conf.Soft.Vers
 
 	host, port, _ := net.SplitHostPort(peer.conn.LocalAddr().String())
 	err = peer.writeMessage(&irc.Message{
@@ -410,19 +416,19 @@ func (p *ircPeer) PeersLeave(peers []Peer) error {
 	return nil
 }
 
-func (p *ircPeer) ChatMsg(from Peer, text string) error {
+func (p *ircPeer) ChatMsg(from Peer, msg Message) error {
 	if p == from {
 		// no echo
 		return nil
 	}
 	m := &irc.Message{
 		Command: "PRIVMSG",
-		Params:  []string{ircHubChan, text},
+		Params:  []string{ircHubChan, msg.Text},
 	}
 	if p2, ok := from.(*ircPeer); ok {
 		m.Prefix = p2.ownPref
 	} else {
-		name := from.Name()
+		name := msg.Name
 		m.Prefix = &irc.Prefix{
 			Name: name,
 			User: name,
@@ -432,15 +438,15 @@ func (p *ircPeer) ChatMsg(from Peer, text string) error {
 	return p.writeMessage(m)
 }
 
-func (p *ircPeer) PrivateMsg(from Peer, text string) error {
+func (p *ircPeer) PrivateMsg(from Peer, msg Message) error {
 	m := &irc.Message{
 		Command: "PRIVMSG",
-		Params:  []string{p.Name(), text},
+		Params:  []string{p.Name(), msg.Text},
 	}
 	if p2, ok := from.(*ircPeer); ok {
 		m.Prefix = p2.ownPref
 	} else {
-		name := from.Name()
+		name := msg.Name
 		m.Prefix = &irc.Prefix{
 			Name: name,
 			User: name,

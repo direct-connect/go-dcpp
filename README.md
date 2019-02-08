@@ -14,13 +14,13 @@ Requires Go 1.11+.
 - Supports TLS for ADC and NMDC.
 - Automatic TLS certificate generation.
 - HTTP pinger support.
+- User commands.
 
 **TODO:**
 
 - Search between NMDC and ADC.
 - User registration.
 - Operators.
-- User/Op commands.
 - Extensions and scripts.
 - Spam filters.
 - Get certificates from LetsEncrypt.
@@ -51,7 +51,7 @@ You may also need to install [Git](https://git-scm.com/download/win).
 To build the hub binary, run:
 
 ```bash
-go build cmd\go-hub
+go build .\cmd\go-hub
 ```
 
 ### Running the hub

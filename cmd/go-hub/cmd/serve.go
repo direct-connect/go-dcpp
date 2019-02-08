@@ -50,6 +50,12 @@ type Config struct {
 		Port int        `yaml:"port"`
 		TLS  *TLSConfig `yaml:"tls"`
 	} `yaml:"serve"`
+	Chat struct {
+		Log struct {
+			Max  int `yaml:"max"`
+			Join int `yaml:"join"`
+		}
+	} `yaml:"chat"`
 }
 
 const defaultConfig = "hub.yml"
@@ -89,6 +95,8 @@ func init() {
 	}
 	viper.SetConfigName("hub")
 	viper.SetDefault("motd", "Welcome!")
+	viper.SetDefault("chat.log.max", 50)
+	viper.SetDefault("chat.log.join", 10)
 
 	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := initConfig(defaultConfig); err != nil {
@@ -154,14 +162,17 @@ func init() {
 			}()
 		}
 
-		h := hub.NewHub(hub.Info{
-			Name:    conf.Name,
-			Desc:    conf.Desc,
-			Website: conf.Website,
-			Email:   conf.Email,
-			MOTD:    conf.MOTD,
-			Addr:    addr,
-		}, tlsConf)
+		h := hub.NewHub(hub.Config{
+			Name:        conf.Name,
+			Desc:        conf.Desc,
+			Website:     conf.Website,
+			Email:       conf.Email,
+			MOTD:        conf.MOTD,
+			ChatLog:     conf.Chat.Log.Max,
+			ChatLogJoin: conf.Chat.Log.Join,
+			Addr:        addr,
+			TLS:         tlsConf,
+		})
 
 		fmt.Printf(`
 
