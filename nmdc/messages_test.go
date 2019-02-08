@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"reflect"
 	"testing"
+
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var casesUnmarshal = []struct {
@@ -210,6 +212,7 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "Search",
+		name: "TTH",
 		data: `Hub:SomeNick F?T?0?9?TTH:TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA`,
 		msg: &Search{
 			Nick:           "SomeNick",
@@ -217,7 +220,7 @@ var casesUnmarshal = []struct {
 			IsMaxSize:      true,
 			Size:           0,
 			DataType:       DataTypeTTH,
-			Pattern:        "TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA",
+			TTH:            getTHPointer("TO32WPD6AQE7VA7654HEAM5GKFQGIL7F2BEKFNA"),
 		},
 	},
 	{
@@ -229,6 +232,11 @@ var casesUnmarshal = []struct {
 			Text:   "some message",
 		},
 	},
+}
+
+func getTHPointer(s string) *tiger.Hash {
+	pointer := tiger.MustParseBase32(s)
+	return &pointer
 }
 
 func TestUnmarshal(t *testing.T) {

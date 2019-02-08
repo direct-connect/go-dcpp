@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var (
@@ -1007,6 +1009,7 @@ type Search struct {
 	Size           uint64
 	DataType       DataType
 	Pattern        string
+	TTH            *tiger.Hash
 }
 
 func (*Search) Cmd() string {
@@ -1039,13 +1042,21 @@ func (m *Search) MarshalNMDC() ([]byte, error) {
 	}
 	a = append(a, []byte(strconv.FormatUint(m.Size, 10)))
 	a = append(a, []byte{byte(m.DataType)})
-	var str string
+	var pattern []byte
 	if m.DataType == DataTypeTTH {
-		str = "TTH:"
+		if m.TTH == nil {
+			return nil, fmt.Errorf("invalid TTH pointer")
+		}
+		hash := m.TTH.Base32()
+		pattern = append([]byte("TTH:"), hash...)
+	} else {
+		str, err := String(m.Pattern).MarshalNMDC()
+		if err != nil {
+			return nil, err
+		}
+		pattern = bytes.Replace(str, []byte(" "), []byte("$"), -1)
 	}
-	str = str + strings.Replace(m.Pattern, " ", "$", len(m.Pattern))
-	pattern := []byte(str)
-	a = append(a, []byte(String(pattern)))
+	a = append(a, pattern)
 	buf.Write(bytes.Join(a, []byte("?")))
 	return buf.Bytes(), nil
 }
@@ -1105,19 +1116,24 @@ func (m *Search) unmarshalString(data []byte) error {
 			}
 			m.DataType = DataType(field[0])
 		case 4:
-			var str String
-			err := str.UnmarshalNMDC(field)
-			if err != nil {
-				return err
-			}
-			pattern := string(str)
 			if m.DataType == DataTypeTTH {
-				if !strings.HasPrefix(pattern, "TTH:") {
+				if !bytes.HasPrefix(field, []byte("TTH:")) {
 					return fmt.Errorf("invalid TTH search")
 				}
-				pattern = strings.TrimPrefix(pattern, "TTH:")
+				hash := bytes.TrimPrefix(field, []byte("TTH:"))
+				m.TTH = new(tiger.Hash)
+				err := m.TTH.FromBase32(string(hash))
+				if err != nil {
+					return err
+				}
+			} else {
+				var str String
+				err := str.UnmarshalNMDC(field)
+				if err != nil {
+					return err
+				}
+				m.Pattern = strings.Replace(string(str), "$", " ", -1)
 			}
-			m.Pattern = strings.Replace(pattern, "$", " ", len(str))
 		}
 	}
 	return nil
