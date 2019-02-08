@@ -690,20 +690,14 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 	return nil
 }
 
-type OpList struct {
-	List []Name
-}
+type Names []Name
 
-func (*OpList) Cmd() string {
-	return "OpList"
-}
-
-func (m *OpList) MarshalNMDC() ([]byte, error) {
-	if len(m.List) == 0 {
+func (m Names) MarshalNMDC() ([]byte, error) {
+	if len(m) == 0 {
 		return []byte("$$"), nil
 	}
-	sub := make([][]byte, 0, len(m.List)+1)
-	for _, name := range m.List {
+	sub := make([][]byte, 0, len(m)+1)
+	for _, name := range m {
 		data, err := name.MarshalNMDC()
 		if err != nil {
 			return nil, err
@@ -714,45 +708,39 @@ func (m *OpList) MarshalNMDC() ([]byte, error) {
 	return bytes.Join(sub, []byte("$$")), nil
 }
 
-func (m *OpList) UnmarshalNMDC(data []byte) error {
+func (m *Names) UnmarshalNMDC(data []byte) error {
 	if len(data) == 0 {
-		m.List = nil
+		*m = nil
 		return nil
 	}
 	data = bytes.TrimSuffix(data, []byte("$$"))
 	sub := bytes.Split(data, []byte("$$"))
-	m.List = make([]Name, 0, len(sub))
+	list := make([]Name, 0, len(sub))
 	for _, b := range sub {
 		var name Name
 		if err := name.UnmarshalNMDC(b); err != nil {
 			return err
 		}
-		m.List = append(m.List, name)
+		list = append(list, name)
 	}
+	*m = list
 	return nil
 }
 
+type OpList struct {
+	Names
+}
+
+func (*OpList) Cmd() string {
+	return "OpList"
+}
+
 type BotList struct {
-	List []Name
+	Names
 }
 
 func (*BotList) Cmd() string {
 	return "BotList"
-}
-
-func (m *BotList) MarshalNMDC() ([]byte, error) {
-	if len(m.List) == 0 {
-		return nil, nil
-	}
-	return ((*OpList)(m)).MarshalNMDC()
-}
-
-func (m *BotList) UnmarshalNMDC(data []byte) error {
-	if len(data) == 0 {
-		m.List = nil
-		return nil
-	}
-	return ((*OpList)(m)).UnmarshalNMDC(data)
 }
 
 type UserIP struct {

@@ -166,12 +166,12 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			}
 			hub.Users = append(hub.Users, *msg)
 		case *OpList:
-			for _, name := range msg.List {
+			for _, name := range msg.Names {
 				hub.Ops = append(hub.Ops, string(name))
 			}
 		case *BotList:
 			var arr []string
-			for _, name := range msg.List {
+			for _, name := range msg.Names {
 				arr = append(arr, string(name))
 			}
 			hub.Bots = arr

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -326,6 +327,16 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		case *nmdc.ChatMessage:
 			if string(msg.Name) != peer.Name() {
 				return errors.New("invalid name in the chat message")
+			}
+			if strings.HasPrefix(msg.Text, "!") {
+				sub := strings.SplitN(msg.Text, " ", 2)
+				cmd := sub[0][1:]
+				args := ""
+				if len(sub) > 1 {
+					args = sub[1]
+				}
+				h.command(peer, cmd, args)
+				continue
 			}
 			h.broadcastChat(peer, msg.Text, nil)
 		case *nmdc.ConnectToMe:

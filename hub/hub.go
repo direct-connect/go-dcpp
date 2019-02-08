@@ -2,6 +2,7 @@ package hub
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -47,6 +48,18 @@ func NewHub(info Info, tls *tls.Config) *Hub {
 	h.peers.bySID = make(map[adc.SID]Peer)
 	h.initADC()
 	h.initHTTP()
+
+	h.cmds.byName = make(map[string]*Command)
+	h.registerCommand(Command{
+		Name: "help", Aliases: []string{"h"},
+		Short: "show the list of commands or a help for a specific command",
+		Func:  cmdHelp,
+	})
+	h.registerCommand(Command{
+		Name:  "stats",
+		Short: "show hub stats",
+		Func:  cmdStats,
+	})
 	return h
 }
 
@@ -74,6 +87,19 @@ type Hub struct {
 		loggingCID map[adc.CID]struct{}
 		byCID      map[adc.CID]*adcPeer
 	}
+
+	cmds struct {
+		byName map[string]*Command
+	}
+}
+
+type Command struct {
+	Name    string
+	Aliases []string
+	Short   string
+	Long    string
+	Func    func(h *Hub, p Peer, args string) error
+	run     func(p Peer, args string)
 }
 
 type Stats struct {
@@ -270,6 +296,41 @@ func (h *Hub) sendMOTD(peer Peer) error {
 		motd = "Welcome!"
 	}
 	return peer.HubChatMsg(motd)
+}
+
+func (h *Hub) cmdOutput(peer Peer, out string) {
+	_ = peer.HubChatMsg("\n" + out)
+}
+
+func (h *Hub) cmdOutputf(peer Peer, format string, args ...interface{}) {
+	h.cmdOutput(peer, fmt.Sprintf(format, args...))
+}
+
+func (h *Hub) cmdOutputJSON(peer Peer, out interface{}) {
+	data, _ := json.MarshalIndent(out, "", "  ")
+	h.cmdOutput(peer, string(data))
+}
+
+func (h *Hub) registerCommand(cmd Command) {
+	cmd.run = func(p Peer, args string) {
+		err := cmd.Func(h, p, args)
+		if err != nil {
+			h.cmdOutput(p, "error: "+err.Error())
+		}
+	}
+	h.cmds.byName[cmd.Name] = &cmd
+	for _, name := range cmd.Aliases {
+		h.cmds.byName[name] = &cmd
+	}
+}
+
+func (h *Hub) command(peer Peer, cmd string, args string) {
+	c, ok := h.cmds.byName[cmd]
+	if !ok {
+		h.cmdOutput(peer, "unsupported command: "+cmd)
+		return
+	}
+	c.run(peer, args)
 }
 
 func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {

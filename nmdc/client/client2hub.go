@@ -266,7 +266,7 @@ func (c *Conn) readLoop() {
 			}
 		case *nmdc.OpList:
 			c.peers.RLock()
-			for _, name := range msg.List {
+			for _, name := range msg.Names {
 				p := c.peers.byName[name]
 				if p == nil {
 					log.Printf("op user does not exist: %q", name)
@@ -279,7 +279,7 @@ func (c *Conn) readLoop() {
 			c.peers.RUnlock()
 		case *nmdc.BotList:
 			c.peers.RLock()
-			for _, name := range msg.List {
+			for _, name := range msg.Names {
 				p := c.peers.byName[name]
 				if p == nil {
 					log.Printf("bot user does not exist: %q", name)
