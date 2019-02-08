@@ -33,7 +33,7 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 	return h.nmdcServePeer(peer)
 }
 
-func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn, our nmdc.Features) (nmdc.Features, nmdc.Name, error) {
+func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdc.Features, nmdc.Name, error) {
 	lock := &nmdc.Lock{
 		Lock: "EXTENDEDPROTOCOL_godcpp", // TODO: randomize
 		PK:   h.info.Soft.Name + " " + h.info.Soft.Vers,
@@ -59,10 +59,13 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn, our nmdc.Features) (nmd
 	} else if key.Key != lock.Key().Key {
 		return nil, "", errors.New("wrong key")
 	}
-	mutual := our.IntersectList(sup.Ext)
-	if !mutual.Has(nmdc.FeaNoHello) {
+	fea := make(nmdc.Features, len(sup.Ext))
+	for _, f := range sup.Ext {
+		fea[f] = struct{}{}
+	}
+	if !fea.Has(nmdc.FeaNoHello) {
 		return nil, "", errors.New("NoHello is not supported")
-	} else if !mutual.Has(nmdc.FeaNoGetINFO) {
+	} else if !fea.Has(nmdc.FeaNoGetINFO) {
 		return nil, "", errors.New("NoGetINFO is not supported")
 	}
 	var nick nmdc.ValidateNick
@@ -72,24 +75,27 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn, our nmdc.Features) (nmd
 	} else if nick.Name == "" {
 		return nil, "", errors.New("empty nickname")
 	}
-	return mutual, nick.Name, nil
+	return fea, nick.Name, nil
+}
+
+var nmdcFeatures = nmdc.Features{
+	nmdc.FeaNoHello:   {},
+	nmdc.FeaNoGetINFO: {},
+	nmdc.FeaBotINFO:   {},
+	nmdc.FeaTTHSearch: {},
+	nmdc.FeaUserIP2:   {},
 }
 
 func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	deadline := time.Now().Add(time.Second * 5)
-	our := nmdc.Features{
-		nmdc.FeaNoHello:   {},
-		nmdc.FeaNoGetINFO: {},
-		nmdc.FeaBotINFO:   {},
-	}
-	mutual, nick, err := h.nmdcLock(deadline, c, our)
+
+	fea, nick, err := h.nmdcLock(deadline, c)
 	if err != nil {
 		_ = c.WriteMsg(&nmdc.ChatMessage{Text: err.Error()})
 		_ = c.Flush()
 		return nil, err
 	}
 	name := string(nick)
-
 	peer := &nmdcPeer{
 		BasePeer: BasePeer{
 			hub:  h,
@@ -97,15 +103,16 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 			sid:  h.nextSID(),
 		},
 		conn: c,
-		fea:  mutual,
+		fea:  nmdcFeatures.Intersect(fea),
 	}
 	peer.user.Name = nick
 
-	if mutual.Has(nmdc.FeaBotINFO) {
+	if peer.fea.Has(nmdc.FeaBotINFO) {
 		// it's a pinger - don't bother binding the nickname
-		delete(our, nmdc.FeaBotINFO)
-		our.Set(nmdc.FeaHubINFO)
-		err = h.nmdcAccept(peer, our)
+		delete(peer.fea, nmdc.FeaBotINFO)
+		peer.fea.Set(nmdc.FeaHubINFO)
+
+		err = h.nmdcAccept(peer)
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +159,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.logging[name] = struct{}{}
 	h.peers.Unlock()
 
-	err = h.nmdcAccept(peer, our)
+	err = h.nmdcAccept(peer)
 	if err != nil || peer.getState() == nmdcPeerClosed {
 		h.peers.Lock()
 		delete(h.peers.logging, name)
@@ -193,12 +200,12 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	return peer, nil
 }
 
-func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
+func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 
 	c := peer.conn
 	err := c.WriteMsg(&nmdc.Supports{
-		Ext: our.List(),
+		Ext: peer.fea.List(),
 	})
 	if err != nil {
 		return err
@@ -266,6 +273,22 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer, our nmdc.Features) error {
 	err = peer.peersJoin([]Peer{peer}, true)
 	if err != nil {
 		return err
+	}
+	// TODO: send the correct list once we supports ops
+	err = c.WriteMsg(&nmdc.OpList{})
+	if err != nil {
+		return err
+	}
+	if peer.fea.Has(nmdc.FeaUserIP2) {
+		addr := c.RemoteAddr().String()
+		ip, _, _ := net.SplitHostPort(addr)
+		err = c.WriteMsg(&nmdc.UserIP{
+			Name: nmdc.Name(peer.Name()),
+			IP:   ip,
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

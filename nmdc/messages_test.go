@@ -2,6 +2,7 @@ package nmdc
 
 import (
 	"bytes"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -26,7 +27,7 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "UserIP",
-		data: `johndoe 192.168.1.2`,
+		data: `johndoe 192.168.1.2$$`,
 		msg: &UserIP{
 			Name: "johndoe",
 			IP:   "192.168.1.2",
@@ -193,7 +194,7 @@ var casesUnmarshal = []struct {
 		typ:  "Error",
 		data: `message`,
 		msg: &Error{
-			Text: "message",
+			Err: errors.New("message"),
 		},
 	},
 	{

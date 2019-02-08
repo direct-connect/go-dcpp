@@ -700,9 +700,9 @@ func (*OpList) Cmd() string {
 
 func (m *OpList) MarshalNMDC() ([]byte, error) {
 	if len(m.List) == 0 {
-		return nil, nil
+		return []byte("$$"), nil
 	}
-	sub := make([][]byte, 0, len(m.List))
+	sub := make([][]byte, 0, len(m.List)+1)
 	for _, name := range m.List {
 		data, err := name.MarshalNMDC()
 		if err != nil {
@@ -710,6 +710,7 @@ func (m *OpList) MarshalNMDC() ([]byte, error) {
 		}
 		sub = append(sub, data)
 	}
+	sub = append(sub, nil) // trailing $$
 	return bytes.Join(sub, []byte("$$")), nil
 }
 
@@ -718,7 +719,6 @@ func (m *OpList) UnmarshalNMDC(data []byte) error {
 		m.List = nil
 		return nil
 	}
-	// TODO: does it always contain a trailing '$$', or it's a single hub returning an empty name?
 	data = bytes.TrimSuffix(data, []byte("$$"))
 	sub := bytes.Split(data, []byte("$$"))
 	m.List = make([]Name, 0, len(sub))
@@ -769,13 +769,11 @@ func (m *UserIP) MarshalNMDC() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(m.IP) == 0 {
-		return name, nil
-	}
-	return bytes.Join([][]byte{name, []byte(m.IP)}, []byte(" ")), nil
+	return bytes.Join([][]byte{name, []byte(m.IP + "$$")}, []byte(" ")), nil
 }
 
 func (m *UserIP) UnmarshalNMDC(data []byte) error {
+	data = bytes.TrimSuffix(data, []byte("$$"))
 	i := bytes.Index(data, []byte(" "))
 	if i >= 0 {
 		m.IP = string(data[i+1:])
