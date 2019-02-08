@@ -346,6 +346,9 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				Name: string(msg.Name),
 				Text: string(msg.Text),
 			}, nil)
+		case *nmdc.GetNickList:
+			list := h.Peers()
+			peer.PeersJoin(list)
 		case *nmdc.ConnectToMe:
 			targ := h.byName(string(msg.Targ))
 			if targ == nil {
