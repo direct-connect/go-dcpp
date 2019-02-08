@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -95,6 +96,13 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		_ = c.Flush()
 		return nil, err
 	}
+	addr, ok := c.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		err = fmt.Errorf("not a tcp address: %T", c.RemoteAddr())
+		_ = c.WriteMsg(&nmdc.ChatMessage{Text: err.Error()})
+		_ = c.Flush()
+		return nil, err
+	}
 	name := string(nick)
 	peer := &nmdcPeer{
 		BasePeer: BasePeer{
@@ -102,8 +110,8 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 			addr: c.RemoteAddr(),
 			sid:  h.nextSID(),
 		},
-		conn: c,
-		fea:  nmdcFeatures.Intersect(fea),
+		conn: c, ip: addr.IP,
+		fea: nmdcFeatures.Intersect(fea),
 	}
 	peer.user.Name = nick
 
@@ -280,11 +288,9 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	if peer.fea.Has(nmdc.FeaUserIP2) {
-		addr := c.RemoteAddr().String()
-		ip, _, _ := net.SplitHostPort(addr)
 		err = c.WriteMsg(&nmdc.UserIP{
 			Name: nmdc.Name(peer.Name()),
-			IP:   ip,
+			IP:   peer.ip.String(),
 		})
 		if err != nil {
 			return err
@@ -295,6 +301,20 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	peer.conn.KeepAlive(time.Minute / 2)
+	verifyAddr := func(addr string) error {
+		ip, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return fmt.Errorf("invalid address: %q", addr)
+		}
+		_, err = strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return fmt.Errorf("invalid port: %q", addr)
+		}
+		if ip != peer.ip.String() {
+			return fmt.Errorf("invalid ip: %q vs %q", ip, peer.ip.String())
+		}
+		return nil
+	}
 	for {
 		msg, err := peer.conn.ReadMsg(time.Time{})
 		if err == io.EOF {
@@ -307,14 +327,17 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if string(msg.Name) != peer.Name() {
 				return errors.New("invalid name in the chat message")
 			}
-			go h.broadcastChat(peer, msg.Text, nil)
+			h.broadcastChat(peer, msg.Text, nil)
 		case *nmdc.ConnectToMe:
 			targ := h.byName(string(msg.Targ))
 			if targ == nil {
 				continue
 			}
+			if err := verifyAddr(msg.Address); err != nil {
+				return fmt.Errorf("ctm: %v", err)
+			}
 			// TODO: token?
-			go h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
+			h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
 		case *nmdc.RevConnectToMe:
 			if string(msg.From) != peer.Name() {
 				return errors.New("invalid name in RevConnectToMe")
@@ -323,7 +346,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if targ == nil {
 				continue
 			}
-			go h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
+			h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
 		case *nmdc.PrivateMessage:
 			if string(msg.From) != peer.Name() {
 				return errors.New("invalid name in PrivateMessage")
@@ -332,7 +355,29 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if targ == nil {
 				continue
 			}
-			go h.privateChat(peer, targ, string(msg.Text))
+			h.privateChat(peer, targ, string(msg.Text))
+		case *nmdc.Search:
+			if msg.Address != "" {
+				if err := verifyAddr(msg.Address); err != nil {
+					return fmt.Errorf("search: %v", err)
+				}
+			} else if msg.Nick != "" {
+				if string(msg.Nick) != peer.Name() {
+					return fmt.Errorf("search: invalid nick: %q", msg.Nick)
+				}
+			}
+			// TODO: convert to ADC
+			notify := h.Peers()
+			for _, p := range notify {
+				p2, ok := p.(*nmdcPeer)
+				if !ok || p2 == peer {
+					continue
+				}
+				if p.User().Share == 0 {
+					continue
+				}
+				_ = p2.writeOne(msg)
+			}
 		default:
 			// TODO
 			data, _ := msg.MarshalNMDC()
@@ -356,6 +401,7 @@ type nmdcPeer struct {
 
 	conn *nmdc.Conn
 	fea  nmdc.Features
+	ip   net.IP
 
 	mu      sync.RWMutex
 	user    nmdc.MyInfo

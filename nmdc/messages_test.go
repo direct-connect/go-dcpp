@@ -174,6 +174,15 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "ConnectToMe",
+		data: `john 192.168.1.2:412`,
+		msg: &ConnectToMe{
+			Targ:    "john",
+			Address: "192.168.1.2:412",
+			Secure:  false,
+		},
+	},
+	{
+		typ:  "ConnectToMe",
 		data: `john 192.168.1.2:412S`,
 		msg: &ConnectToMe{
 			Targ:    "john",
