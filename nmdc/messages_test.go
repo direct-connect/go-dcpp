@@ -234,6 +234,20 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:  "SR",
+		data: "User1 ponies.txt\x05437 3/4\x05Testhub (192.168.1.1:411)\x05User2",
+		msg: &SR{
+			Source:     "User1",
+			FileName:   "ponies.txt",
+			FileSize:   437,
+			FreeSlots:  3,
+			TotalSlots: 4,
+			HubName:    HubName{"Testhub"},
+			Address:    "192.168.1.1:411",
+			Target:     "User2",
+		},
+	},
+	{
 		typ:  "MCTo",
 		data: `target $sender some message`,
 		msg: &MCTo{

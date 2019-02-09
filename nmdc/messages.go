@@ -40,6 +40,7 @@ func init() {
 	RegisterMessage(&Failed{})
 	RegisterMessage(&Error{})
 	RegisterMessage(&Search{})
+	RegisterMessage(&SR{})
 	RegisterMessage(&FailOver{})
 	RegisterMessage(&MCTo{})
 }
@@ -1144,6 +1145,131 @@ func unmarshalBoolFlag(data []byte) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("invalid bool flag")
+}
+
+type SR struct {
+	Source     Name
+	FileName   string
+	FileSize   uint64
+	DirName    string
+	FreeSlots  int
+	TotalSlots int
+	HubName
+	Address string
+	Target  Name
+}
+
+const sep = 0x05
+
+func (*SR) Cmd() string {
+	return "SR"
+}
+
+func (m *SR) MarshalNMDC() ([]byte, error) {
+	src, err := m.Source.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf := bytes.NewBuffer(nil)
+	buf.Write(src)
+	buf.WriteByte(' ')
+	if m.FileName == "" && m.DirName == "" {
+		return nil, fmt.Errorf("invalid SR command")
+	}
+	if m.FileName != "" {
+		buf.Write([]byte(m.FileName))
+		buf.WriteByte(sep)
+		buf.Write([]byte(strconv.FormatUint(m.FileSize, 10)))
+	} else {
+		buf.Write([]byte(m.DirName))
+	}
+	buf.WriteByte(' ')
+	buf.Write([]byte(strconv.Itoa(m.FreeSlots)))
+	buf.WriteByte('/')
+	buf.Write([]byte(strconv.Itoa(m.TotalSlots)))
+	hubName, err := m.HubName.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
+	buf.WriteByte(sep)
+	buf.Write([]byte(hubName))
+	buf.WriteByte(' ')
+	buf.WriteByte('(')
+	buf.Write([]byte(m.Address))
+	buf.WriteByte(')')
+	if m.Target != "" {
+		target, err := m.Target.MarshalNMDC()
+		if err != nil {
+			return nil, err
+		}
+		buf.WriteByte(sep)
+		buf.Write(target)
+	}
+	return buf.Bytes(), nil
+}
+
+func (m *SR) UnmarshalNMDC(data []byte) error {
+	arr := bytes.SplitN(data, []byte(" "), 5)
+	if len(arr) != 4 {
+		return fmt.Errorf("invalid SR command")
+	}
+	for i, f := range arr {
+		switch i {
+		case 0:
+			err := m.Source.UnmarshalNMDC(f)
+			if err != nil {
+				return err
+			}
+		case 1:
+			i = bytes.Index(f, []byte{sep})
+			if i < 0 {
+				m.DirName = string(f)
+				continue
+			}
+			m.FileName = string(f[:i])
+			size, err := strconv.ParseUint(strings.TrimSpace(string(f[i+1:])), 10, 64)
+			if err != nil {
+				return err
+			}
+			m.FileSize = size
+		case 2:
+			i = bytes.Index(f, []byte("/"))
+			if i < 0 {
+				return fmt.Errorf("invalid SR command")
+			}
+			free, err := strconv.Atoi(string(f[:i]))
+			if err != nil {
+				return fmt.Errorf("invalid FreeSlots: %v", err)
+			}
+			m.FreeSlots = free
+			f = f[i+1:]
+			i = bytes.Index(f, []byte{sep})
+			if i < 0 {
+				return fmt.Errorf("invalid SR command")
+			}
+			total, err := strconv.Atoi(string(f[:i]))
+			if err != nil {
+				return fmt.Errorf("invalid TotalSlots: %v", err)
+			}
+			m.TotalSlots = total
+			err = m.HubName.UnmarshalNMDC(f[i+1:])
+			if err != nil {
+				return err
+			}
+		case 3:
+			i = bytes.Index(f, []byte{sep})
+			if i < 0 {
+				m.Address = string(f[1 : len(f)-1])
+				continue
+			}
+			m.Address = string(f[1 : i-1])
+			err := m.Target.UnmarshalNMDC(f[i+1:])
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 type FailOver struct {
