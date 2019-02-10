@@ -235,10 +235,23 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "SR",
-		data: "User1 ponies.txt\x05437 3/4\x05Testhub (192.168.1.1:411)\x05User2",
+		name: "dir",
+		data: "User6 dir1\\dir2\\pictures 0/4\x05Testhub (192.168.1.1)",
+		msg: &SR{
+			Source:     "User6",
+			DirName:    "dir1/dir2/pictures",
+			TotalSlots: 4,
+			HubName:    HubName{"Testhub"},
+			Address:    "192.168.1.1",
+		},
+	},
+	{
+		typ:  "SR",
+		name: "file",
+		data: "User1 dir\\ponies.txt\x05437 3/4\x05Testhub (192.168.1.1:411)\x05User2",
 		msg: &SR{
 			Source:     "User1",
-			FileName:   "ponies.txt",
+			FileName:   "dir/ponies.txt",
 			FileSize:   437,
 			FreeSlots:  3,
 			TotalSlots: 4,

@@ -1154,12 +1154,12 @@ type SR struct {
 	DirName    string
 	FreeSlots  int
 	TotalSlots int
-	HubName
-	Address string
-	Target  Name
+	HubName    HubName
+	Address    string
+	Target     Name
 }
 
-const sep = 0x05
+const srSep = 0x05
 
 func (*SR) Cmd() string {
 	return "SR"
@@ -1177,11 +1177,13 @@ func (m *SR) MarshalNMDC() ([]byte, error) {
 		return nil, fmt.Errorf("invalid SR command")
 	}
 	if m.FileName != "" {
-		buf.Write([]byte(m.FileName))
-		buf.WriteByte(sep)
+		fileName := strings.Replace(m.FileName, "/", "\\", -1)
+		buf.Write([]byte(fileName))
+		buf.WriteByte(srSep)
 		buf.Write([]byte(strconv.FormatUint(m.FileSize, 10)))
 	} else {
-		buf.Write([]byte(m.DirName))
+		dirName := strings.Replace(m.DirName, "/", "\\", -1)
+		buf.Write([]byte(dirName))
 	}
 	buf.WriteByte(' ')
 	buf.Write([]byte(strconv.Itoa(m.FreeSlots)))
@@ -1191,7 +1193,7 @@ func (m *SR) MarshalNMDC() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf.WriteByte(sep)
+	buf.WriteByte(srSep)
 	buf.Write([]byte(hubName))
 	buf.WriteByte(' ')
 	buf.WriteByte('(')
@@ -1202,7 +1204,7 @@ func (m *SR) MarshalNMDC() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		buf.WriteByte(sep)
+		buf.WriteByte(srSep)
 		buf.Write(target)
 	}
 	return buf.Bytes(), nil
@@ -1221,12 +1223,14 @@ func (m *SR) UnmarshalNMDC(data []byte) error {
 				return err
 			}
 		case 1:
-			i = bytes.Index(f, []byte{sep})
+			i = bytes.Index(f, []byte{srSep})
 			if i < 0 {
-				m.DirName = string(f)
+				dirName := strings.Replace(string(f), "\\", "/", -1)
+				m.DirName = dirName
 				continue
 			}
-			m.FileName = string(f[:i])
+			fileName := strings.Replace(string(f[:i]), "\\", "/", -1)
+			m.FileName = fileName
 			size, err := strconv.ParseUint(strings.TrimSpace(string(f[i+1:])), 10, 64)
 			if err != nil {
 				return err
@@ -1243,7 +1247,7 @@ func (m *SR) UnmarshalNMDC(data []byte) error {
 			}
 			m.FreeSlots = free
 			f = f[i+1:]
-			i = bytes.Index(f, []byte{sep})
+			i = bytes.Index(f, []byte{srSep})
 			if i < 0 {
 				return fmt.Errorf("invalid SR command")
 			}
@@ -1257,7 +1261,7 @@ func (m *SR) UnmarshalNMDC(data []byte) error {
 				return err
 			}
 		case 3:
-			i = bytes.Index(f, []byte{sep})
+			i = bytes.Index(f, []byte{srSep})
 			if i < 0 {
 				m.Address = string(f[1 : len(f)-1])
 				continue
