@@ -9,7 +9,7 @@ import (
 func peekCoon(conn net.Conn, peek int) (net.Conn, []byte, error) {
 	buf := make([]byte, peek)
 
-	deadline := time.Now().Add(time.Second / 2)
+	deadline := time.Now().Add(650 * time.Millisecond)
 	conn.SetReadDeadline(deadline)
 
 	n, err := conn.Read(buf)
