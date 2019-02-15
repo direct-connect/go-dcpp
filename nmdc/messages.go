@@ -658,7 +658,10 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 			m.Mode = UserModeUnknown
 		case "H", "h":
 			hubs := strings.Split(value, "/")
-			if len(hubs) > 3 {
+			if len(hubs) == 1 {
+				m.HubsNormal = 1
+				continue
+			} else if len(hubs) != 3 {
 				return fmt.Errorf("hubs info contain: %v operators", len(hubs))
 			}
 			normal, err := strconv.Atoi(strings.TrimSpace(hubs[0]))
