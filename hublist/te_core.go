@@ -6,12 +6,19 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
-const teURL = `http://www.te-home.net/?do=hublist&get=hublist.json`
+// TELists is a list of well-known TE-compatible hub lists.
+var TELists = []string{
+	"http://www.te-home.net/",
+}
 
-func teGetRaw(ctx context.Context, dst interface{}) error {
-	req, err := http.NewRequest("GET", teURL, nil)
+func teGetRaw(ctx context.Context, addr string, dst interface{}) error {
+	if !strings.Contains(addr, "?") {
+		addr += `?do=hublist&get=hublist.json`
+	}
+	req, err := http.NewRequest("GET", addr, nil)
 	if err != nil {
 		return err
 	}
@@ -28,12 +35,20 @@ func teGetRaw(ctx context.Context, dst interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(dst)
 }
 
-func teGet(ctx context.Context) ([]teHub, error) {
+// GetTE fetches and decodes a TE-compatible hub list.
+func GetTE(ctx context.Context, addr string) ([]Hub, error) {
 	var resp struct {
 		List []teHub `json:"hublist"`
 	}
-	err := teGetRaw(ctx, &resp)
-	return resp.List, err
+	err := teGetRaw(ctx, addr, &resp)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]Hub, 0, len(resp.List))
+	for _, h := range resp.List {
+		list = append(list, h.toHub())
+	}
+	return list, err
 }
 
 func (h teHub) toHub() Hub {

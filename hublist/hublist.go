@@ -64,16 +64,18 @@ func GetAll(ctx context.Context) ([]Hub, error) {
 			last = err
 		}
 	}
-	hubs, err := teGet(ctx)
-	for _, h := range hubs {
-		if _, ok := seen[h.Address]; ok {
-			continue
+	for _, url := range TELists {
+		hubs, err := GetTE(ctx, url)
+		for _, h := range hubs {
+			if _, ok := seen[h.Address]; ok {
+				continue
+			}
+			seen[h.Address] = struct{}{}
+			list = append(list, h)
 		}
-		seen[h.Address] = struct{}{}
-		list = append(list, h.toHub())
-	}
-	if err != nil {
-		last = err
+		if err != nil {
+			last = err
+		}
 	}
 	return list, last
 }
