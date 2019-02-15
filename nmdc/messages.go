@@ -21,6 +21,7 @@ func init() {
 	RegisterMessage(&HubName{})
 	RegisterMessage(&HubTopic{})
 	RegisterMessage(&MyNick{})
+	RegisterMessage(&MyPass{})
 	RegisterMessage(&ValidateNick{})
 	RegisterMessage(&ValidateDenide{})
 	RegisterMessage(&Quit{})
@@ -28,6 +29,8 @@ func init() {
 	RegisterMessage(&Lock{})
 	RegisterMessage(&Key{})
 	RegisterMessage(&Supports{})
+	RegisterMessage(&BadPass{})
+	RegisterMessage(&GetPass{})
 	RegisterMessage(&GetNickList{})
 	RegisterMessage(&HubINFO{})
 	RegisterMessage(&MyInfo{})
@@ -186,6 +189,14 @@ func (*MyNick) Cmd() string {
 	return "MyNick"
 }
 
+type MyPass struct {
+	String
+}
+
+func (*MyPass) Cmd() string {
+	return "MyPass"
+}
+
 type ValidateNick struct {
 	Name
 }
@@ -330,6 +341,34 @@ func (m *Supports) MarshalNMDC() ([]byte, error) {
 func (m *Supports) UnmarshalNMDC(data []byte) error {
 	data = bytes.TrimSuffix(data, []byte(" "))
 	m.Ext = strings.Split(string(data), " ")
+	return nil
+}
+
+type BadPass struct{}
+
+func (*BadPass) Cmd() string {
+	return "BadPass"
+}
+
+func (m *BadPass) MarshalNMDC() ([]byte, error) {
+	return nil, nil
+}
+
+func (m *BadPass) UnmarshalNMDC(data []byte) error {
+	return nil
+}
+
+type GetPass struct{}
+
+func (*GetPass) Cmd() string {
+	return "GetPass"
+}
+
+func (m *GetPass) MarshalNMDC() ([]byte, error) {
+	return nil, nil
+}
+
+func (m *GetPass) UnmarshalNMDC(data []byte) error {
 	return nil
 }
 
