@@ -27,7 +27,7 @@ type Route interface {
 func Dial(addr string) (*Conn, error) {
 	secure := false
 	if i := strings.Index(addr, "://"); i >= 0 {
-		proto := addr[:i+3]
+		proto := addr[:i]
 		addr = addr[i+3:]
 		switch proto {
 		case SchemaADC:

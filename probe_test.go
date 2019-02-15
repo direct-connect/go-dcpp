@@ -25,11 +25,11 @@ func TestProbe(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.addr, func(t *testing.T) {
-			got, err := Probe(context.Background(), c.addr)
+			u, err := Probe(context.Background(), c.addr)
 			if err != nil {
 				t.Fatal(err)
-			} else if c.exp != got {
-				t.Fatal("unexpected address:", got)
+			} else if c.exp != u.String() {
+				t.Fatal("unexpected address:", u.String())
 			}
 		})
 	}

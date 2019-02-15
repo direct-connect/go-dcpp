@@ -12,8 +12,8 @@ const (
 	ProtoADC  = `ADC/1.0`
 	ProtoADCS = `ADCS/0.10`
 
-	SchemaADC  = "adc://"
-	SchemaADCS = "adcs://"
+	SchemaADC  = "adc"
+	SchemaADCS = "adcs"
 )
 
 const (

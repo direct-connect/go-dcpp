@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"log"
+	"fmt"
+	"io"
 	"net"
-	"strings"
+	"net/url"
+	"sync"
 	"time"
 
 	"github.com/direct-connect/go-dcpp/adc"
@@ -22,49 +24,195 @@ type timeoutErr interface {
 }
 
 const (
+	probeTimeout = time.Second * 5
+
 	nmdcSchema  = nmdc.SchemaNMDC
-	nmdcsSchema = "nmdcs://" // TODO: is there a schema for this one?
+	nmdcsSchema = "nmdcs" // TODO: is there a schema for this one?
 	adcSchema   = adc.SchemaADC
 	adcsSchema  = adc.SchemaADCS
 )
 
 func dialContext(ctx context.Context, addr string) (net.Conn, error) {
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return net.Dial("tcp", addr)
+	timeout := probeTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = deadline.Sub(time.Now())
 	}
-	timeout := deadline.Sub(time.Now())
 	return net.DialTimeout("tcp", addr, timeout)
 }
 
 // Probe tries to detect the protocol on a specified host or host:port.
 // It returns a canonical address with an appropriate URI scheme.
-func Probe(ctx context.Context, addr string) (string, error) {
-	if _, port, _ := net.SplitHostPort(addr); port == "" {
-		addr += ":411" // TODO: should also try 412, 413, etc
+func Probe(rctx context.Context, addr string) (*url.URL, error) {
+	u, err := url.Parse(addr)
+	if err != nil || u.Host == "" {
+		// may be a hostname:port
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			// assume it's a hostname only
+			addr += ":411" // TODO: should also try 412, 413, etc
+		}
+		u = &url.URL{Host: addr}
 	}
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	ctx, cancel := context.WithCancel(rctx)
+	defer cancel()
+
+	// race TLS and plaintext connection
+	errc := make(chan error, 2)
+	outPlain := make(chan string, 1)
+	outTLS := make(chan string, 1)
+
+	wg.Add(2)
+	go func() {
+		defer func() {
+			wg.Done()
+			if r := recover(); r != nil {
+				errc <- fmt.Errorf("panic: %v", r)
+			}
+		}()
+		proto, err := probeTLS(ctx, u.Host)
+		if err != nil {
+			errc <- err
+			return
+		}
+		outTLS <- proto
+	}()
+	go func() {
+		defer func() {
+			wg.Done()
+			if r := recover(); r != nil {
+				errc <- fmt.Errorf("panic: %v", r)
+			}
+		}()
+		proto, err := probePlain(ctx, u.Host)
+		if err != nil {
+			errc <- err
+			return
+		}
+		outPlain <- proto
+	}()
+
+	var (
+		protoPlain string
+		err1       error
+	)
+	select {
+	case protoTLS := <-outTLS:
+		// prefer TLS
+		u.Scheme = protoTLS
+		return u, nil
+	case protoPlain = <-outPlain:
+		// wait for TLS response
+	case err1 = <-errc:
+		// wait for the second one
+	}
+
+	select {
+	case protoTLS := <-outTLS:
+		// prefer TLS
+		u.Scheme = protoTLS
+		return u, nil
+	case protoPlain = <-outPlain:
+		// the first error was from TLS
+		u.Scheme = protoPlain
+		return u, nil
+	case err := <-errc:
+		if err1 == nil {
+			// TLS failed, but plaintext was successful
+			u.Scheme = protoPlain
+			return u, nil
+		}
+		// both attempts failed
+		if err == ErrUnsupportedProtocol && err1 == ErrUnsupportedProtocol {
+			return u, err
+		} else if e, ok := err.(timeoutErr); ok && e.Timeout() {
+			// return any if it's a timeout
+			return u, err
+		}
+		// return both
+		return u, fmt.Errorf("probe failed: %v; %v", err1, err)
+	}
+}
+
+// pretend that we speak a base version of ADC
+const adcHandshake = "HSUP ADBAS0 ADBASE ADTIGR\x0a"
+
+func probeTLS(ctx context.Context, addr string) (string, error) {
 	c, err := dialContext(ctx, addr)
 	if err != nil {
 		return "", err
 	}
 	defer c.Close()
 
-	if strings.Contains(addr, "://") {
-		// only probe for open port
-		return addr, nil
+	now := time.Now()
+	dt := probeTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		sub := deadline.Sub(now)
+		if sub < 0 {
+			return "", context.DeadlineExceeded
+		}
+		if dt > sub {
+			dt = sub
+		}
+	}
+	if err = c.SetDeadline(now.Add(dt)); err != nil {
+		return "", err
 	}
 
+	tc := tls.Client(c, &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"adc", "nmdc"},
+	})
+	defer tc.Close()
+
+	if err = tc.Handshake(); err != nil {
+		return "", ErrUnsupportedProtocol
+	}
+
+	// first, check if ALPN handshake was successful
+	state := tc.ConnectionState()
+	switch state.NegotiatedProtocol {
+	case "adc":
+		return adcsSchema, nil
+	case "nmdc":
+		return nmdcsSchema, nil
+	}
+
+	// repeat ADC handshake over TLS this time
+	if err = tc.SetDeadline(now.Add(dt)); err != nil {
+		return "", err
+	}
+	_, err = tc.Write([]byte(adcHandshake))
+	if err != nil {
+		return "", err
+	}
+	buf := make([]byte, 5)
+	n, err := tc.Read(buf)
+	if err == nil && string(buf[:n]) == "ISUP " {
+		return adcsSchema, nil
+	}
+	return "", ErrUnsupportedProtocol
+}
+
+func probePlain(ctx context.Context, addr string) (string, error) {
+	c, err := dialContext(ctx, addr)
+	if err != nil {
+		return "", err
+	}
+	defer c.Close()
+
 	now := time.Now()
-	dt := time.Second * 2
+	dt := probeTimeout
 
 	if deadline, ok := ctx.Deadline(); ok {
 		sub := deadline.Sub(now)
 		if sub < 0 {
 			return "", context.DeadlineExceeded
 		}
-		if dt > sub/3 {
-			dt = sub / 3
+		if dt > sub {
+			dt = sub
 		}
 	}
 
@@ -77,7 +225,7 @@ func Probe(ctx context.Context, addr string) (string, error) {
 	if err == nil {
 		// may be NMDC protocol where server speaks first
 		if string(buf[:n]) == "$Lock " {
-			return nmdcSchema + addr, nil
+			return nmdcSchema, nil
 		}
 		return "", ErrUnsupportedProtocol
 	}
@@ -89,9 +237,6 @@ func Probe(ctx context.Context, addr string) (string, error) {
 
 	now = time.Now()
 	curDeadline := now.Add(dt)
-
-	// pretend that we speak a base version of ADC
-	const adcHandshake = "HSUP ADBAS0 ADBASE ADTIGR\x0a"
 	if err = c.SetWriteDeadline(curDeadline); err != nil {
 		return "", err
 	}
@@ -105,58 +250,13 @@ func Probe(ctx context.Context, addr string) (string, error) {
 	}
 	buf = buf[:5]
 	n, err = c.Read(buf)
-	if err == nil {
-		if string(buf[:n]) == "ISUP " {
-			return adcSchema + addr, nil
-		}
+	if err == io.EOF {
 		return "", ErrUnsupportedProtocol
-	}
-
-	// this may sill be ADCS (ADC over TLS), but we broke the connection already
-	_ = c.Close()
-
-	// connect again, use (insecure) TLS this time
-	c, err = dialContext(ctx, addr)
-	if err != nil {
+	} else if err != nil {
 		return "", err
 	}
-	tc := tls.Client(c, &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"adc", "nmdc"},
-	})
-	defer tc.Close()
-	if err = tc.Handshake(); err != nil {
-		return "", ErrUnsupportedProtocol
+	if string(buf[:n]) == "ISUP " {
+		return adcSchema, nil
 	}
-
-	// first, check if ALPN handshake was successful
-	state := tc.ConnectionState()
-	switch state.NegotiatedProtocol {
-	case "adc":
-		return adcsSchema + addr, nil
-	case "nmdc":
-		return nmdcsSchema + addr, nil
-	}
-
-	now = time.Now()
-	curDeadline = now.Add(dt)
-
-	// repeat ADC handshake over TLS this time
-	if err = tc.SetWriteDeadline(curDeadline); err != nil {
-		return "", err
-	}
-	_, err = tc.Write([]byte(adcHandshake))
-	if err != nil {
-		return "", err
-	}
-	if err = tc.SetReadDeadline(curDeadline); err != nil {
-		return "", err
-	}
-	buf = buf[:5]
-	n, err = tc.Read(buf)
-	if err == nil && string(buf[:n]) == "ISUP " {
-		return adcsSchema + addr, nil
-	}
-	log.Println(err, string(buf))
 	return "", ErrUnsupportedProtocol
 }

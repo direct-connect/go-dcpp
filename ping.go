@@ -14,15 +14,15 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 	// probe first, if protocol is not specified
 	i := strings.Index(addr, "://")
 	if i < 0 {
-		s, err := Probe(ctx, addr)
+		u, err := Probe(ctx, addr)
 		if err != nil {
 			return nil, err
 		}
-		addr = s
+		addr = u.String()
 		i = strings.Index(addr, "://")
 	}
 
-	switch addr[:i+3] {
+	switch addr[:i] {
 	case nmdcSchema, nmdcsSchema:
 		hub, err := nmdc.Ping(ctx, addr)
 		if err != nil {

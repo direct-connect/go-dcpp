@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	SchemaNMDC  = "dchub://"
+	SchemaNMDC  = "dchub"
 	DefaultPort = 411
 )
 
@@ -33,13 +33,13 @@ var Debug bool
 
 func ParseAddr(addr string) (*url.URL, error) {
 	if !strings.Contains(addr, "://") {
-		addr = SchemaNMDC + addr
+		addr = SchemaNMDC + "://" + addr
 	}
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
 	}
-	if u.Scheme+"://" != SchemaNMDC {
+	if u.Scheme != SchemaNMDC {
 		return u, fmt.Errorf("unsupported protocol: %q", u.Scheme)
 	}
 	u.Path = strings.TrimRight(u.Path, "/")
