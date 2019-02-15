@@ -229,6 +229,38 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
+
+	registeredUser := true
+	if registeredUser {
+		err = c.WriteMsg(&nmdc.GetPass{})
+		if err != nil {
+			return err
+		}
+		err = c.Flush()
+		if err != nil {
+			return err
+		}
+		var pass nmdc.MyPass
+		err = c.ReadMsgTo(time.Now().Add(time.Second*60), &pass)
+		if err != nil {
+			return fmt.Errorf("expected password got: %v", err)
+		}
+
+		userPass := "TestPass"
+		if userPass != string(pass.String) {
+			err = c.WriteMsg(&nmdc.BadPass{})
+			if err != nil {
+				return err
+			}
+			err = c.Flush()
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("wrong password")
+		}
+	}
+
+	deadline = time.Now().Add(time.Second * 5)
 	err = c.WriteMsg(&nmdc.Hello{
 		Name: peer.user.Name,
 	})
