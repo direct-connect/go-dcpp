@@ -230,8 +230,13 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 
-	registeredUser := true
-	if registeredUser {
+	isRegistered, err := h.isRegisteredUser(peer.Name())
+	if err != nil {
+		return err
+	}
+	if isRegistered {
+		// give the user a minute to enter a password
+		deadline = time.Now().Add(time.Minute)
 		err = c.WriteMsg(&nmdc.GetPass{})
 		if err != nil {
 			return err
@@ -241,13 +246,15 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			return err
 		}
 		var pass nmdc.MyPass
-		err = c.ReadMsgTo(time.Now().Add(time.Second*60), &pass)
+		err = c.ReadMsgTo(deadline, &pass)
 		if err != nil {
 			return fmt.Errorf("expected password got: %v", err)
 		}
 
-		userPass := "TestPass"
-		if userPass != string(pass.String) {
+		ok, err := h.checkUserPass(peer.Name(), string(pass.String))
+		if err != nil {
+			return err
+		} else if !ok {
 			err = c.WriteMsg(&nmdc.BadPass{})
 			if err != nil {
 				return err
@@ -256,11 +263,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			if err != nil {
 				return err
 			}
-			return fmt.Errorf("wrong password")
+			return errors.New("wrong password")
 		}
+		deadline = time.Now().Add(time.Second * 5)
 	}
 
-	deadline = time.Now().Add(time.Second * 5)
 	err = c.WriteMsg(&nmdc.Hello{
 		Name: peer.user.Name,
 	})
@@ -334,6 +341,14 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		}
 	}
 	return nil
+}
+
+func (h *Hub) isRegisteredUser(name string) (bool, error) {
+	return strings.HasSuffix(name, "_reg"), nil // TODO: implement user database
+}
+
+func (h *Hub) checkUserPass(name string, pass string) (bool, error) {
+	return name == pass, nil // TODO: implement user database
 }
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
