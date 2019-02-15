@@ -11,6 +11,8 @@ import (
 // Lists well-known hub lists.
 var Lists = []string{
 	"http://dchublist.com/hublist.xml.bz2",
+	"http://dchublist.org/hublist.xml.bz2",
+	"http://dchublist.biz/hublist.xml.bz2",
 	"http://dchublist.ru/hublist.xml.bz2",
 }
 
