@@ -6,6 +6,7 @@ import (
 
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/adc/types"
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var casesDecode = []struct {
@@ -65,6 +66,16 @@ var casesDecode = []struct {
 			SlotsFree: 1, Udp4: 0,
 			Features: adc.ExtFeatures{{'N', 'A', 'T', '0'}, {'A', 'D', 'C', '0'}, {'S', 'E', 'G', 'A'}},
 		},
+	},
+	{
+		"get password",
+		`AAAQEAYEAUDAOCAJAAAQEAYCAMCAKBQHBAEQAAI`,
+		&adc.GetPassword{Salt: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1}},
+	},
+	{
+		"password",
+		`ABZCJESSJKVMIL2BDERHSJ7RF5IYI6ZX2QAOQGI`,
+		&adc.Password{Hash: tiger.HashBytes([]byte("qwerty"))},
 	},
 	{
 		"search res",
@@ -148,6 +159,14 @@ var casesEncode = []struct {
 			Features: adc.ExtFeatures{{'S', 'E', 'G', 'A'}, {'A', 'D', 'C', '0'}, {'T', 'C', 'P', '4'}, {'U', 'D', 'P', '4'}},
 		},
 		`IDKAY6BI76T6XFIQXZNRYE4WXJ2Y3YGXJG7UM7XLI NIdennnn I4172.17.42.1 SS25146919163 SF23 VEEiskaltDC++\s2.2.9 SL0 FS0 HN0 HR0 HO0 SUSEGA,ADC0,TCP4,UDP4`,
+	},
+	{
+		adc.GetPassword{Salt: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1}},
+		`AAAQEAYEAUDAOCAJAAAQEAYCAMCAKBQHBAEQAAI`,
+	},
+	{
+		adc.Password{Hash: tiger.HashBytes([]byte("qwerty"))},
+		`ABZCJESSJKVMIL2BDERHSJ7RF5IYI6ZX2QAOQGI`,
 	},
 	{
 		adc.SearchRequest{And: []string{"some", "data"}, Token: "4171511714", Group: adc.ExtVideo},

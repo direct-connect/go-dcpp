@@ -2,10 +2,13 @@ package adc
 
 import (
 	"bytes"
+	"encoding/base32"
 	"fmt"
 	"os"
 	"reflect"
 	"strconv"
+
+	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 var (
@@ -163,9 +166,9 @@ func (st Status) MarshalAdc() ([]byte, error) {
 }
 
 var (
-	_ Message     = Supported{}
-	_ Marshaler   = Supported{}
-	_ Unmarshaler = (*Supported)(nil)
+	_ Message     = SIDAssign{}
+	_ Marshaler   = SIDAssign{}
+	_ Unmarshaler = (*SIDAssign)(nil)
 )
 
 type SIDAssign struct {
@@ -279,20 +282,40 @@ func (UserMod) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
 }
 
-var _ Message = GetPassword{}
+var base32Enc = base32.StdEncoding.WithPadding(base32.NoPadding)
+
+var (
+	_ Message     = GetPassword{}
+	_ Marshaler   = GetPassword{}
+	_ Unmarshaler = (*GetPassword)(nil)
+)
 
 type GetPassword struct {
-	Data []byte
+	Salt []byte
 }
 
 func (GetPassword) Cmd() MsgType {
 	return MsgType{'G', 'P', 'A'}
 }
 
+func (m GetPassword) MarshalAdc() ([]byte, error) {
+	size := base32Enc.EncodedLen(len(m.Salt))
+	data := make([]byte, size)
+	base32Enc.Encode(data, m.Salt)
+	return data, nil
+}
+
+func (m *GetPassword) UnmarshalAdc(data []byte) error {
+	size := base32Enc.DecodedLen(len(data))
+	m.Salt = make([]byte, size)
+	_, err := base32Enc.Decode(m.Salt, data)
+	return err
+}
+
 var _ Message = Password{}
 
 type Password struct {
-	Data []byte
+	Hash tiger.Hash `adc:"#"`
 }
 
 func (Password) Cmd() MsgType {

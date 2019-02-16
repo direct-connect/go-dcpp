@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -253,9 +254,10 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		// give the user a minute to enter a password
 		deadline = time.Now().Add(time.Minute)
 		//some bytes for check password
-		data := []byte("JJWEPPPLCA3PF2ZCRRYO3333")
+		var salt [24]byte
+		rand.Read(salt[:])
 		err = peer.conn.WriteInfoMsg(adc.GetPassword{
-			Data: data,
+			Salt: salt[:],
 		})
 		if err != nil {
 			return err
@@ -272,11 +274,22 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		hp, ok := p.(*adc.HubPacket)
 		if !ok {
 			return fmt.Errorf("expected hub messagge, got: %#v", p)
+		} else if hp.Name != (adc.Password{}).Cmd() {
+			return fmt.Errorf("expected user password message, got %v", hp.Name)
 		}
 		var pass adc.Password
 		if err := adc.Unmarshal(hp.Data, &pass); err != nil {
 			return err
 		}
+		ok, err := h.checkUserPassADC(peer.Name(), salt[:], pass.Hash)
+		if err != nil {
+			return err
+		} else if !ok {
+			err = errors.New("wrong password")
+			_ = peer.sendError(adc.Fatal, 23, err)
+			return err
+		}
+		deadline = time.Now().Add(time.Second * 5)
 	}
 
 	// send hub info
@@ -338,8 +351,14 @@ func (h *Hub) isRegisteredUserADC(name string) (bool, error) {
 	return strings.HasSuffix(name, "_reg"), nil // TODO: implement user database
 }
 
-func (h *Hub) checkUserPassADC(name string, pass string) (bool, error) {
-	return name == pass, nil // TODO: implement user database
+func (h *Hub) checkUserPassADC(name string, salt []byte, hash tiger.Hash) (bool, error) {
+	pass := name // TODO: implement user database
+	n := len(pass) + len(salt)
+	check := make([]byte, n)
+	i := copy(check, name)
+	copy(check[i:], salt)
+	exp := tiger.HashBytes(check)
+	return exp == hash, nil
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
