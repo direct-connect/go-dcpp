@@ -17,6 +17,8 @@ func init() {
 	RegisterMessage(Status{})
 	RegisterMessage(SIDAssign{})
 	RegisterMessage(User{})
+	RegisterMessage(GetPassword{})
+	RegisterMessage(Password{})
 	RegisterMessage(RevConnectRequest{})
 	RegisterMessage(ConnectRequest{})
 	RegisterMessage(GetInfoRequest{})
@@ -275,6 +277,26 @@ func (m UserMod) MarshalAdc() ([]byte, error) {
 
 func (UserMod) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
+}
+
+var _ Message = GetPassword{}
+
+type GetPassword struct {
+	Data []byte
+}
+
+func (GetPassword) Cmd() MsgType {
+	return MsgType{'G', 'P', 'A'}
+}
+
+var _ Message = Password{}
+
+type Password struct {
+	Data []byte
+}
+
+func (Password) Cmd() MsgType {
+	return MsgType{'P', 'A', 'S'}
 }
 
 var _ Message = RevConnectRequest{}

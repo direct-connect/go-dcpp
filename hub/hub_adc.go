@@ -245,6 +245,40 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	st := h.Stats()
 
+	isRegistered, err := h.isRegisteredUserADC(peer.Name())
+	if err != nil {
+		return err
+	}
+	if isRegistered {
+		// give the user a minute to enter a password
+		deadline = time.Now().Add(time.Minute)
+		//some bytes for check password
+		data := []byte("JJWEPPPLCA3PF2ZCRRYO3333")
+		err = peer.conn.WriteInfoMsg(adc.GetPassword{
+			Data: data,
+		})
+		if err != nil {
+			return err
+		}
+		err = peer.conn.Flush()
+		if err != nil {
+			return err
+		}
+
+		p, err = peer.conn.ReadPacket(deadline)
+		if err != nil {
+			return err
+		}
+		hp, ok := p.(*adc.HubPacket)
+		if !ok {
+			return fmt.Errorf("expected hub messagge, got: %#v", p)
+		}
+		var pass adc.Password
+		if err := adc.Unmarshal(hp.Data, &pass); err != nil {
+			return err
+		}
+	}
+
 	// send hub info
 	err = peer.conn.WriteInfoMsg(adc.HubInfo{
 		Name:        st.Name,
@@ -298,6 +332,14 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	// TODO: this will block the client
 	h.broadcastUserJoin(peer, list)
 	return nil
+}
+
+func (h *Hub) isRegisteredUserADC(name string) (bool, error) {
+	return strings.HasSuffix(name, "_reg"), nil // TODO: implement user database
+}
+
+func (h *Hub) checkUserPassADC(name string, pass string) (bool, error) {
+	return name == pass, nil // TODO: implement user database
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
