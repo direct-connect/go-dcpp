@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -245,6 +246,52 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	st := h.Stats()
 
+	isRegistered, err := h.isRegisteredUserADC(peer.Name())
+	if err != nil {
+		return err
+	}
+	if isRegistered {
+		// give the user a minute to enter a password
+		deadline = time.Now().Add(time.Minute)
+		//some bytes for check password
+		var salt [24]byte
+		rand.Read(salt[:])
+		err = peer.conn.WriteInfoMsg(adc.GetPassword{
+			Salt: salt[:],
+		})
+		if err != nil {
+			return err
+		}
+		err = peer.conn.Flush()
+		if err != nil {
+			return err
+		}
+
+		p, err = peer.conn.ReadPacket(deadline)
+		if err != nil {
+			return err
+		}
+		hp, ok := p.(*adc.HubPacket)
+		if !ok {
+			return fmt.Errorf("expected hub messagge, got: %#v", p)
+		} else if hp.Name != (adc.Password{}).Cmd() {
+			return fmt.Errorf("expected user password message, got %v", hp.Name)
+		}
+		var pass adc.Password
+		if err := adc.Unmarshal(hp.Data, &pass); err != nil {
+			return err
+		}
+		ok, err := h.checkUserPassADC(peer.Name(), salt[:], pass.Hash)
+		if err != nil {
+			return err
+		} else if !ok {
+			err = errors.New("wrong password")
+			_ = peer.sendError(adc.Fatal, 23, err)
+			return err
+		}
+		deadline = time.Now().Add(time.Second * 5)
+	}
+
 	// send hub info
 	err = peer.conn.WriteInfoMsg(adc.HubInfo{
 		Name:        st.Name,
@@ -298,6 +345,20 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	// TODO: this will block the client
 	h.broadcastUserJoin(peer, list)
 	return nil
+}
+
+func (h *Hub) isRegisteredUserADC(name string) (bool, error) {
+	return strings.HasSuffix(name, "_reg"), nil // TODO: implement user database
+}
+
+func (h *Hub) checkUserPassADC(name string, salt []byte, hash tiger.Hash) (bool, error) {
+	pass := name // TODO: implement user database
+	n := len(pass) + len(salt)
+	check := make([]byte, n)
+	i := copy(check, name)
+	copy(check[i:], salt)
+	exp := tiger.HashBytes(check)
+	return exp == hash, nil
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
