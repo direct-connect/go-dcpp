@@ -3,10 +3,40 @@ package hub
 import (
 	"bytes"
 	"errors"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+func (h *Hub) initCommands() {
+	h.cmds.byName = make(map[string]*Command)
+	h.registerCommand(Command{
+		Name: "help", Aliases: []string{"h"},
+		Short: "show the list of commands or a help for a specific command",
+		Func:  cmdHelp,
+	})
+	h.registerCommand(Command{
+		Name:  "stats",
+		Short: "show hub stats",
+		Func:  cmdStats,
+	})
+	h.registerCommand(Command{
+		Name:  "log",
+		Short: "replay chat log",
+		Func:  cmdChatLog,
+	})
+	h.registerCommand(Command{
+		Name: "reg", Aliases: []string{"register", "passwd"},
+		Short: "registers a user or change a password",
+		Func:  cmdRegister,
+	})
+	h.registerCommand(Command{
+		Name: "myip", Aliases: []string{"ip"},
+		Short: "shows your current ip",
+		Func:  cmdIP,
+	})
+}
 
 func cmdHelp(h *Hub, p Peer, args string) error {
 	if args != "" {
@@ -59,6 +89,12 @@ func cmdChatLog(h *Hub, p Peer, args string) error {
 	}
 	h.cmdOutput(p, "replaying last messages")
 	h.replayChat(p, n)
+	return nil
+}
+
+func cmdIP(h *Hub, p Peer, args string) error {
+	host, _, _ := net.SplitHostPort(p.RemoteAddr().String())
+	h.cmdOutput(p, "IP: "+host)
 	return nil
 }
 

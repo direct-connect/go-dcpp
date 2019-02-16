@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,30 +56,8 @@ func NewHub(conf Config) *Hub {
 	h.chat.log.limit = conf.ChatLog
 	h.initADC()
 	h.initHTTP()
-
-	h.cmds.byName = make(map[string]*Command)
-	h.registerCommand(Command{
-		Name: "help", Aliases: []string{"h"},
-		Short: "show the list of commands or a help for a specific command",
-		Func:  cmdHelp,
-	})
-	h.registerCommand(Command{
-		Name:  "stats",
-		Short: "show hub stats",
-		Func:  cmdStats,
-	})
-	h.registerCommand(Command{
-		Name:  "log",
-		Short: "replay chat log",
-		Func:  cmdChatLog,
-	})
-	h.registerCommand(Command{
-		Name:  "reg",
-		Short: "registers a user",
-		Func:  cmdRegister,
-	})
-
 	h.userDB = NewUserDatabase()
+	h.initCommands()
 	return h
 }
 
@@ -203,12 +182,19 @@ type timeoutErr interface {
 	Timeout() bool
 }
 
+const peekTimeout = 650 * time.Millisecond
+
 // serve automatically detects the protocol and start the hub-client handshake.
 func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 	defer conn.Close()
 
+	timeout := peekTimeout
+	if !allowTLS {
+		timeout = 2 * peekTimeout
+	}
+
 	// peek few bytes to detect the protocol
-	conn, buf, err := peekCoon(conn, 4)
+	conn, buf, err := peekCoon(conn, 4, timeout)
 	if err != nil {
 		if te, ok := err.(timeoutErr); ok && te.Timeout() {
 			// only NMDC protocol expects the server to speak first
@@ -356,7 +342,10 @@ func (h *Hub) sendMOTD(peer Peer) error {
 }
 
 func (h *Hub) cmdOutput(peer Peer, out string) {
-	_ = peer.HubChatMsg("\n" + out)
+	if strings.Contains(out, "\n") {
+		out = "\n" + out
+	}
+	_ = peer.HubChatMsg(out)
 }
 
 func (h *Hub) cmdOutputf(peer Peer, format string, args ...interface{}) {

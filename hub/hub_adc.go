@@ -563,6 +563,10 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 				u.Ip4 = addr
 			}
 		}
+		if u.Application != "" && p.user.Application == "" {
+			// doesn't support AP field
+			u.Application, u.Version = "", u.Application+" "+u.Version
+		}
 		if err := p.conn.WriteBroadcast(peer.SID(), &u); err != nil {
 			return err
 		}
