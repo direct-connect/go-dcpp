@@ -61,3 +61,17 @@ func cmdChatLog(h *Hub, p Peer, args string) error {
 	h.replayChat(p, n)
 	return nil
 }
+
+func cmdRegister(h *Hub, p Peer, args string) error {
+	if len(args) < 6 {
+		h.cmdOutput(p, "password should be at least 6 characters")
+		return nil
+	}
+	name := p.Name()
+	err := h.RegisterUser(name, args)
+	if err != nil {
+		return err
+	}
+	h.cmdOutputf(p, "user %s registered, please reconnect", name)
+	return nil
+}

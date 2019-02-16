@@ -230,7 +230,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 
-	isRegistered, err := h.isRegisteredUser(peer.Name())
+	isRegistered, err := h.nmdcIsRegistered(peer.Name())
 	if err != nil {
 		return err
 	}
@@ -251,7 +251,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			return fmt.Errorf("expected password got: %v", err)
 		}
 
-		ok, err := h.checkUserPass(peer.Name(), string(pass.String))
+		ok, err := h.nmdcCheckUserPass(peer.Name(), string(pass.String))
 		if err != nil {
 			return err
 		} else if !ok {
@@ -341,14 +341,6 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		}
 	}
 	return nil
-}
-
-func (h *Hub) isRegisteredUser(name string) (bool, error) {
-	return strings.HasSuffix(name, "_reg"), nil // TODO: implement user database
-}
-
-func (h *Hub) checkUserPass(name string, pass string) (bool, error) {
-	return name == pass, nil // TODO: implement user database
 }
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {

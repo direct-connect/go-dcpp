@@ -72,6 +72,13 @@ func NewHub(conf Config) *Hub {
 		Short: "replay chat log",
 		Func:  cmdChatLog,
 	})
+	h.registerCommand(Command{
+		Name:  "reg",
+		Short: "registers a user",
+		Func:  cmdRegister,
+	})
+
+	h.userDB = NewUserDatabase()
 	return h
 }
 
@@ -81,6 +88,8 @@ type Hub struct {
 	tls     *tls.Config
 	h2      *http2.Server
 	h2conf  *http2.ServeConnOpts
+
+	userDB UserDatabase
 
 	lastSID uint32
 
@@ -108,6 +117,10 @@ type Hub struct {
 		sync.RWMutex
 		log chatBuffer
 	}
+}
+
+func (h *Hub) SetUserDB(db UserDatabase) {
+	h.userDB = db
 }
 
 type Command struct {
