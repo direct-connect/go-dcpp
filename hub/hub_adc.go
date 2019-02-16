@@ -246,7 +246,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	st := h.Stats()
 
-	isRegistered, err := h.isRegisteredUserADC(peer.Name())
+	isRegistered, err := h.IsRegistered(peer.Name())
 	if err != nil {
 		return err
 	}
@@ -281,7 +281,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		if err := adc.Unmarshal(hp.Data, &pass); err != nil {
 			return err
 		}
-		ok, err := h.checkUserPassADC(peer.Name(), salt[:], pass.Hash)
+		ok, err := h.adcCheckUserPass(peer.Name(), salt[:], pass.Hash)
 		if err != nil {
 			return err
 		} else if !ok {
@@ -347,15 +347,16 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	return nil
 }
 
-func (h *Hub) isRegisteredUserADC(name string) (bool, error) {
-	return strings.HasSuffix(name, "_reg"), nil // TODO: implement user database
-}
-
-func (h *Hub) checkUserPassADC(name string, salt []byte, hash tiger.Hash) (bool, error) {
-	pass := name // TODO: implement user database
-	n := len(pass) + len(salt)
-	check := make([]byte, n)
-	i := copy(check, name)
+func (h *Hub) adcCheckUserPass(name string, salt []byte, hash tiger.Hash) (bool, error) {
+	if h.userDB == nil {
+		return false, nil
+	}
+	pass, err := h.userDB.GetUserPassword(name)
+	if err != nil {
+		return false, err
+	}
+	check := make([]byte, len(pass)+len(salt))
+	i := copy(check, pass)
 	copy(check[i:], salt)
 	exp := tiger.HashBytes(check)
 	return exp == hash, nil

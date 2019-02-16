@@ -230,7 +230,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 
-	isRegistered, err := h.nmdcIsRegistered(peer.Name())
+	isRegistered, err := h.IsRegistered(peer.Name())
 	if err != nil {
 		return err
 	}
@@ -341,6 +341,17 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		}
 	}
 	return nil
+}
+
+func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
+	if h.userDB == nil {
+		return false, nil
+	}
+	exp, err := h.userDB.GetUserPassword(name)
+	if err != nil {
+		return false, err
+	}
+	return exp == pass, nil
 }
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {

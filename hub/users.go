@@ -22,22 +22,11 @@ func (h *Hub) RegisterUser(name, pass string) error {
 	return h.userDB.RegisterUser(name, pass)
 }
 
-func (h *Hub) nmdcIsRegistered(name string) (bool, error) {
+func (h *Hub) IsRegistered(name string) (bool, error) {
 	if h.userDB == nil {
 		return false, nil
 	}
 	return h.userDB.IsRegistered(name)
-}
-
-func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
-	if h.userDB == nil {
-		return false, nil
-	}
-	exp, err := h.userDB.GetUserPassword(name)
-	if err != nil {
-		return false, err
-	}
-	return exp == pass, nil
 }
 
 // NewUserDatabase creates an in-memory users database.
