@@ -25,6 +25,8 @@ func (h *Hub) validateUserName(name string) error {
 		return errors.New("name should not start with '!'")
 	} else if name != strings.TrimSpace(name) {
 		return errors.New("name should not start or end with spaces")
+	} else if strings.ContainsAny(name, "\x00") {
+		return errors.New("name should not contain null characters")
 	}
 	return nil
 }

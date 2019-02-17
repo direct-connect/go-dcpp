@@ -1,6 +1,8 @@
 package adc
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 )
 
@@ -42,6 +44,9 @@ func (p BasePacket) Decode() (Message, error) {
 func DecodePacket(p []byte) (Packet, error) {
 	if len(p) < 4 {
 		return nil, fmt.Errorf("too short for command: '%s'", string(p))
+	}
+	if bytes.ContainsAny(p, "\x00") {
+		return nil, errors.New("messages should not contain null characters")
 	}
 	kind := p[0]
 	var m Packet

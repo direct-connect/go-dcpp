@@ -457,6 +457,10 @@ func (c *Conn) readChatMsg(m *ChatMessage) error {
 		return fmt.Errorf("cannot read chat message: %v", err)
 	}
 	msg = msg[:len(msg)-1] // trim '|'
+
+	if bytes.ContainsAny(msg, "\x00") {
+		return errors.New("chat message should not contain null characters")
+	}
 	// TODO: convert to UTF8
 	var text String
 	if err = text.UnmarshalNMDC(msg); err != nil {
@@ -479,6 +483,9 @@ func (c *Conn) readRawCommand() (*RawCommand, error) {
 		return nil, io.EOF
 	} else if err != nil {
 		return nil, fmt.Errorf("cannot parse command: %v", err)
+	}
+	if bytes.ContainsAny(buf, "\x00") {
+		return nil, errors.New("command should not contain null characters")
 	}
 	if Debug {
 		log.Println("<-", "$"+string(buf))
