@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/url"
 	"strconv"
@@ -149,7 +150,12 @@ func (s *Server) Serve(lis net.Listener) error {
 		if err != nil {
 			return err
 		}
-		go s.ServeConn(c)
+		go func() {
+			err := s.ServeConn(c)
+			if err != nil {
+				log.Println("autoreg failed:", err)
+			}
+		}()
 	}
 }
 
