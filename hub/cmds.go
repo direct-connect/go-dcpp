@@ -11,6 +11,7 @@ import (
 
 func (h *Hub) initCommands() {
 	h.cmds.byName = make(map[string]*Command)
+	h.cmds.names = make(map[string]struct{})
 	h.registerCommand(Command{
 		Name: "help", Aliases: []string{"h"},
 		Short: "show the list of commands or a help for a specific command",
@@ -66,13 +67,19 @@ func cmdHelp(h *Hub, p Peer, args string) error {
 	}
 	buf := bytes.NewBuffer(nil)
 	buf.WriteString("available commands:\n\n")
-	names := make([]string, 0, len(h.cmds.byName))
-	for name := range h.cmds.byName {
+	names := make([]string, 0, len(h.cmds.names))
+	for name := range h.cmds.names {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		buf.WriteString("- " + name + "\n")
+		buf.WriteString("- " + name)
+		if c := h.cmds.byName[name]; len(c.Aliases) != 0 {
+			buf.WriteString("  (")
+			buf.WriteString(strings.Join(c.Aliases, ", "))
+			buf.WriteString(")")
+		}
+		buf.WriteString("\n")
 	}
 	h.cmdOutput(p, buf.String())
 	return nil

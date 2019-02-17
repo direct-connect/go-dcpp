@@ -94,6 +94,7 @@ type Hub struct {
 	}
 
 	cmds struct {
+		names  map[string]struct{} // no aliases
 		byName map[string]*Command
 	}
 
@@ -338,6 +339,7 @@ func (h *Hub) registerCommand(cmd Command) {
 			h.cmdOutput(p, "error: "+err.Error())
 		}
 	}
+	h.cmds.names[cmd.Name] = struct{}{}
 	h.cmds.byName[cmd.Name] = &cmd
 	for _, name := range cmd.Aliases {
 		h.cmds.byName[name] = &cmd
