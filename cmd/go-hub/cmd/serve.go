@@ -42,6 +42,7 @@ var initCmd = &cobra.Command{
 type Config struct {
 	Name    string `yaml:"name"`
 	Desc    string `yaml:"desc"`
+	Owner   string `yaml:"owner"`
 	Website string `yaml:"website"`
 	Email   string `yaml:"email"`
 	MOTD    string `yaml:"motd"`
@@ -165,6 +166,7 @@ func init() {
 		h := hub.NewHub(hub.Config{
 			Name:        conf.Name,
 			Desc:        conf.Desc,
+			Owner:       conf.Owner,
 			Website:     conf.Website,
 			Email:       conf.Email,
 			MOTD:        conf.MOTD,

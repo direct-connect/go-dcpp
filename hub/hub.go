@@ -23,6 +23,7 @@ type Config struct {
 	Name        string
 	Desc        string
 	Addr        string
+	Owner       string
 	Website     string
 	Email       string
 	Soft        Software
@@ -126,6 +127,7 @@ type Stats struct {
 	Desc     string   `json:"desc,omitempty"`
 	Addr     []string `json:"addr,omitempty"`
 	Icon     string   `json:"icon,omitempty"`
+	Owner    string   `json:"owner,omitempty"`
 	Website  string   `json:"website,omitempty"`
 	Email    string   `json:"email,omitempty"`
 	Users    int      `json:"users"`
@@ -151,6 +153,7 @@ func (h *Hub) Stats() Stats {
 	st := Stats{
 		Name:    h.conf.Name,
 		Desc:    h.conf.Desc,
+		Owner:   h.conf.Owner,
 		Website: h.conf.Website,
 		Email:   h.conf.Email,
 		Users:   users,
