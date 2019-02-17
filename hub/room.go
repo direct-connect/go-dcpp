@@ -3,6 +3,7 @@ package hub
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,7 @@ func (h *Hub) NewRoom(name string) (*Room, error) {
 	h.rooms.byName[name] = r
 	h.rooms.bySID[r.sid] = r
 	h.rooms.Unlock()
+	log.Printf("new room: %q", name)
 	return r, nil
 }
 
