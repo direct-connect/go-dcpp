@@ -14,12 +14,13 @@ Requires Go 1.11+.
 - Supports TLS for ADC and NMDC.
 - Automatic TLS certificate generation.
 - HTTP pinger support.
+- User registration.
+- Chat rooms.
 - User commands.
 
 **TODO:**
 
 - Search between NMDC and ADC.
-- User registration.
 - Operators.
 - Extensions and scripts.
 - Spam filters.
