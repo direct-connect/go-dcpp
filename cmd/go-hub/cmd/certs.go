@@ -97,13 +97,15 @@ func loadCert(conf *Config) (*tls.Certificate, string, error) {
 		return nil, "", err
 	}
 
-	h := sha256.Sum256(cert)
-	kp := "SHA256/" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:])
-
 	// Create a TLS cert using the private key and certificate
 	rootTLSCert, err := tls.X509KeyPair(cert, key)
 	if err != nil {
 		return nil, "", err
+	}
+	kp := ""
+	if len(rootTLSCert.Certificate) != 0 {
+		h := sha256.Sum256(rootTLSCert.Certificate[0])
+		kp = "SHA256/" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:])
 	}
 	return &rootTLSCert, kp, nil
 }
