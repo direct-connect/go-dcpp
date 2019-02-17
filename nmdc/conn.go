@@ -22,11 +22,13 @@ const (
 )
 
 const (
-	readBuf     = 4096
-	maxUserName = 256
-	maxCmdName  = 64
-	maxChatMsg  = readBuf
-	maxCmd      = readBuf * 4
+	readBuf          = 4096
+	maxName          = 256
+	maxText          = 4096
+	maxCmdName       = 64
+	invalidCharsName = "<>$\x00\r\n\t"
+	maxChatMsg       = readBuf
+	maxCmd           = readBuf * 4
 )
 
 var Debug bool
@@ -395,19 +397,19 @@ func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
 	return m, nil
 }
 
-// readUntilAny reads a byte slice until one of the char delimiters, up to max bytes.
+// readUntil reads a byte slice until the delimiter, up to max bytes.
 // It returns a slice with a delimiter and reads the delimiter from the connection.
-func (c *Conn) readUntilAny(chars string, max int) ([]byte, error) {
+func (c *Conn) readUntil(delim string, max int) ([]byte, error) {
 	var value []byte
 	for {
 		b, err := c.peek()
 		if err != nil {
 			return nil, err
 		}
-		i := bytes.IndexAny(b, chars)
+		i := bytes.Index(b, []byte(delim))
 		if i >= 0 {
-			value = append(value, b[:i+1]...)
-			c.discard(i + 1)
+			value = append(value, b[:i+len(delim)]...)
+			c.discard(i + len(delim))
 			return value, nil
 		}
 		if len(value)+len(b) > max {
@@ -430,29 +432,20 @@ func (c *Conn) readChatMsg(m *ChatMessage) error {
 	}
 	if b[0] == '<' {
 		c.discard(1) // trim '<'
-		name, err := c.readUntilAny(">", maxUserName)
+		name, err := c.readUntil("> ", maxName)
 		if err != nil {
 			return fmt.Errorf("cannot read username in chat message: %v", err)
 		}
-		name = name[:len(name)-1] // trim '>'
+		name = name[:len(name)-2] // trim '> '
 		if len(name) == 0 {
 			return errors.New("empty name in chat message")
 		}
 		if err = m.Name.UnmarshalNMDC(name); err != nil {
 			return err
 		}
-
-		b, err = c.peek()
-		if err != nil {
-			return err
-		}
-		if len(b) < 1 || b[0] != ' ' {
-			return errors.New("cannot parse chat message")
-		}
-		c.discard(1) // discard ' '
 	}
 
-	msg, err := c.readUntilAny("|", maxChatMsg)
+	msg, err := c.readUntil("|", maxChatMsg)
 	if err != nil {
 		return fmt.Errorf("cannot read chat message: %v", err)
 	}
@@ -478,7 +471,7 @@ func (c *Conn) readRawCommand() (*RawCommand, error) {
 	// $Name xxx yyy|
 	c.discard(1) // trim '$'
 
-	buf, err := c.readUntilAny("|", maxCmd)
+	buf, err := c.readUntil("|", maxCmd)
 	if err == io.EOF {
 		return nil, io.EOF
 	} else if err != nil {

@@ -1,15 +1,30 @@
 package nmdc
 
-import "sort"
+import (
+	"bytes"
+	"errors"
+	"sort"
+	"strings"
+)
 
 type Name string
 
 func (s Name) MarshalNMDC() ([]byte, error) {
+	if len(s) > maxName {
+		return nil, errors.New("name is too long")
+	} else if strings.ContainsAny(string(s), invalidCharsName) {
+		return nil, errors.New("invalid characters in name")
+	}
 	// TODO: encoding
-	str := Escape(string(s))
+	str := EscapeName(string(s))
 	return []byte(str), nil
 }
 func (s *Name) UnmarshalNMDC(data []byte) error {
+	if len(data) > maxName {
+		return errors.New("name is too long")
+	} else if bytes.ContainsAny(data, invalidCharsName) {
+		return errors.New("invalid characters in name")
+	}
 	// TODO: encoding
 	str := Unescape(string(data))
 	*s = Name(str)
@@ -19,11 +34,21 @@ func (s *Name) UnmarshalNMDC(data []byte) error {
 type String string
 
 func (s String) MarshalNMDC() ([]byte, error) {
+	if len(s) > maxText {
+		return nil, errors.New("text is too long")
+	} else if strings.ContainsAny(string(s), "\x00") {
+		return nil, errors.New("invalid characters in text")
+	}
 	// TODO: encoding
 	str := Escape(string(s))
 	return []byte(str), nil
 }
 func (s *String) UnmarshalNMDC(data []byte) error {
+	if len(data) > maxText {
+		return errors.New("text is too long")
+	} else if bytes.ContainsAny(data, "\x00") {
+		return errors.New("invalid characters in text")
+	}
 	// TODO: encoding
 	str := Unescape(string(data))
 	*s = String(str)

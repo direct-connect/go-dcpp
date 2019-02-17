@@ -10,6 +10,10 @@ var (
 	ErrUserRegDisabled = errors.New("user registration is disabled")
 )
 
+const (
+	userNameMax = 256
+)
+
 type UserDatabase interface {
 	IsRegistered(name string) (bool, error)
 	GetUserPassword(name string) (string, error)
@@ -19,13 +23,20 @@ type UserDatabase interface {
 func (h *Hub) validateUserName(name string) error {
 	if name == "" {
 		return errors.New("name should be empty")
-	} else if strings.HasPrefix(name, "#") {
+	}
+	if len(name) > userNameMax {
+		return errors.New("name is too long")
+	}
+	if strings.HasPrefix(name, "#") {
 		return errors.New("name should not start with '#'")
-	} else if strings.HasPrefix(name, "!") {
+	}
+	if strings.HasPrefix(name, "!") {
 		return errors.New("name should not start with '!'")
-	} else if name != strings.TrimSpace(name) {
+	}
+	if name != strings.TrimSpace(name) {
 		return errors.New("name should not start or end with spaces")
-	} else if strings.ContainsAny(name, "\x00") {
+	}
+	if strings.ContainsAny(name, "\x00") {
 		return errors.New("name should not contain null characters")
 	}
 	return nil

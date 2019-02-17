@@ -20,8 +20,20 @@ var htmlEscaper = strings.NewReplacer(
 	"|", "&#124;",
 )
 
+var htmlEscaperName = strings.NewReplacer(
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	"$", "&#36;",
+	"|", "&#124;",
+)
+
 func Escape(s string) string {
 	return htmlEscaper.Replace(s)
+}
+
+func EscapeName(s string) string {
+	return htmlEscaperName.Replace(s)
 }
 
 func Unescape(s string) string {
