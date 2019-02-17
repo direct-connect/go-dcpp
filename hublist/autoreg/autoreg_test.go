@@ -7,11 +7,12 @@ import (
 
 func TestAutoreg(t *testing.T) {
 	info := Info{
-		Name:  "Some hub name",
-		Host:  "localhost:411",
-		Desc:  "Long |hub| description",
-		Users: 10,
-		Share: 1023,
+		Name:     "Some hub name",
+		Host:     "localhost:411",
+		Desc:     "Long |hub| description",
+		Users:    10,
+		Share:    1023,
+		MinShare: 4 * mb,
 	}
 	ch := make(chan Info, 1)
 	errc := make(chan error, 1)

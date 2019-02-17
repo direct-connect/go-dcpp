@@ -21,14 +21,22 @@ import (
 const DefaultPort = 2501
 
 type Info struct {
-	Name  string
-	Host  string
-	Desc  string
-	Users int
-	Share uint64
+	Name     string
+	Host     string
+	Desc     string
+	Users    int
+	Share    uint64
+	MinShare uint64
 }
 
-const timeout = time.Second * 5
+const (
+	timeout      = time.Second * 5
+	minSharePref = "[MINSHARE:"
+	sep          = '|'
+	cmdLock      = "$Lock "
+	cmdKey       = "$Key "
+	mb           = 1024 * 1024
+)
 
 var (
 	escaper = strings.NewReplacer(
@@ -73,7 +81,7 @@ func registerOn(c io.ReadWriteCloser, info Info, host string) error {
 		return errors.New("expected NMDC $Lock")
 	}
 	b = b[:i]
-	if !bytes.HasPrefix(b, []byte("$Lock ")) {
+	if !bytes.HasPrefix(b, []byte(cmdLock)) {
 		return fmt.Errorf("expected $Lock, got: %q", string(b))
 	}
 	var lock nmdc.Lock
@@ -84,29 +92,31 @@ func registerOn(c io.ReadWriteCloser, info Info, host string) error {
 
 	buf := bytes.NewBuffer(b[:0])
 	buf.Reset()
-	buf.WriteString("$Key ")
+	buf.WriteString(cmdKey)
 	data, err := key.MarshalNMDC()
 	if err != nil {
 		return err
 	}
 	buf.Write(data)
-	buf.WriteByte('|')
+	buf.WriteByte(sep)
 
 	buf.WriteString(escaper.Replace(info.Name))
-	buf.WriteByte('|')
+	buf.WriteByte(sep)
 	buf.WriteString(info.Host)
-	buf.WriteByte('|')
-	// TODO: min share
+	buf.WriteByte(sep)
+	buf.WriteString(minSharePref)
+	buf.WriteString(strconv.FormatUint(info.MinShare/mb, 10))
+	buf.WriteString("MB] ")
 	buf.WriteString(escaper.Replace(info.Desc))
-	buf.WriteByte('|')
+	buf.WriteByte(sep)
 	buf.WriteString(strconv.Itoa(info.Users))
-	buf.WriteByte('|')
+	buf.WriteByte(sep)
 	buf.WriteString(strconv.FormatUint(info.Share, 10))
-	buf.WriteByte('|')
+	buf.WriteByte(sep)
 
 	if host != "" {
 		buf.WriteString(host)
-		buf.WriteByte('|')
+		buf.WriteByte(sep)
 	}
 	if _, err := c.Write(buf.Bytes()); err != nil {
 		return err
@@ -122,7 +132,7 @@ func scanOneTo(r io.Reader, buf []byte) (int, int, error) {
 		} else if err != nil {
 			return -1, 0, err
 		}
-		if j := bytes.Index(buf[i:i+n], []byte("|")); j > 0 {
+		if j := bytes.Index(buf[i:i+n], []byte{sep}); j > 0 {
 			return i + j, i + n, nil
 		}
 		i += n
@@ -178,9 +188,9 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 		return err
 	}
 	b := make([]byte, 2048)
-	i := copy(b, "$Lock ")
+	i := copy(b, cmdLock)
 	i += copy(b[i:], data)
-	b[i] = '|'
+	b[i] = sep
 	i++
 	_, err = c.Write(b[:i])
 	if err != nil {
@@ -189,7 +199,7 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 	r := bufio.NewScanner(c)
 	r.Buffer(b, cap(b))
 	r.Split(func(data []byte, atEOF bool) (advance int, token []byte, _ error) {
-		i := bytes.Index(data, []byte("|"))
+		i := bytes.Index(data, []byte{sep})
 		if i >= 0 {
 			return i + 1, data[:i], nil
 		} else if atEOF {
@@ -202,7 +212,7 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 		return r.Err()
 	}
 	data = r.Bytes()
-	if !bytes.HasPrefix(data, []byte("$Key ")) {
+	if !bytes.HasPrefix(data, []byte(cmdKey)) {
 		return errors.New("expected $Key")
 	}
 	var key nmdc.Key
@@ -239,6 +249,17 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 	if err != nil {
 		return err
 	}
+	if strings.HasPrefix(info.Desc, minSharePref) {
+		desc := info.Desc[len(minSharePref):]
+		i := strings.Index(desc, "MB] ")
+		if i > 0 {
+			min, err := strconv.ParseUint(desc[:i], 10, 64)
+			if err == nil {
+				info.MinShare = min * mb
+				info.Desc = desc[5:]
+			}
+		}
+	}
 	str, err := readStringRaw()
 	if err != nil {
 		return err
@@ -255,6 +276,7 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 	if err != nil {
 		return err
 	}
+	// info.HubHost, _ = readStringRaw()
 	return s.r.RegisterHub(info)
 }
 
