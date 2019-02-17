@@ -518,6 +518,12 @@ const (
 	FlagTLS = FlagTLSUpload | FlagTLSDownload
 )
 
+// Used by some clients to set a different icon.
+const (
+	ConnSpeedModem  = "1"
+	ConnSpeedServer = "1000"
+)
+
 type MyInfo struct {
 	Name           Name
 	Desc           String

@@ -726,7 +726,7 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 		Mode:       nmdc.UserModeActive,
 		Flag:       nmdc.FlagStatusServer,
 		Slots:      1,
-		Conn:       "IPC",
+		Conn:       nmdc.ConnSpeedModem, // "modem" icon
 	})
 	if err != nil {
 		return err
