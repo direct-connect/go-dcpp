@@ -53,7 +53,7 @@ func NewHub(conf Config) *Hub {
 	h.peers.logging = make(map[string]struct{})
 	h.peers.byName = make(map[string]Peer)
 	h.peers.bySID = make(map[adc.SID]Peer)
-	h.chat.log.limit = conf.ChatLog
+	h.globalChat = h.newRoom("")
 	h.initADC()
 	h.initHTTP()
 	h.userDB = NewUserDatabase()
@@ -92,10 +92,7 @@ type Hub struct {
 		byName map[string]*Command
 	}
 
-	chat struct {
-		sync.RWMutex
-		log chatBuffer
-	}
+	globalChat *Room
 }
 
 func (h *Hub) SetUserDB(db UserDatabase) {
@@ -293,44 +290,9 @@ func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
 	peer.BroadcastLeave(notify)
 }
 
-func (h *Hub) broadcastChat(from Peer, m Message, notify []Peer) {
-	m.Time = time.Now().UTC()
-	if h.conf.ChatLog > 0 {
-		h.chat.Lock()
-		h.chat.log.Append(m)
-		h.chat.Unlock()
-	}
-	if notify == nil {
-		notify = h.Peers()
-	}
-	for _, p := range notify {
-		_ = p.ChatMsg(from, m)
-	}
-}
-
 func (h *Hub) privateChat(from, to Peer, m Message) {
 	m.Time = time.Now().UTC()
 	_ = to.PrivateMsg(from, m)
-}
-
-func (h *Hub) replayChat(peer Peer, n int) {
-	if h.conf.ChatLog <= 0 {
-		return
-	}
-	h.chat.RLock()
-	log := h.chat.log.Get(n)
-	h.chat.RUnlock()
-	for _, m := range log {
-		// TODO: replay messages from peers themselves, if they are still online
-		err := peer.HubChatMsg(fmt.Sprintf(
-			"[%s] <%s> %s",
-			m.Time.Format("15:04:05"),
-			m.Name, m.Text,
-		))
-		if err != nil {
-			return
-		}
-	}
 }
 
 func (h *Hub) sendMOTD(peer Peer) error {
@@ -386,6 +348,7 @@ func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	if notify == nil {
 		notify = h.listPeers()
 	}
+	h.globalChat.Leave(peer)
 	h.peers.Unlock()
 
 	h.broadcastUserLeave(peer, notify)
@@ -397,6 +360,7 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	delete(h.peers.bySID, sid)
 	delete(h.peers.byCID, cid)
 	notify := h.listPeers()
+	h.globalChat.Leave(peer)
 	h.peers.Unlock()
 
 	h.broadcastUserLeave(peer, notify)
@@ -427,28 +391,6 @@ type User struct {
 	IPv4           bool
 	IPv6           bool
 	TLS            bool
-}
-
-type Peer interface {
-	SID() adc.SID
-	Name() string
-	RemoteAddr() net.Addr
-	User() User
-
-	Close() error
-
-	PeersJoin(peers []Peer) error
-	PeersLeave(peers []Peer) error
-	BroadcastJoin(peers []Peer)
-	BroadcastLeave(peers []Peer)
-	//PeersUpdate(peers []Peer) error
-
-	ChatMsg(from Peer, m Message) error
-	PrivateMsg(from Peer, m Message) error
-	HubChatMsg(text string) error
-
-	ConnectTo(peer Peer, addr string, token string, secure bool) error
-	RevConnectTo(peer Peer, token string, secure bool) error
 }
 
 type BasePeer struct {

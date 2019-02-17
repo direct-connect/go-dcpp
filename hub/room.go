@@ -1,6 +1,8 @@
 package hub
 
 import (
+	"fmt"
+	"sync"
 	"time"
 )
 
@@ -8,6 +10,99 @@ type Message struct {
 	Time time.Time
 	Name string
 	Text string
+}
+
+func (h *Hub) newRoom(name string) *Room {
+	r := &Room{
+		h: h, name: name,
+		peers: make(map[Peer]struct{}),
+	}
+	r.log.limit = h.conf.ChatLog
+	return r
+}
+
+type Room struct {
+	h    *Hub
+	name string
+
+	lmu sync.RWMutex
+	log chatBuffer
+
+	pmu   sync.RWMutex
+	peers map[Peer]struct{}
+}
+
+func (r *Room) Name() string {
+	return r.name
+}
+
+func (r *Room) InRoom(p Peer) bool {
+	r.pmu.RLock()
+	_, ok := r.peers[p]
+	r.pmu.RUnlock()
+	return ok
+}
+
+func (r *Room) Peers() []Peer {
+	r.pmu.RLock()
+	list := make([]Peer, 0, len(r.peers))
+	for p := range r.peers {
+		list = append(list, p)
+	}
+	r.pmu.RUnlock()
+	return list
+}
+
+func (r *Room) Join(p Peer) {
+	r.pmu.Lock()
+	r.peers[p] = struct{}{}
+	r.pmu.Unlock()
+}
+
+func (r *Room) Leave(p Peer) {
+	r.pmu.Lock()
+	delete(r.peers, p)
+	r.pmu.Unlock()
+}
+
+func (r *Room) SendChat(from Peer, text string) {
+	m := Message{
+		Time: time.Now().UTC(),
+		Name: from.Name(),
+		Text: text,
+	}
+
+	if r.h.conf.ChatLog > 0 {
+		r.lmu.Lock()
+		r.log.Append(m)
+		r.lmu.Unlock()
+	}
+
+	for _, p := range r.Peers() {
+		_ = p.ChatMsg(from, m)
+	}
+}
+
+func (r *Room) ReplayChat(to Peer, n int) {
+	if r.h.conf.ChatLog <= 0 {
+		return
+	}
+
+	r.lmu.RLock()
+	log := r.log.Get(n)
+	r.lmu.RUnlock()
+
+	for _, m := range log {
+		// TODO: replay messages from peers themselves, if they are still online
+		err := to.HubChatMsg(fmt.Sprintf(
+			"[%s] <%s> %s",
+			m.Time.Format("15:04:05"),
+			m.Name, m.Text,
+		))
+		if err != nil {
+			return
+		}
+	}
 }
 
 type chatBuffer struct {

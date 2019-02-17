@@ -44,7 +44,7 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 		return err
 	}
 	if h.conf.ChatLogJoin != 0 {
-		h.replayChat(peer, h.conf.ChatLogJoin)
+		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
 	}
 
 	return h.adcServePeer(peer)
@@ -339,10 +339,10 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	h.peers.bySID[peer.sid] = peer
 	h.peers.byCID[u.Id] = peer
 	h.peers.byName[u.Name] = peer
+	h.globalChat.Join(peer)
 	h.peers.Unlock()
 
 	// notify other users about the new one
-	// TODO: this will block the client
 	h.broadcastUserJoin(peer, list)
 	return nil
 }
@@ -384,10 +384,7 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 			h.command(from, cmd, args)
 			return
 		}
-		h.broadcastChat(from, Message{
-			Name: from.Name(),
-			Text: text,
-		}, nil)
+		h.globalChat.SendChat(from, text)
 	default:
 		// TODO: decode other packets
 	}

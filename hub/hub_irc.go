@@ -47,10 +47,7 @@ func (h *Hub) ServeIRC(conn net.Conn) error {
 			}
 			dst, msg := m.Params[0], m.Params[1]
 			if dst == ircHubChan {
-				h.broadcastChat(peer, Message{
-					Name: peer.Name(),
-					Text: msg,
-				}, nil)
+				h.globalChat.SendChat(peer, msg)
 			} else if dst := h.byName(dst); dst != nil {
 				h.privateChat(peer, dst, Message{
 					Name: peer.Name(),
@@ -286,6 +283,7 @@ waitJoin:
 	h.peers.byName[peer.name] = peer
 	h.peers.bySID[peer.sid] = peer
 	notify := h.listPeers()
+	h.globalChat.Join(peer)
 	h.peers.Unlock()
 
 	h.broadcastUserJoin(peer, notify)

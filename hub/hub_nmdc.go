@@ -194,15 +194,15 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.bySID[peer.sid] = peer
 	h.peers.byName[name] = peer
 	atomic.StoreUint32(&peer.state, nmdcPeerJoining)
+	h.globalChat.Join(peer)
 	h.peers.Unlock()
 
 	// notify other users about the new one
-	// TODO: this will block the client
 	h.broadcastUserJoin(peer, list)
 	atomic.StoreUint32(&peer.state, nmdcPeerNormal)
 
 	if h.conf.ChatLogJoin != 0 {
-		h.replayChat(peer, h.conf.ChatLogJoin)
+		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
 	}
 
 	if err := peer.conn.Flush(); err != nil {
@@ -392,10 +392,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				h.command(peer, cmd, args)
 				continue
 			}
-			h.broadcastChat(peer, Message{
-				Name: string(msg.Name),
-				Text: string(msg.Text),
-			}, nil)
+			h.globalChat.SendChat(peer, string(msg.Text))
 		case *nmdc.GetNickList:
 			list := h.Peers()
 			peer.PeersJoin(list)

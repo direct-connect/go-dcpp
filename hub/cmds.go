@@ -88,7 +88,7 @@ func cmdChatLog(h *Hub, p Peer, args string) error {
 		n = v
 	}
 	h.cmdOutput(p, "replaying last messages")
-	h.replayChat(p, n)
+	h.globalChat.ReplayChat(p, n)
 	return nil
 }
 
