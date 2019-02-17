@@ -2,6 +2,7 @@ package hub
 
 import (
 	"errors"
+	"strings"
 	"sync"
 )
 
@@ -13,6 +14,19 @@ type UserDatabase interface {
 	IsRegistered(name string) (bool, error)
 	GetUserPassword(name string) (string, error)
 	RegisterUser(name, pass string) error
+}
+
+func (h *Hub) validateUserName(name string) error {
+	if name == "" {
+		return errors.New("name should be empty")
+	} else if strings.HasPrefix(name, "#") {
+		return errors.New("name should not start with '#'")
+	} else if strings.HasPrefix(name, "!") {
+		return errors.New("name should not start with '!'")
+	} else if name != strings.TrimSpace(name) {
+		return errors.New("name should not start or end with spaces")
+	}
+	return nil
 }
 
 func (h *Hub) RegisterUser(name, pass string) error {

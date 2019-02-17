@@ -194,10 +194,11 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "To:",
-		data: `john From: peter $<peter> dogs are more cute`,
+		data: `john From: room $<peter> dogs are more cute`,
 		msg: &PrivateMessage{
 			To:   "john",
-			From: "peter",
+			From: "room",
+			Name: "peter",
 			Text: "dogs are more cute",
 		},
 	},

@@ -74,8 +74,6 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdc.Features, nmdc.Na
 	err = c.ReadMsgTo(deadline, &nick)
 	if err != nil {
 		return nil, "", fmt.Errorf("expected validate: %v", err)
-	} else if nick.Name == "" {
-		return nil, "", errors.New("empty nickname")
 	}
 	return fea, nick.Name, nil
 }
@@ -105,6 +103,13 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		return nil, err
 	}
 	name := string(nick)
+	err = h.validateUserName(name)
+	if err != nil {
+		_ = c.WriteMsg(&nmdc.ChatMessage{Text: err.Error()})
+		_ = c.Flush()
+		return nil, err
+	}
+
 	peer := &nmdcPeer{
 		BasePeer: BasePeer{
 			hub:  h,
@@ -145,7 +150,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 
 	// do not lock for writes first
 	h.peers.RLock()
-	_, sameName1 := h.peers.logging[name]
+	_, sameName1 := h.peers.reserved[name]
 	_, sameName2 := h.peers.byName[name]
 	h.peers.RUnlock()
 
@@ -156,7 +161,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 
 	// ok, now lock for writes and try to bind nick
 	h.peers.Lock()
-	_, sameName1 = h.peers.logging[name]
+	_, sameName1 = h.peers.reserved[name]
 	_, sameName2 = h.peers.byName[name]
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
@@ -165,13 +170,13 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		return nil, errNickTaken
 	}
 	// bind nick, still no one will see us yet
-	h.peers.logging[name] = struct{}{}
+	h.peers.reserved[name] = struct{}{}
 	h.peers.Unlock()
 
 	err = h.nmdcAccept(peer)
 	if err != nil || peer.getState() == nmdcPeerClosed {
 		h.peers.Lock()
-		delete(h.peers.logging, name)
+		delete(h.peers.reserved, name)
 		h.peers.Unlock()
 
 		str := "connection is closed"
@@ -185,7 +190,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	// finally accept the user on the hub
 	h.peers.Lock()
 	// cleanup temporary bindings
-	delete(h.peers.logging, name)
+	delete(h.peers.reserved, name)
 
 	// make a snapshot of peers to send info to
 	list := h.listPeers()
@@ -416,17 +421,28 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			}
 			h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
 		case *nmdc.PrivateMessage:
-			if string(msg.From) != peer.Name() {
+			if name := peer.Name(); string(msg.From) != name || string(msg.Name) != name {
 				return errors.New("invalid name in PrivateMessage")
 			}
-			targ := h.byName(string(msg.To))
-			if targ == nil {
-				continue
+			to := string(msg.To)
+			if strings.HasPrefix(to, "#") {
+				// message in a chat room
+				r := h.Room(to)
+				if r == nil {
+					continue
+				}
+				r.SendChat(peer, string(msg.Text))
+			} else {
+				// private message
+				targ := h.byName(to)
+				if targ == nil {
+					continue
+				}
+				h.privateChat(peer, targ, Message{
+					Name: string(msg.From),
+					Text: string(msg.Text),
+				})
 			}
-			h.privateChat(peer, targ, Message{
-				Name: string(msg.From),
-				Text: string(msg.Text),
-			})
 		case *nmdc.Search:
 			if msg.Address != "" {
 				if err := verifyAddr(msg.Address); err != nil {
@@ -697,17 +713,79 @@ func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 	return nil
 }
 
-func (p *nmdcPeer) ChatMsg(from Peer, msg Message) error {
-	return p.writeOne(&nmdc.ChatMessage{
+func (p *nmdcPeer) JoinRoom(room *Room) error {
+	rname := nmdc.Name(room.Name())
+	if rname == "" {
+		return nil
+	}
+	err := p.writeOne(&nmdc.MyInfo{
+		Name:       rname,
+		HubsNormal: room.Users(), // TODO: update
+		Client:     p.hub.conf.Soft.Name,
+		Version:    p.hub.conf.Soft.Vers,
+		Mode:       nmdc.UserModeActive,
+		Flag:       nmdc.FlagStatusServer,
+		Slots:      1,
+		Conn:       "IPC",
+	})
+	if err != nil {
+		return err
+	}
+	err = p.writeOne(&nmdc.OpList{
+		Names: nmdc.Names{rname},
+	})
+	if err != nil {
+		return err
+	}
+	return p.writeOne(&nmdc.PrivateMessage{
+		From: rname, Name: rname,
+		To:   nmdc.Name(p.Name()),
+		Text: "joined the room",
+	})
+}
+
+func (p *nmdcPeer) LeaveRoom(room *Room) error {
+	rname := nmdc.Name(room.Name())
+	if rname == "" {
+		return nil
+	}
+	err := p.writeOne(&nmdc.PrivateMessage{
+		From: rname, Name: rname,
+		To:   nmdc.Name(p.Name()),
+		Text: "left the room",
+	})
+	if err != nil {
+		return err
+	}
+	return p.writeOne(&nmdc.Quit{
+		Name: rname,
+	})
+}
+
+func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
+	rname := nmdc.Name(room.Name())
+	if rname == "" {
+		return p.writeOne(&nmdc.ChatMessage{
+			Name: nmdc.Name(msg.Name),
+			Text: msg.Text,
+		})
+	}
+	if from == p {
+		return nil // no echo
+	}
+	return p.writeOne(&nmdc.PrivateMessage{
+		From: rname,
+		To:   nmdc.Name(p.Name()),
 		Name: nmdc.Name(msg.Name),
-		Text: msg.Text,
+		Text: nmdc.String(msg.Text),
 	})
 }
 
 func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
+	fname := nmdc.Name(msg.Name)
 	return p.writeOne(&nmdc.PrivateMessage{
+		From: fname, Name: fname,
 		To:   nmdc.Name(p.Name()),
-		From: nmdc.Name(msg.Name),
 		Text: nmdc.String(msg.Text),
 	})
 }

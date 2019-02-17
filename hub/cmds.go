@@ -36,6 +36,16 @@ func (h *Hub) initCommands() {
 		Short: "shows your current ip",
 		Func:  cmdIP,
 	})
+	h.registerCommand(Command{
+		Name:  "join",
+		Short: "join a room",
+		Func:  cmdJoin,
+	})
+	h.registerCommand(Command{
+		Name: "leave", Aliases: []string{"part"},
+		Short: "leave a room",
+		Func:  cmdLeave,
+	})
 }
 
 func cmdHelp(h *Hub, p Peer, args string) error {
@@ -109,5 +119,35 @@ func cmdRegister(h *Hub, p Peer, args string) error {
 		return err
 	}
 	h.cmdOutputf(p, "user %s registered, please reconnect", name)
+	return nil
+}
+
+func cmdJoin(h *Hub, p Peer, args string) error {
+	name := args
+	if !strings.HasPrefix(name, "#") {
+		return errors.New("room name should start with '#'")
+	}
+	r := h.Room(name)
+	if r == nil {
+		var err error
+		r, err = h.NewRoom(name)
+		if err != nil {
+			return err
+		}
+	}
+	r.Join(p)
+	return nil
+}
+
+func cmdLeave(h *Hub, p Peer, args string) error {
+	name := args
+	if !strings.HasPrefix(name, "#") {
+		return errors.New("room name should start with '#'")
+	}
+	r := h.Room(name)
+	if r == nil {
+		return nil
+	}
+	r.Leave(p)
 	return nil
 }

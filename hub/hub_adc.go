@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/direct-connect/go-dcpp/adc"
+	"github.com/direct-connect/go-dcpp/adc/types"
 	"github.com/direct-connect/go-dcpp/tiger"
 )
 
@@ -179,15 +180,16 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 	u.Pid = nil
-	if u.Name == "" {
-		err = errors.New("invalid nick")
+
+	err = h.validateUserName(u.Name)
+	if err != nil {
 		_ = peer.sendError(adc.Fatal, 21, err)
 		return err
 	}
 
 	// do not lock for writes first
 	h.peers.RLock()
-	_, sameName1 := h.peers.logging[u.Name]
+	_, sameName1 := h.peers.reserved[u.Name]
 	_, sameName2 := h.peers.byName[u.Name]
 	_, sameCID1 := h.peers.loggingCID[u.Id]
 	_, sameCID2 := h.peers.byCID[u.Id]
@@ -206,7 +208,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	// ok, now lock for writes and try to bind nick and CID
 	h.peers.Lock()
-	_, sameName1 = h.peers.logging[u.Name]
+	_, sameName1 = h.peers.reserved[u.Name]
 	_, sameName2 = h.peers.byName[u.Name]
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
@@ -225,13 +227,13 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 	// bind nick and cid, still no one will see us yet
-	h.peers.logging[u.Name] = struct{}{}
+	h.peers.reserved[u.Name] = struct{}{}
 	h.peers.loggingCID[u.Id] = struct{}{}
 	h.peers.Unlock()
 
 	unbind := func() {
 		h.peers.Lock()
-		delete(h.peers.logging, u.Name)
+		delete(h.peers.reserved, u.Name)
 		delete(h.peers.loggingCID, u.Id)
 		h.peers.Unlock()
 	}
@@ -329,7 +331,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	// finally accept the user on the hub
 	h.peers.Lock()
 	// cleanup temporary bindings
-	delete(h.peers.logging, peer.user.Name)
+	delete(h.peers.reserved, peer.user.Name)
 	delete(h.peers.loggingCID, u.Id)
 
 	// make a snapshot of peers to send info to
@@ -393,6 +395,19 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	peer := h.bySID(p.Targ)
 	if peer == nil {
+		r := h.roomBySID(p.Targ)
+		if r == nil {
+			return
+		}
+		msg, err := p.Decode()
+		if err != nil {
+			log.Printf("cannot parse ADC message: %v", err)
+			return
+		}
+		switch msg := msg.(type) {
+		case adc.ChatMessage:
+			r.SendChat(from, string(msg.Text))
+		}
 		return
 	}
 	if p2, ok := peer.(*adcPeer); ok {
@@ -589,10 +604,70 @@ func (p *adcPeer) PeersLeave(peers []Peer) error {
 	return p.conn.Flush()
 }
 
-func (p *adcPeer) ChatMsg(from Peer, msg Message) error {
-	err := p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{
-		Text: adc.String(msg.Text),
+func (p *adcPeer) JoinRoom(room *Room) error {
+	if room.Name() == "" {
+		return nil
+	}
+	rsid := room.SID()
+	rname := room.Name()
+	h := tiger.HashBytes([]byte(rname)) // TODO: include hub name?
+	err := p.conn.WriteBroadcast(rsid, adc.User{
+		Id:          types.CID(h),
+		Name:        rname,
+		HubsNormal:  room.Users(), // TODO: update
+		Application: p.hub.conf.Soft.Name,
+		Version:     p.hub.conf.Soft.Vers,
+		Type:        adc.UserTypeOperator,
+		Slots:       1,
 	})
+	if err != nil {
+		return err
+	}
+	err = p.conn.WriteDirect(rsid, p.SID(), adc.ChatMessage{
+		Text: adc.String("joined the room"), PM: &rsid,
+	})
+	if err != nil {
+		return err
+	}
+	return p.conn.Flush()
+}
+
+func (p *adcPeer) LeaveRoom(room *Room) error {
+	if room.Name() == "" {
+		return nil
+	}
+	rsid := room.SID()
+	err := p.conn.WriteDirect(rsid, p.SID(), adc.ChatMessage{
+		Text: adc.String("left the room"), PM: &rsid,
+	})
+	if err != nil {
+		return err
+	}
+	err = p.conn.WriteBroadcast(rsid, adc.Disconnect{
+		ID: rsid,
+	})
+	if err != nil {
+		return err
+	}
+	return p.conn.Flush()
+}
+
+func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
+	var err error
+	if room.Name() != "" {
+		if p == from {
+			return nil // no echo
+		}
+		rsid := room.SID()
+		fsid := from.SID()
+		err = p.conn.WriteDirect(fsid, p.SID(), adc.ChatMessage{
+			Text: adc.String(msg.Text), PM: &rsid,
+		})
+	} else {
+		err = p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{
+			Text: adc.String(msg.Text),
+		})
+	}
 	if err != nil {
 		return err
 	}

@@ -2,12 +2,10 @@ package hub
 
 import (
 	"net"
-
-	"github.com/direct-connect/go-dcpp/adc"
 )
 
 type Peer interface {
-	SID() adc.SID
+	SID() SID
 	Name() string
 	RemoteAddr() net.Addr
 	User() User
@@ -20,10 +18,28 @@ type Peer interface {
 	BroadcastLeave(peers []Peer)
 	//PeersUpdate(peers []Peer) error
 
-	ChatMsg(from Peer, m Message) error
 	PrivateMsg(from Peer, m Message) error
 	HubChatMsg(text string) error
 
+	JoinRoom(room *Room) error
+	ChatMsg(room *Room, from Peer, m Message) error
+	LeaveRoom(room *Room) error
+
 	ConnectTo(peer Peer, addr string, token string, secure bool) error
 	RevConnectTo(peer Peer, token string, secure bool) error
+}
+
+type BasePeer struct {
+	hub *Hub
+
+	addr net.Addr
+	sid  SID
+}
+
+func (p *BasePeer) SID() SID {
+	return p.sid
+}
+
+func (p *BasePeer) RemoteAddr() net.Addr {
+	return p.addr
 }

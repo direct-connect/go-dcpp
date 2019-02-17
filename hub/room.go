@@ -1,9 +1,15 @@
 package hub
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+)
+
+var (
+	ErrRoomExists = errors.New("room already exists")
 )
 
 type Message struct {
@@ -14,16 +20,54 @@ type Message struct {
 
 func (h *Hub) newRoom(name string) *Room {
 	r := &Room{
-		h: h, name: name,
+		h: h, name: name, sid: h.nextSID(),
 		peers: make(map[Peer]struct{}),
 	}
 	r.log.limit = h.conf.ChatLog
 	return r
 }
 
+func (h *Hub) NewRoom(name string) (*Room, error) {
+	if !strings.HasPrefix(name, "#") {
+		return nil, errors.New("room name should start with '#'")
+	}
+	h.rooms.RLock()
+	_, ok := h.rooms.byName[name]
+	h.rooms.RUnlock()
+	if ok {
+		return nil, ErrRoomExists
+	}
+	h.rooms.Lock()
+	_, ok = h.rooms.byName[name]
+	if ok {
+		h.rooms.Unlock()
+		return nil, ErrRoomExists
+	}
+	r := h.newRoom(name)
+	h.rooms.byName[name] = r
+	h.rooms.bySID[r.sid] = r
+	h.rooms.Unlock()
+	return r, nil
+}
+
+func (h *Hub) Room(name string) *Room {
+	h.rooms.RLock()
+	r := h.rooms.byName[name]
+	h.rooms.RUnlock()
+	return r
+}
+
+func (h *Hub) roomBySID(sid SID) *Room {
+	h.rooms.RLock()
+	r := h.rooms.bySID[sid]
+	h.rooms.RUnlock()
+	return r
+}
+
 type Room struct {
 	h    *Hub
 	name string
+	sid  SID
 
 	lmu sync.RWMutex
 	log chatBuffer
@@ -32,8 +76,19 @@ type Room struct {
 	peers map[Peer]struct{}
 }
 
+func (r *Room) SID() SID {
+	return r.sid
+}
+
 func (r *Room) Name() string {
 	return r.name
+}
+
+func (r *Room) Users() int {
+	r.pmu.RLock()
+	n := len(r.peers)
+	r.pmu.RUnlock()
+	return n
 }
 
 func (r *Room) InRoom(p Peer) bool {
@@ -55,14 +110,29 @@ func (r *Room) Peers() []Peer {
 
 func (r *Room) Join(p Peer) {
 	r.pmu.Lock()
-	r.peers[p] = struct{}{}
+	_, ok := r.peers[p]
+	if !ok {
+		r.peers[p] = struct{}{}
+		r.h.rooms.Lock()
+		r.h.rooms.peers[p] = append(r.h.rooms.peers[p], r)
+		r.h.rooms.Unlock()
+	}
 	r.pmu.Unlock()
+	if !ok {
+		_ = p.JoinRoom(r)
+	}
 }
 
 func (r *Room) Leave(p Peer) {
 	r.pmu.Lock()
-	delete(r.peers, p)
+	_, ok := r.peers[p]
+	if ok {
+		delete(r.peers, p)
+	}
 	r.pmu.Unlock()
+	if ok {
+		_ = p.LeaveRoom(r)
+	}
 }
 
 func (r *Room) SendChat(from Peer, text string) {
@@ -79,7 +149,7 @@ func (r *Room) SendChat(from Peer, text string) {
 	}
 
 	for _, p := range r.Peers() {
-		_ = p.ChatMsg(from, m)
+		_ = p.ChatMsg(r, from, m)
 	}
 }
 

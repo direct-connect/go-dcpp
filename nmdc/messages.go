@@ -896,6 +896,7 @@ func (m *RevConnectToMe) UnmarshalNMDC(data []byte) error {
 
 type PrivateMessage struct {
 	To, From Name
+	Name     Name
 	Text     String
 }
 
@@ -904,21 +905,30 @@ func (m *PrivateMessage) Cmd() string {
 }
 
 func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+
+	// 'To:' is in the name of the command
 	to, err := m.To.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
-	buf := bytes.NewBuffer(nil)
 	buf.Write(to)
+
 	from, err := m.From.MarshalNMDC()
 	if err != nil {
 		return nil, err
 	}
 	buf.WriteString(" From: ")
 	buf.Write(from)
+
+	name, err := m.Name.MarshalNMDC()
+	if err != nil {
+		return nil, err
+	}
 	buf.WriteString(" $<")
-	buf.Write(from)
+	buf.Write(name)
 	buf.WriteString("> ")
+
 	text, err := m.Text.MarshalNMDC()
 	if err != nil {
 		return nil, err
@@ -936,27 +946,37 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 		return err
 	}
 	data = data[i+1:]
-	if !bytes.HasPrefix(data, []byte("From: ")) {
+
+	const fromToken = "From: "
+	if !bytes.HasPrefix(data, []byte(fromToken)) {
 		return errors.New("invalid PrivateMessage")
 	}
-	data = bytes.TrimPrefix(data, []byte("From: "))
+	data = bytes.TrimPrefix(data, []byte(fromToken))
 	i = bytes.Index(data, []byte(" "))
 	if i < 0 {
 		return errors.New("invalid PrivateMessage")
 	}
 	from := data[:i]
-	data = data[i+1:]
-	if !bytes.HasPrefix(data, []byte("$<")) {
-		return errors.New("invalid PrivateMessage")
-	}
-	data = bytes.TrimPrefix(data, []byte("$<"))
-	i = bytes.Index(data, []byte("> "))
-	if !bytes.Equal(from, data[:i]) {
-		return errors.New("invalid PrivateMessage")
-	}
 	if err := m.From.UnmarshalNMDC(from); err != nil {
 		return err
 	}
+	data = data[i+1:]
+
+	const nameTokenS = "$<"
+	if !bytes.HasPrefix(data, []byte(nameTokenS)) {
+		return errors.New("invalid PrivateMessage")
+	}
+	data = bytes.TrimPrefix(data, []byte(nameTokenS))
+
+	i = bytes.Index(data, []byte("> "))
+	if i < 0 {
+		return errors.New("invalid PrivateMessage")
+	}
+	name := data[:i]
+	if err := m.Name.UnmarshalNMDC(name); err != nil {
+		return err
+	}
+
 	text := data[i+2:]
 	if err := m.Text.UnmarshalNMDC(text); err != nil {
 		return err

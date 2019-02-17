@@ -102,9 +102,13 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			user = m.Params[0]
 		}
 		name = tname
+		err = h.validateUserName(name)
+		if err != nil {
+			return nil, err
+		}
 
 		h.peers.RLock()
-		_, sameName1 := h.peers.logging[name]
+		_, sameName1 := h.peers.reserved[name]
 		_, sameName2 := h.peers.byName[name]
 		h.peers.RUnlock()
 		if sameName1 || sameName2 {
@@ -116,7 +120,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			continue
 		}
 		h.peers.Lock()
-		_, sameName1 = h.peers.logging[name]
+		_, sameName1 = h.peers.reserved[name]
 		_, sameName2 = h.peers.byName[name]
 		if sameName1 || sameName2 {
 			h.peers.Unlock()
@@ -128,7 +132,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			})
 			continue
 		}
-		h.peers.logging[name] = struct{}{}
+		h.peers.reserved[name] = struct{}{}
 		h.peers.Unlock()
 		break
 	}
@@ -154,7 +158,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 	err := h.ircAccept(peer)
 	if err != nil {
 		h.peers.Lock()
-		delete(h.peers.logging, name)
+		delete(h.peers.reserved, name)
 		h.peers.Unlock()
 		return nil, err
 	}
@@ -279,7 +283,7 @@ waitJoin:
 
 	// accept the user
 	h.peers.Lock()
-	delete(h.peers.logging, peer.name)
+	delete(h.peers.reserved, peer.name)
 	h.peers.byName[peer.name] = peer
 	h.peers.bySID[peer.sid] = peer
 	notify := h.listPeers()
@@ -414,10 +418,21 @@ func (p *ircPeer) PeersLeave(peers []Peer) error {
 	return nil
 }
 
-func (p *ircPeer) ChatMsg(from Peer, msg Message) error {
+func (p *ircPeer) JoinRoom(room *Room) error {
+	return nil // FIXME
+}
+
+func (p *ircPeer) LeaveRoom(room *Room) error {
+	return nil // FIXME
+}
+
+func (p *ircPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if p == from {
 		// no echo
 		return nil
+	}
+	if room.Name() != "" {
+		return nil // FIXME
 	}
 	m := &irc.Message{
 		Command: "PRIVMSG",

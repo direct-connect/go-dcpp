@@ -50,9 +50,12 @@ func NewHub(conf Config) *Hub {
 		conf:    conf,
 		tls:     conf.TLS,
 	}
-	h.peers.logging = make(map[string]struct{})
+	h.peers.reserved = make(map[string]struct{})
 	h.peers.byName = make(map[string]Peer)
-	h.peers.bySID = make(map[adc.SID]Peer)
+	h.peers.bySID = make(map[SID]Peer)
+	h.rooms.byName = make(map[string]*Room)
+	h.rooms.bySID = make(map[SID]*Room)
+	h.rooms.peers = make(map[Peer][]*Room)
 	h.globalChat = h.newRoom("")
 	h.initADC()
 	h.initHTTP()
@@ -60,6 +63,8 @@ func NewHub(conf Config) *Hub {
 	h.initCommands()
 	return h
 }
+
+type SID = adc.SID
 
 type Hub struct {
 	created time.Time
@@ -74,13 +79,13 @@ type Hub struct {
 
 	peers struct {
 		sync.RWMutex
-		// logging map is used to temporary bind a username.
+		// reserved map is used to temporary bind a username.
 		// The name should be removed from this map as soon as a byName entry is added.
-		logging map[string]struct{}
+		reserved map[string]struct{}
 
 		// byName tracks peers by their name.
 		byName map[string]Peer
-		bySID  map[adc.SID]Peer
+		bySID  map[SID]Peer
 
 		// ADC-specific
 
@@ -93,6 +98,13 @@ type Hub struct {
 	}
 
 	globalChat *Room
+
+	rooms struct {
+		sync.RWMutex
+		byName map[string]*Room
+		bySID  map[SID]*Room
+		peers  map[Peer][]*Room
+	}
 }
 
 func (h *Hub) SetUserDB(db UserDatabase) {
@@ -348,7 +360,7 @@ func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	if notify == nil {
 		notify = h.listPeers()
 	}
-	h.globalChat.Leave(peer)
+	h.leaveRooms(peer)
 	h.peers.Unlock()
 
 	h.broadcastUserLeave(peer, notify)
@@ -360,10 +372,21 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	delete(h.peers.bySID, sid)
 	delete(h.peers.byCID, cid)
 	notify := h.listPeers()
-	h.globalChat.Leave(peer)
+	h.leaveRooms(peer)
 	h.peers.Unlock()
 
 	h.broadcastUserLeave(peer, notify)
+}
+
+func (h *Hub) leaveRooms(peer Peer) {
+	h.globalChat.Leave(peer)
+	h.rooms.Lock()
+	list := h.rooms.peers[peer]
+	delete(h.rooms.peers, peer)
+	h.rooms.Unlock()
+	for _, r := range list {
+		r.Leave(peer)
+	}
 }
 
 func (h *Hub) connectReq(from, to Peer, addr, token string, secure bool) {
@@ -391,19 +414,4 @@ type User struct {
 	IPv4           bool
 	IPv6           bool
 	TLS            bool
-}
-
-type BasePeer struct {
-	hub *Hub
-
-	addr net.Addr
-	sid  adc.SID
-}
-
-func (p *BasePeer) SID() adc.SID {
-	return p.sid
-}
-
-func (p *BasePeer) RemoteAddr() net.Addr {
-	return p.addr
 }
