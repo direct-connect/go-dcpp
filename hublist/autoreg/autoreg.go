@@ -147,11 +147,16 @@ type Registry interface {
 
 // NewServer creates a new hub auto-registration server.
 func NewServer(r Registry) *Server {
-	return &Server{r: r}
+	return &Server{r: r, keyCheck: true}
 }
 
 type Server struct {
-	r Registry
+	r        Registry
+	keyCheck bool
+}
+
+func (s *Server) KeyCheck(v bool) {
+	s.keyCheck = v
 }
 
 func (s *Server) Serve(lis net.Listener) error {
@@ -218,7 +223,7 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 	var key nmdc.Key
 	if err := key.UnmarshalNMDC(data[5:]); err != nil {
 		return err
-	} else if lock.Key().Key != key.Key {
+	} else if s.keyCheck && lock.Key().Key != key.Key {
 		return errors.New("wrong key")
 	}
 	var info Info
