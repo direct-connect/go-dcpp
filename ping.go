@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
@@ -61,6 +62,23 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 					Vers: u.Version,
 				},
 			})
+		}
+		return info, nil
+	case adcSchema, adcsSchema:
+		hub, err := adc.Ping(ctx, addr)
+		if err != nil {
+			return nil, err
+		}
+		info := &HubInfo{
+			Name: hub.HubInfo.Name,
+			Desc: hub.HubInfo.Desc,
+			Addr: []string{addr},
+			Server: &Software{
+				Name: hub.HubInfo.Application,
+				Vers: hub.HubInfo.Version,
+				Ext:  hub.Ext,
+			},
+			Users: make([]HubUser, 0, len(hub.Users)),
 		}
 		return info, nil
 	default:

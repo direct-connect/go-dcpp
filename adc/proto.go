@@ -69,7 +69,7 @@ func (f Feature) String() string {
 
 func (f *Feature) UnmarshalAdc(s []byte) error {
 	if len(s) != 4 {
-		return fmt.Errorf("malformed feature [%d]", len(s))
+		return nil
 	}
 	var v Feature
 	copy(v[:], s)
