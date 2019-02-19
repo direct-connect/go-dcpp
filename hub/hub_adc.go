@@ -87,6 +87,9 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 			}
 			// TODO: disallow INF, STA and some others
 			h.adcDirect(p, peer)
+		case *adc.HubPacket:
+			// TODO: disallow INF, STA and some others
+			h.adcHub(p, peer)
 		default:
 			data, _ := p.MarshalPacket()
 			log.Printf("%s: adc: %s", peer.RemoteAddr(), string(data))
@@ -362,6 +365,30 @@ func (h *Hub) adcCheckUserPass(name string, salt []byte, hash tiger.Hash) (bool,
 	copy(check[i:], salt)
 	exp := tiger.HashBytes(check)
 	return exp == hash, nil
+}
+
+func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
+	msg, err := p.Decode()
+	if err != nil {
+		log.Printf("cannot parse ADC message: %v", err)
+		return
+	}
+	switch msg := msg.(type) {
+	case adc.ChatMessage:
+		text := string(msg.Text)
+		if !strings.HasPrefix(text, "!") {
+			return
+		}
+		sub := strings.SplitN(text, " ", 2)
+		cmd := sub[0][1:]
+		args := ""
+		if len(sub) > 1 {
+			args = sub[1]
+		}
+		h.command(from, cmd, args)
+	default:
+		// TODO: decode other packets
+	}
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
