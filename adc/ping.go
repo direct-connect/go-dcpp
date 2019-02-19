@@ -86,15 +86,13 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 		return nil, fmt.Errorf("expected SUP command, got: %#v", msg)
 	}
 	var ext []Feature
-	var f []string
 	for features, ok := range sup.Features {
 		if !ok {
 			continue
 		}
 		ext = append(ext, features)
-		f = append(f, features.String())
+		hub.Ext = append(hub.Ext, features.String())
 	}
-	hub.Ext = f
 
 	// next, we expect a SID that will assign a Session ID
 	msg, err = c.ReadInfoMsg(deadline)
@@ -106,24 +104,21 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 		return nil, fmt.Errorf("expected SID command, got: %#v", msg)
 	}
 
-	var user User
 	pid := types.NewPID()
-	user.Pid = &pid
-	user.Id = user.Pid.Hash()
 	num := int64(time.Now().Nanosecond())
-	user.Name = "pinger_" + strconv.FormatInt(num, 16)
-	user.Features = ext
-	user.Slots = 1
+	user := User{
+		Id:       pid.Hash(),
+		Pid:      &pid,
+		Name:     "pinger_" + strconv.FormatInt(num, 16),
+		Features: ext,
+		Slots:    1,
+	}
 
 	err = c.WriteBroadcast(sid.SID, user)
 	if err != nil {
 		return nil, err
 	}
 	if err := c.Flush(); err != nil {
-		return nil, err
-	}
-
-	if err = c.conn.SetDeadline(deadline); err != nil {
 		return nil, err
 	}
 

@@ -69,7 +69,7 @@ func (f Feature) String() string {
 
 func (f *Feature) UnmarshalAdc(s []byte) error {
 	if len(s) != 4 {
-		return nil
+		return fmt.Errorf("malformed feature [%d]", len(s))
 	}
 	var v Feature
 	copy(v[:], s)
@@ -198,6 +198,9 @@ func (f *ExtFeatures) UnmarshalAdc(s []byte) error {
 	sub := bytes.Split(s, []byte(","))
 	arr := make(ExtFeatures, 0, len(sub))
 	for _, s := range sub {
+		if len(s) < 1 {
+			return nil
+		}
 		var fea Feature
 		if err := fea.UnmarshalAdc(s); err != nil {
 			return err
