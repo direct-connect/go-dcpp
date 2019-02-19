@@ -14,10 +14,13 @@ const (
 	userNameMax = 256
 )
 
+type Database = UserDatabase
+
 type UserDatabase interface {
 	IsRegistered(name string) (bool, error)
 	GetUserPassword(name string) (string, error)
 	RegisterUser(name, pass string) error
+	Close() error
 }
 
 func (h *Hub) validateUserName(name string) error {
@@ -66,6 +69,10 @@ func NewUserDatabase() UserDatabase {
 type memUsersDB struct {
 	mu    sync.RWMutex
 	users map[string]string
+}
+
+func (*memUsersDB) Close() error {
+	return nil
 }
 
 func (db *memUsersDB) IsRegistered(name string) (bool, error) {

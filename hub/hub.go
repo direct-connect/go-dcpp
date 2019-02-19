@@ -109,7 +109,7 @@ type Hub struct {
 	}
 }
 
-func (h *Hub) SetUserDB(db UserDatabase) {
+func (h *Hub) SetDatabase(db Database) {
 	h.userDB = db
 }
 

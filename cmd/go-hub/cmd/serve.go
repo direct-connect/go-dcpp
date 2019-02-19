@@ -14,6 +14,7 @@ import (
 
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/hub"
+	"github.com/direct-connect/go-dcpp/hub/hubdb"
 	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
@@ -57,6 +58,10 @@ type Config struct {
 			Join int `yaml:"join"`
 		}
 	} `yaml:"chat"`
+	Database struct {
+		Type string `yaml:"type"`
+		Path string `yaml:"path"`
+	} `yaml:"database"`
 }
 
 const defaultConfig = "hub.yml"
@@ -98,6 +103,8 @@ func init() {
 	viper.SetDefault("motd", "Welcome!")
 	viper.SetDefault("chat.log.max", 50)
 	viper.SetDefault("chat.log.join", 10)
+	viper.SetDefault("database.type", "bolt")
+	viper.SetDefault("database.path", "hub.db")
 
 	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := initConfig(defaultConfig); err != nil {
@@ -162,7 +169,6 @@ func init() {
 				}
 			}()
 		}
-
 		h := hub.NewHub(hub.Config{
 			Name:        conf.Name,
 			Desc:        conf.Desc,
@@ -175,6 +181,17 @@ func init() {
 			Addr:        addr,
 			TLS:         tlsConf,
 		})
+		if conf.Database.Type != "" && conf.Database.Type != "mem" {
+			fmt.Printf("using database: %s (%s)\n", conf.Database.Path, conf.Database.Type)
+			db, err := hubdb.Open(conf.Database.Type, conf.Database.Path)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			h.SetDatabase(db)
+		} else {
+			fmt.Println("WARNING: using in-memory database")
+		}
 
 		fmt.Printf(`
 
