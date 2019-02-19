@@ -282,6 +282,30 @@ func (UserMod) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
 }
 
+var _ Message = UserCommand{}
+
+type Category int
+
+const (
+	CategoryHub      = Category(1)
+	CategoryUser     = Category(2)
+	CategorySearch   = Category(4)
+	CategoryFileList = Category(8)
+)
+
+type UserCommand struct {
+	Name        String   `adc:"#"`
+	Command     String   `adc:"TT"`
+	Category    Category `adc:"CT"`
+	Remove      int      `adc:"RM"`
+	Constrained int      `adc:"CO"`
+	Separator   int      `adc:"SP"`
+}
+
+func (UserCommand) Cmd() MsgType {
+	return MsgType{'C', 'M', 'D'}
+}
+
 var base32Enc = base32.StdEncoding.WithPadding(base32.NoPadding)
 
 var (

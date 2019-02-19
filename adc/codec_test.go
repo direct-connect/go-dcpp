@@ -112,6 +112,15 @@ var casesDecode = []struct {
 		`some\stext PMAAAB`,
 		&adc.ChatMessage{Text: "some text", PM: sidp("AAAB")},
 	},
+	{
+		"user command",
+		`ADCH++/Hub\smanagement/Reload\sscripts TTHMSG\s+reload\n CT3`,
+		&adc.UserCommand{
+			Name:     "ADCH++/Hub management/Reload scripts",
+			Command:  "HMSG +reload\n",
+			Category: adc.CategoryHub | adc.CategoryUser,
+		},
+	},
 }
 
 func sidp(s string) *types.SID {
@@ -191,6 +200,14 @@ var casesEncode = []struct {
 	{
 		adc.RevConnectRequest{Proto: `ADC/1.0`, Token: `12345678`},
 		`ADC/1.0 12345678`,
+	},
+	{
+		adc.UserCommand{
+			Name:     "ADCH++/Hub management/Reload scripts",
+			Command:  "HMSG +reload\n",
+			Category: adc.CategoryHub | adc.CategoryUser,
+		},
+		`ADCH++/Hub\smanagement/Reload\sscripts TTHMSG\s+reload\n CT3`,
 	},
 }
 
