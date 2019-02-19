@@ -205,8 +205,8 @@ type User struct {
 	Version     string `adc:"VE,req"`
 	Application string `adc:"AP"`
 
-	MaxUpload   string `adc:"US"` // TODO: most time it's int, but some clients write things like "Cable"
-	MaxDownload int    `adc:"DS"`
+	MaxUpload   string `adc:"US"`
+	MaxDownload string `adc:"DS"`
 
 	Slots         int `adc:"SL,req"`
 	SlotsFree     int `adc:"FS,req"`
