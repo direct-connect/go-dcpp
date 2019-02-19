@@ -29,7 +29,7 @@ func TestAutoreg(t *testing.T) {
 			io.Closer
 		}{
 			pr1, pw2, pw2,
-		})
+		}, 0)
 		if err != nil {
 			errc <- err
 		}

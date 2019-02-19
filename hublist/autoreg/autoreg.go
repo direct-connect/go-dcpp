@@ -159,14 +159,14 @@ func (s *Server) KeyCheck(v bool) {
 	s.keyCheck = v
 }
 
-func (s *Server) Serve(lis net.Listener) error {
+func (s *Server) Serve(lis net.Listener, port int) error {
 	for {
 		c, err := lis.Accept()
 		if err != nil {
 			return err
 		}
 		go func() {
-			err := s.ServeConn(c)
+			err := s.ServeConn(c, port)
 			if err != nil {
 				log.Println("autoreg failed:", err)
 			}
@@ -174,16 +174,21 @@ func (s *Server) Serve(lis net.Listener) error {
 	}
 }
 
-func (s *Server) ServeConn(c net.Conn) error {
+func (s *Server) ServeConn(c net.Conn, port int) error {
 	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
 		c.Close()
 		return err
 	}
-	return s.serve(c)
+	return s.serve(c, port)
 }
 
-func (s *Server) serve(c io.ReadWriteCloser) error {
+func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 	defer c.Close()
+
+	if port == 0 {
+		port = DefaultPort
+	}
+
 	lock := &nmdc.Lock{
 		Lock: "hubAutoReg", // TODO: randomize
 		PK:   version.Name + " " + version.Vers,
@@ -223,8 +228,8 @@ func (s *Server) serve(c io.ReadWriteCloser) error {
 	var key nmdc.Key
 	if err := key.UnmarshalNMDC(data[5:]); err != nil {
 		return err
-	} else if s.keyCheck && lock.Key().Key != key.Key {
-		return errors.New("wrong key")
+	} else if s.keyCheck && key.Key != lock.Key().Key && key.Key != legacyKey(lock, port) {
+		return fmt.Errorf("wrong key: %q", key.Key)
 	}
 	var info Info
 
@@ -291,4 +296,9 @@ type RegistryFunc func(info Info) error
 
 func (f RegistryFunc) RegisterHub(info Info) error {
 	return f(info)
+}
+
+func legacyKey(lock *nmdc.Lock, port int) string {
+	magic := byte((port & 0xFF) + ((port >> 8) & 0xFF))
+	return lock.CustomKey(magic, true).Key
 }

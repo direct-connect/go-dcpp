@@ -37,6 +37,14 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:  "Lock",
+		name: "no pk no ref",
+		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC`,
+		msg: &Lock{
+			Lock: "EXTENDEDPROTOCOLABCABCABCABCABCABC",
+		},
+	},
+	{
+		typ:  "Lock",
 		name: "without Pk",
 		data: `EXTENDEDPROTOCOLABCABCABCABCABCABC Ref=dchub://example.org:411`,
 		msg: &Lock{
