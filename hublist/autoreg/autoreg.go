@@ -166,7 +166,7 @@ func (s *Server) Serve(lis net.Listener, port int) error {
 			return err
 		}
 		go func() {
-			err := s.ServeConn(c, port)
+			err := s.ServeConn(c)
 			if err != nil {
 				log.Println("autoreg failed:", err)
 			}
@@ -174,10 +174,14 @@ func (s *Server) Serve(lis net.Listener, port int) error {
 	}
 }
 
-func (s *Server) ServeConn(c net.Conn, port int) error {
+func (s *Server) ServeConn(c net.Conn) error {
 	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
 		c.Close()
 		return err
+	}
+	port := 0
+	if addr, ok := c.RemoteAddr().(*net.TCPAddr); ok {
+		port = addr.Port
 	}
 	return s.serve(c, port)
 }
@@ -186,7 +190,7 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 	defer c.Close()
 
 	if port == 0 {
-		port = DefaultPort
+		port = nmdc.DefaultKeyMagic
 	}
 
 	lock := &nmdc.Lock{
