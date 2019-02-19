@@ -3,9 +3,7 @@ package adc
 import (
 	"context"
 	"fmt"
-	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/direct-connect/go-dcpp/adc/types"
@@ -17,24 +15,8 @@ type PingHubInfo struct {
 	Users   []User
 }
 
-//ctx context.Context
-
 func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
-	if i := strings.Index(addr, "://"); i >= 0 {
-		proto := addr[:i]
-		addr = addr[i+3:]
-		switch proto {
-		case SchemaADC, SchemaADCS:
-			// continue
-		default:
-			return nil, fmt.Errorf("unsupported protocol: %q", proto)
-		}
-	}
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	c, err := NewConn(conn)
+	c, err := Dial(addr)
 	if err != nil {
 		return nil, err
 	}

@@ -195,12 +195,12 @@ func (f ExtFeatures) Has(s Feature) bool {
 	return false
 }
 func (f *ExtFeatures) UnmarshalAdc(s []byte) error {
+	if len(s) < 1 {
+		return nil
+	}
 	sub := bytes.Split(s, []byte(","))
 	arr := make(ExtFeatures, 0, len(sub))
 	for _, s := range sub {
-		if len(s) < 1 {
-			return nil
-		}
 		var fea Feature
 		if err := fea.UnmarshalAdc(s); err != nil {
 			return err
