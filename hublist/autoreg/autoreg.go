@@ -159,7 +159,7 @@ func (s *Server) KeyCheck(v bool) {
 	s.keyCheck = v
 }
 
-func (s *Server) Serve(lis net.Listener, port int) error {
+func (s *Server) Serve(lis net.Listener) error {
 	for {
 		c, err := lis.Accept()
 		if err != nil {
