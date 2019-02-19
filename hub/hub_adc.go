@@ -250,52 +250,11 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	peer.user = u
 
 	st := h.Stats()
-
-	isRegistered, err := h.IsRegistered(peer.Name())
-	if err != nil {
+	if err := h.adcStageVerify(peer); err != nil {
+		unbind()
 		return err
 	}
-	if isRegistered {
-		// give the user a minute to enter a password
-		deadline = time.Now().Add(time.Minute)
-		//some bytes for check password
-		var salt [24]byte
-		rand.Read(salt[:])
-		err = peer.conn.WriteInfoMsg(adc.GetPassword{
-			Salt: salt[:],
-		})
-		if err != nil {
-			return err
-		}
-		err = peer.conn.Flush()
-		if err != nil {
-			return err
-		}
-
-		p, err = peer.conn.ReadPacket(deadline)
-		if err != nil {
-			return err
-		}
-		hp, ok := p.(*adc.HubPacket)
-		if !ok {
-			return fmt.Errorf("expected hub messagge, got: %#v", p)
-		} else if hp.Name != (adc.Password{}).Cmd() {
-			return fmt.Errorf("expected user password message, got %v", hp.Name)
-		}
-		var pass adc.Password
-		if err := adc.Unmarshal(hp.Data, &pass); err != nil {
-			return err
-		}
-		ok, err := h.adcCheckUserPass(peer.Name(), salt[:], pass.Hash)
-		if err != nil {
-			return err
-		} else if !ok {
-			err = errors.New("wrong password")
-			_ = peer.sendError(adc.Fatal, 23, err)
-			return err
-		}
-		deadline = time.Now().Add(time.Second * 5)
-	}
+	deadline = time.Now().Add(time.Second * 5)
 
 	// send hub info
 	err = peer.conn.WriteInfoMsg(adc.HubInfo{
@@ -349,6 +308,54 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	// notify other users about the new one
 	h.broadcastUserJoin(peer, list)
+	return nil
+}
+
+func (h *Hub) adcStageVerify(peer *adcPeer) error {
+	isRegistered, err := h.IsRegistered(peer.Name())
+	if err != nil {
+		return err
+	} else if !isRegistered {
+		return nil
+	}
+	// give the user a minute to enter a password
+	deadline := time.Now().Add(time.Minute)
+	//some bytes for check password
+	var salt [24]byte
+	rand.Read(salt[:])
+	err = peer.conn.WriteInfoMsg(adc.GetPassword{
+		Salt: salt[:],
+	})
+	if err != nil {
+		return err
+	}
+	err = peer.conn.Flush()
+	if err != nil {
+		return err
+	}
+
+	p, err := peer.conn.ReadPacket(deadline)
+	if err != nil {
+		return err
+	}
+	hp, ok := p.(*adc.HubPacket)
+	if !ok {
+		return fmt.Errorf("expected hub messagge, got: %#v", p)
+	} else if hp.Name != (adc.Password{}).Cmd() {
+		return fmt.Errorf("expected user password message, got %v", hp.Name)
+	}
+	var pass adc.Password
+	if err := adc.Unmarshal(hp.Data, &pass); err != nil {
+		return err
+	}
+	ok, err = h.adcCheckUserPass(peer.Name(), salt[:], pass.Hash)
+	if err != nil {
+		return err
+	} else if !ok {
+		err = errors.New("wrong password")
+		_ = peer.sendError(adc.Fatal, 23, err)
+		return err
+	}
 	return nil
 }
 
