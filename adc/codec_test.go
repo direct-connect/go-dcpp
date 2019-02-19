@@ -117,8 +117,8 @@ var casesDecode = []struct {
 		`ADCH++/Hub\smanagement/Reload\sscripts TTHMSG\s+reload\n CT3`,
 		&adc.UserCommand{
 			Name:     "ADCH++/Hub management/Reload scripts",
-			Command:  "HMSG +reload",
-			Category: 3,
+			Command:  "HMSG +reload\n",
+			Category: adc.CategoryHub + adc.CategoryUser,
 		},
 	},
 }
@@ -204,8 +204,8 @@ var casesEncode = []struct {
 	{
 		adc.UserCommand{
 			Name:     "ADCH++/Hub management/Reload scripts",
-			Command:  "HMSG +reload",
-			Category: 3,
+			Command:  "HMSG +reload\n",
+			Category: adc.CategoryHub + adc.CategoryUser,
 		},
 		`ADCH++/Hub\smanagement/Reload\sscripts TTHMSG\s+reload\n CT3`,
 	},

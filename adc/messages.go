@@ -282,11 +282,7 @@ func (UserMod) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
 }
 
-var (
-	_ Message     = UserCommand{}
-	_ Marshaler   = UserCommand{}
-	_ Unmarshaler = (*UserCommand)(nil)
-)
+var _ Message = UserCommand{}
 
 type Category int
 
@@ -298,98 +294,16 @@ const (
 )
 
 type UserCommand struct {
-	Name        String
-	Command     String `adc:"TT"`
-	Category    int    `adc:"CT"` //TODO: implement Category type
-	Remove      int    `adc:"RM"`
-	Constrained int    `adc:"CO"`
-	Separator   int    `adc:"SP"`
+	Name        String   `adc:"#"`
+	Command     String   `adc:"TT"`
+	Category    Category `adc:"CT"`
+	Remove      int      `adc:"RM"`
+	Constrained int      `adc:"CO"`
+	Separator   int      `adc:"SP"`
 }
 
 func (UserCommand) Cmd() MsgType {
 	return MsgType{'C', 'M', 'D'}
-}
-
-func (m UserCommand) MarshalAdc() ([]byte, error) {
-	buf := bytes.NewBuffer(nil)
-	name, err := m.Name.MarshalAdc()
-	if err != nil {
-		return nil, err
-	}
-	buf.Write(name)
-	if m.Command != "" {
-		buf.WriteString(" TT")
-		t := m.Command + "\n"
-		text, err := t.MarshalAdc()
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(text)
-	}
-	if m.Category != 0 {
-		buf.WriteString(" CT")
-		buf.WriteString(strconv.Itoa(m.Category))
-	}
-	if m.Remove != 0 {
-		buf.WriteString(" RM")
-		buf.WriteString(strconv.Itoa(m.Remove))
-	}
-	if m.Constrained != 0 {
-		buf.WriteString(" CO")
-		buf.WriteString(strconv.Itoa(m.Constrained))
-	}
-	if m.Separator != 0 {
-		buf.WriteString(" SP")
-		buf.WriteString(strconv.Itoa(m.Separator))
-	}
-	return buf.Bytes(), nil
-}
-
-func (m *UserCommand) UnmarshalAdc(data []byte) error {
-	fields := bytes.Split(data, []byte(" "))
-	for i, field := range fields {
-		if i == 0 {
-			err := m.Name.UnmarshalAdc(field)
-			if err != nil {
-				return err
-			}
-		} else if bytes.HasPrefix(field, []byte("TT")) {
-			field = bytes.TrimPrefix(field, []byte("TT"))
-			err := m.Command.UnmarshalAdc(field[:len(field)-2]) // hear trim "\n" at the end of the line, TrimSuffix and Index not work
-			if err != nil {
-				return err
-			}
-		} else if bytes.HasPrefix(field, []byte("CT")) {
-			field = bytes.TrimPrefix(field, []byte("CT"))
-			i, err := strconv.Atoi(string(field))
-			if err != nil {
-				return err
-			}
-			m.Category = i
-		} else if bytes.HasPrefix(field, []byte("RM")) {
-			field = bytes.TrimPrefix(field, []byte("RM"))
-			i, err := strconv.Atoi(string(field))
-			if err != nil {
-				return err
-			}
-			m.Remove = i
-		} else if bytes.HasPrefix(field, []byte("CO")) {
-			field = bytes.TrimPrefix(field, []byte("CO"))
-			i, err := strconv.Atoi(string(field))
-			if err != nil {
-				return err
-			}
-			m.Constrained = i
-		} else if bytes.HasPrefix(field, []byte("SP")) {
-			field = bytes.TrimPrefix(field, []byte("SP"))
-			i, err := strconv.Atoi(string(field))
-			if err != nil {
-				return err
-			}
-			m.Separator = i
-		}
-	}
-	return nil
 }
 
 var base32Enc = base32.StdEncoding.WithPadding(base32.NoPadding)
