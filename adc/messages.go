@@ -284,6 +284,32 @@ func (UserMod) Cmd() MsgType {
 
 var _ Message = UserCommand{}
 
+type Path []String
+
+func (p Path) MarshalAdc() ([]byte, error) {
+	var arr [][]byte
+	for _, a := range p {
+		path, err := a.MarshalAdc()
+		if err != nil {
+			return nil, err
+		}
+		arr = append(arr, path)
+	}
+	return bytes.Join(arr, []byte("/")), nil
+}
+
+func (p *Path) UnmarshalAdc(data []byte) error {
+	arr := bytes.Split(data, []byte("/"))
+	var path String
+	for _, a := range arr {
+		if err := path.UnmarshalAdc(a); err != nil {
+			return err
+		}
+		*p = append(*p, path)
+	}
+	return nil
+}
+
 type Category int
 
 const (
@@ -294,7 +320,7 @@ const (
 )
 
 type UserCommand struct {
-	Name        String   `adc:"#"`
+	Path        Path     `adc:"#"`
 	Command     String   `adc:"TT"`
 	Category    Category `adc:"CT"`
 	Remove      int      `adc:"RM"`

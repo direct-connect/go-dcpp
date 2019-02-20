@@ -290,6 +290,12 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 
+	err = h.adcSendUserCommand(peer)
+	if err != nil {
+		unbind()
+		return err
+	}
+
 	// finally accept the user on the hub
 	h.peers.Lock()
 	// cleanup temporary bindings
@@ -396,6 +402,28 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 	default:
 		// TODO: decode other packets
 	}
+}
+
+func (h *Hub) adcSendUserCommand(p *adcPeer) error {
+	for name, c := range h.cmds.byName {
+		if c.Path == nil {
+			continue
+		}
+		var path []adc.String
+		for _, a := range c.Path {
+			path = append(path, adc.String(a))
+		}
+		command := adc.String("HMSG !" + name + "\n")
+		err := p.conn.WriteInfoMsg(adc.UserCommand{
+			Path:     path,
+			Command:  command,
+			Category: adc.CategoryHub,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return p.conn.Flush()
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {

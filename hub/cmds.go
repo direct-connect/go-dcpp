@@ -13,11 +13,13 @@ func (h *Hub) initCommands() {
 	h.cmds.byName = make(map[string]*Command)
 	h.cmds.names = make(map[string]struct{})
 	h.registerCommand(Command{
+		Path: []string{"GoHub", "Help"},
 		Name: "help", Aliases: []string{"h"},
 		Short: "show the list of commands or a help for a specific command",
 		Func:  cmdHelp,
 	})
 	h.registerCommand(Command{
+		Path:  []string{"GoHub", "Stats"},
 		Name:  "stats",
 		Short: "show hub stats",
 		Func:  cmdStats,
@@ -33,6 +35,7 @@ func (h *Hub) initCommands() {
 		Func:  cmdRegister,
 	})
 	h.registerCommand(Command{
+		Path: []string{"GoHub", "My IP"},
 		Name: "myip", Aliases: []string{"ip"},
 		Short: "shows your current ip",
 		Func:  cmdIP,
