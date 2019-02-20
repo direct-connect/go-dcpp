@@ -114,6 +114,7 @@ func (h *Hub) SetDatabase(db Database) {
 }
 
 type Command struct {
+	Path    []string
 	Name    string
 	Aliases []string
 	Short   string
