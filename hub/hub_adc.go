@@ -409,7 +409,7 @@ func (h *Hub) adcSendUserCommand(p *adcPeer) error {
 		if c.Path == nil {
 			continue
 		}
-		var path []adc.String
+		var path adc.Path
 		for _, a := range c.Path {
 			path = append(path, adc.String(a))
 		}

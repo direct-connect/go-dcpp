@@ -282,7 +282,10 @@ func (UserMod) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
 }
 
-var _ Message = UserCommand{}
+var (
+	_ Marshaler   = Path{}
+	_ Unmarshaler = (*Path)(nil)
+)
 
 type Path []String
 
@@ -309,6 +312,8 @@ func (p *Path) UnmarshalAdc(data []byte) error {
 	}
 	return nil
 }
+
+var _ Message = UserCommand{}
 
 type Category int
 
