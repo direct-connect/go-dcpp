@@ -479,9 +479,8 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 }
 
 func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
-	paths, msg := h.pathsUserCommand()
-	for _, p := range paths {
-		c := msg[p]
+	commands := h.ListCommand()
+	for _, c := range commands {
 		path := make([]nmdc.String, 0, len(c.Path))
 		for _, v := range c.Path {
 			path = append(path, nmdc.String(v))
@@ -497,7 +496,7 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 			return err
 		}
 	}
-	return nil
+	return peer.conn.Flush()
 }
 
 var _ Peer = (*nmdcPeer)(nil)
