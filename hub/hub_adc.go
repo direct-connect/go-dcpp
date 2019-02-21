@@ -405,9 +405,8 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 }
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
-	paths, msg := h.pathsUserCommand()
-	for _, p := range paths {
-		c := msg[p]
+	commands := h.ListCommands()
+	for _, c := range commands {
 		path := make(adc.Path, 0, len(c.Path))
 		for _, v := range c.Path {
 			path = append(path, adc.String(v))
@@ -422,7 +421,7 @@ func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 			return err
 		}
 	}
-	return nil
+	return peer.conn.Flush()
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {

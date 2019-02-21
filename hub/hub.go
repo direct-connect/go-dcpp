@@ -360,22 +360,21 @@ func (h *Hub) command(peer Peer, cmd string, args string) {
 	c.run(peer, args)
 }
 
-func (h *Hub) pathsUserCommand() ([]string, map[string]*Command) {
+func (h *Hub) ListCommands() []*Command {
 	names := make([]string, 0, len(h.cmds.names))
 	for name := range h.cmds.names {
 		names = append(names, name)
 	}
-	paths := make([]string, 0, len(names))
-	msg := make(map[string]*Command)
+	command := make([]*Command, 0, len(names))
 	for _, name := range names {
 		if c := h.cmds.byName[name]; len(c.Path) != 0 {
-			path := strings.Join(c.Path, "\\")
-			paths = append(paths, path)
-			msg[path] = c
+			command = append(command, c)
 		}
 	}
-	sort.Strings(paths)
-	return paths, msg
+	sort.Slice(command, func(i, j int) bool {
+		return strings.Join(command[i].Path, "\\") < strings.Join(command[j].Path, "\\")
+	})
+	return command
 }
 
 func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
