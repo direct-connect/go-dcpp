@@ -478,17 +478,16 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	}
 }
 
-func (h *Hub) nmdcSendUserCommand(p *nmdcPeer) error {
-	for name, c := range h.cmds.byName {
-		if c.Path == nil {
-			continue
+func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
+	paths, msg := h.pathsUserCommand()
+	for _, p := range paths {
+		c := msg[p]
+		path := make([]nmdc.String, 0, len(c.Path))
+		for _, v := range c.Path {
+			path = append(path, nmdc.String(v))
 		}
-		var path []nmdc.String
-		for _, p := range c.Path {
-			path = append(path, nmdc.String(p))
-		}
-		command := nmdc.String("<%[mynick]> !" + name + "|")
-		err := p.conn.WriteMsg(&nmdc.UserCommand{
+		command := nmdc.String("<%[mynick]> !" + c.Name + "|")
+		err := peer.conn.WriteMsg(&nmdc.UserCommand{
 			Type:    nmdc.TypeRaw,
 			Context: nmdc.ContextHub,
 			Path:    path,

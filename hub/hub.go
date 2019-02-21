@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -357,6 +358,24 @@ func (h *Hub) command(peer Peer, cmd string, args string) {
 		return
 	}
 	c.run(peer, args)
+}
+
+func (h *Hub) pathsUserCommand() ([]string, map[string]*Command) {
+	names := make([]string, 0, len(h.cmds.names))
+	for name := range h.cmds.names {
+		names = append(names, name)
+	}
+	paths := make([]string, 0, len(names))
+	msg := make(map[string]*Command)
+	for _, name := range names {
+		if c := h.cmds.byName[name]; len(c.Path) != 0 {
+			path := strings.Join(c.Path, "\\")
+			paths = append(paths, path)
+			msg[path] = c
+		}
+	}
+	sort.Strings(paths)
+	return paths, msg
 }
 
 func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {

@@ -1458,7 +1458,7 @@ func (m *UserCommand) MarshalNMDC() ([]byte, error) {
 	buf.WriteString(" ")
 	buf.Write([]byte(strconv.Itoa(int(m.Context))))
 	if len(m.Path) != 0 {
-		var path [][]byte
+		path := make([][]byte, 0, len(m.Path))
 		for _, s := range m.Path {
 			b, err := s.MarshalNMDC()
 			if err != nil {
@@ -1502,8 +1502,8 @@ func (m *UserCommand) UnmarshalNMDC(data []byte) error {
 				return errors.New("invalid raw user command")
 			}
 			arr = bytes.Split(value[:i], []byte("\\"))
-			var s String
 			for _, path := range arr {
+				var s String
 				err := s.UnmarshalNMDC(path)
 				if err != nil {
 					return errors.New("invalid path user command")
