@@ -479,8 +479,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 }
 
 func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
-	commands := h.ListCommands()
-	for _, c := range commands {
+	for _, c := range h.ListCommands() {
 		path := make([]nmdc.String, 0, len(c.Path))
 		for _, v := range c.Path {
 			path = append(path, nmdc.String(v))

@@ -405,8 +405,7 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 }
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
-	commands := h.ListCommands()
-	for _, c := range commands {
+	for _, c := range h.ListCommands() {
 		path := make(adc.Path, 0, len(c.Path))
 		for _, v := range c.Path {
 			path = append(path, adc.String(v))

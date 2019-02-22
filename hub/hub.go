@@ -372,7 +372,19 @@ func (h *Hub) ListCommands() []*Command {
 		}
 	}
 	sort.Slice(command, func(i, j int) bool {
-		return strings.Join(command[i].Path, "\\") < strings.Join(command[j].Path, "\\")
+		a, b := command[i], command[j]
+		l := len(a.Path)
+		if len(a.Path) > len(b.Path) {
+			l = len(b.Path)
+		}
+		for n := 0; n <= l; n++ {
+			if a.Path[n] != b.Path[n] {
+				return a.Path[n] < b.Path[n]
+			} else {
+				continue
+			}
+		}
+		return len(a.Path) <= len(b.Path)
 	})
 	return command
 }
