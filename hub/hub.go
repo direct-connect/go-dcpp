@@ -380,8 +380,6 @@ func (h *Hub) ListCommands() []*Command {
 		for n := 0; n <= l; n++ {
 			if a.Path[n] != b.Path[n] {
 				return a.Path[n] < b.Path[n]
-			} else {
-				continue
 			}
 		}
 		return len(a.Path) <= len(b.Path)
