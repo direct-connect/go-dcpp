@@ -404,17 +404,14 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 	}
 }
 
-func (h *Hub) adcSendUserCommand(p *adcPeer) error {
-	for name, c := range h.cmds.byName {
-		if c.Path == nil {
-			continue
+func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
+	for _, c := range h.ListCommands() {
+		path := make(adc.Path, 0, len(c.Path))
+		for _, v := range c.Path {
+			path = append(path, adc.String(v))
 		}
-		var path adc.Path
-		for _, a := range c.Path {
-			path = append(path, adc.String(a))
-		}
-		command := adc.String("HMSG !" + name + "\n")
-		err := p.conn.WriteInfoMsg(adc.UserCommand{
+		command := adc.String("HMSG !" + c.Name + "\n")
+		err := peer.conn.WriteInfoMsg(adc.UserCommand{
 			Path:     path,
 			Command:  command,
 			Category: adc.CategoryHub,
@@ -423,7 +420,7 @@ func (h *Hub) adcSendUserCommand(p *adcPeer) error {
 			return err
 		}
 	}
-	return p.conn.Flush()
+	return peer.conn.Flush()
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {

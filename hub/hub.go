@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -357,6 +358,33 @@ func (h *Hub) command(peer Peer, cmd string, args string) {
 		return
 	}
 	c.run(peer, args)
+}
+
+func (h *Hub) ListCommands() []*Command {
+	names := make([]string, 0, len(h.cmds.names))
+	for name := range h.cmds.names {
+		names = append(names, name)
+	}
+	command := make([]*Command, 0, len(names))
+	for _, name := range names {
+		if c := h.cmds.byName[name]; len(c.Path) != 0 {
+			command = append(command, c)
+		}
+	}
+	sort.Slice(command, func(i, j int) bool {
+		a, b := command[i], command[j]
+		l := len(a.Path)
+		if len(a.Path) > len(b.Path) {
+			l = len(b.Path)
+		}
+		for n := 0; n <= l; n++ {
+			if a.Path[n] != b.Path[n] {
+				return a.Path[n] < b.Path[n]
+			}
+		}
+		return len(a.Path) <= len(b.Path)
+	})
+	return command
 }
 
 func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {

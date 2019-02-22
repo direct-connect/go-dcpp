@@ -46,6 +46,7 @@ func init() {
 	RegisterMessage(&SR{})
 	RegisterMessage(&FailOver{})
 	RegisterMessage(&MCTo{})
+	RegisterMessage(&UserCommand{})
 }
 
 type Message interface {
@@ -1418,6 +1419,99 @@ func (m *MCTo) UnmarshalNMDC(data []byte) error {
 	}
 	if err := m.Text.UnmarshalNMDC(data[i+1:]); err != nil {
 		return err
+	}
+	return nil
+}
+
+type Type int
+
+const (
+	TypeSeparator      = Type(0)
+	TypeRaw            = Type(1)
+	TypeRawNickLimited = Type(2)
+	TypeErase          = Type(255)
+)
+
+type Context int // in the ADC is called Category
+
+const (
+	ContextHub      = Context(1)
+	ContextUser     = Context(2)
+	ContextSearch   = Context(4)
+	ContextFileList = Context(8)
+)
+
+type UserCommand struct {
+	Type    Type
+	Context Context
+	Path    []String
+	Command String
+}
+
+func (*UserCommand) Cmd() string {
+	return "UserCommand"
+}
+
+func (m *UserCommand) MarshalNMDC() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	buf.Write([]byte(strconv.Itoa(int(m.Type))))
+	buf.WriteString(" ")
+	buf.Write([]byte(strconv.Itoa(int(m.Context))))
+	if len(m.Path) != 0 {
+		path := make([][]byte, 0, len(m.Path))
+		for _, s := range m.Path {
+			b, err := s.MarshalNMDC()
+			if err != nil {
+				return nil, err
+			}
+			path = append(path, b)
+		}
+		buf.WriteString(" ")
+		buf.Write(bytes.Join(path, []byte("\\")))
+	}
+	if m.Command != "" {
+		buf.WriteString(" $")
+		command, err := m.Command.MarshalNMDC()
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(command)
+	}
+	return buf.Bytes(), nil
+}
+
+func (m *UserCommand) UnmarshalNMDC(data []byte) error {
+	arr := bytes.SplitN(data, []byte(" "), 3)
+	for i, value := range arr {
+		switch i {
+		case 0:
+			t, err := strconv.Atoi(string(value))
+			if err != nil {
+				return errors.New("invalid type in user command")
+			}
+			m.Type = Type(t)
+		case 1:
+			c, err := strconv.Atoi(string(value))
+			if err != nil {
+				return errors.New("invalid context in user command")
+			}
+			m.Context = Context(c)
+		case 2:
+			i = bytes.Index(value, []byte(" $"))
+			if i < 1 {
+				return errors.New("invalid raw user command")
+			}
+			arr = bytes.Split(value[:i], []byte("\\"))
+			for _, path := range arr {
+				var s String
+				err := s.UnmarshalNMDC(path)
+				if err != nil {
+					return errors.New("invalid path user command")
+				}
+				m.Path = append(m.Path, s)
+			}
+			m.Command = String(value[i+2:])
+		}
 	}
 	return nil
 }
