@@ -411,14 +411,9 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 	for _, c := range h.ListCommands() {
-		path := make(adc.Path, 0, len(c.Path))
-		for _, v := range c.Path {
-			path = append(path, adc.String(v))
-		}
-		command := adc.String("HMSG !" + c.Name + "\n")
 		err := peer.conn.WriteInfoMsg(adc.UserCommand{
-			Path:     path,
-			Command:  command,
+			Path:     c.Path,
+			Command:  "HMSG !" + c.Name + "\n",
 			Category: adc.CategoryHub,
 		})
 		if err != nil {
@@ -683,7 +678,7 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 		return err
 	}
 	err = p.conn.WriteDirect(rsid, p.SID(), adc.ChatMessage{
-		Text: adc.String("joined the room"), PM: &rsid,
+		Text: "joined the room", PM: &rsid,
 	})
 	if err != nil {
 		return err
@@ -697,7 +692,7 @@ func (p *adcPeer) LeaveRoom(room *Room) error {
 	}
 	rsid := room.SID()
 	err := p.conn.WriteDirect(rsid, p.SID(), adc.ChatMessage{
-		Text: adc.String("left the room"), PM: &rsid,
+		Text: "left the room", PM: &rsid,
 	})
 	if err != nil {
 		return err
@@ -720,11 +715,11 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 		rsid := room.SID()
 		fsid := from.SID()
 		err = p.conn.WriteDirect(fsid, p.SID(), adc.ChatMessage{
-			Text: adc.String(msg.Text), PM: &rsid,
+			Text: msg.Text, PM: &rsid,
 		})
 	} else {
 		err = p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{
-			Text: adc.String(msg.Text),
+			Text: msg.Text,
 		})
 	}
 	if err != nil {
@@ -736,7 +731,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 	src := from.SID()
 	err := p.conn.WriteDirect(src, p.sid, &adc.ChatMessage{
-		Text: adc.String(msg.Text), PM: &src,
+		Text: msg.Text, PM: &src,
 	})
 	if err != nil {
 		return err
@@ -746,7 +741,7 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 
 func (p *adcPeer) HubChatMsg(text string) error {
 	err := p.conn.WriteInfoMsg(&adc.ChatMessage{
-		Text: adc.String(text),
+		Text: text,
 	})
 	if err != nil {
 		return err

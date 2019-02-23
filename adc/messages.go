@@ -296,12 +296,12 @@ var (
 	_ Unmarshaler = (*Path)(nil)
 )
 
-type Path []String
+type Path []string
 
 func (p Path) MarshalAdc() ([]byte, error) {
 	var arr [][]byte
 	for _, a := range p {
-		path, err := a.MarshalAdc()
+		path, err := String(a).MarshalAdc()
 		if err != nil {
 			return nil, err
 		}
@@ -312,12 +312,12 @@ func (p Path) MarshalAdc() ([]byte, error) {
 
 func (p *Path) UnmarshalAdc(data []byte) error {
 	arr := bytes.Split(data, []byte("/"))
-	var path String
 	for _, a := range arr {
+		var path String
 		if err := path.UnmarshalAdc(a); err != nil {
 			return err
 		}
-		*p = append(*p, path)
+		*p = append(*p, string(path))
 	}
 	return nil
 }
@@ -335,7 +335,7 @@ const (
 
 type UserCommand struct {
 	Path        Path     `adc:"#"`
-	Command     String   `adc:"TT"`
+	Command     string   `adc:"TT"`
 	Category    Category `adc:"CT"`
 	Remove      int      `adc:"RM"`
 	Constrained int      `adc:"CO"`
@@ -496,7 +496,7 @@ var (
 )
 
 type ChatMessage struct {
-	Text String `adc:"#"`
+	Text string `adc:"#"`
 	PM   *SID   `adc:"PM"`
 	// TODO: TS
 }
