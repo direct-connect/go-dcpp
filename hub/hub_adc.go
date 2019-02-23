@@ -414,7 +414,7 @@ func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 		err := peer.conn.WriteInfoMsg(adc.UserCommand{
 			Path:     c.Path,
 			Command:  "HMSG !" + c.Name + "\n",
-			Category: adc.CategoryHub,
+			Category: adc.CategoryUser,
 		})
 		if err != nil {
 			return err
