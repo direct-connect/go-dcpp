@@ -22,7 +22,7 @@ func (m *Lock) CustomKey(magic byte, full bool) *Key {
 	if !full {
 		lock = []byte(m.Lock)
 	} else {
-		lock, _ = m.MarshalNMDC()
+		lock, _ = m.MarshalNMDC(nil)
 	}
 
 	n := len(lock)

@@ -53,7 +53,8 @@ type Config struct {
 		TLS  *TLSConfig `yaml:"tls"`
 	} `yaml:"serve"`
 	Chat struct {
-		Log struct {
+		Encoding string `yaml:"encoding"`
+		Log      struct {
 			Max  int `yaml:"max"`
 			Join int `yaml:"join"`
 		}
@@ -101,6 +102,7 @@ func init() {
 	}
 	viper.SetConfigName("hub")
 	viper.SetDefault("motd", "Welcome!")
+	viper.SetDefault("chat.encoding", "cp1251")
 	viper.SetDefault("chat.log.max", 50)
 	viper.SetDefault("chat.log.join", 10)
 	viper.SetDefault("database.type", "bolt")
@@ -152,13 +154,34 @@ func init() {
 		}
 		host := ":" + strconv.Itoa(conf.Serve.Port)
 		addr := conf.Serve.Host + host
-		fmt.Println("listening on", host)
+
+		if conf.Chat.Encoding != "" {
+			fmt.Println("fallback encoding:", conf.Chat.Encoding)
+		}
+		h, err := hub.NewHub(hub.Config{
+			Name:             conf.Name,
+			Desc:             conf.Desc,
+			Owner:            conf.Owner,
+			Website:          conf.Website,
+			Email:            conf.Email,
+			MOTD:             conf.MOTD,
+			FallbackEncoding: conf.Chat.Encoding,
+			ChatLog:          conf.Chat.Log.Max,
+			ChatLogJoin:      conf.Chat.Log.Join,
+			Addr:             addr,
+			TLS:              tlsConf,
+		})
+		if err != nil {
+			return err
+		}
 
 		if *fDebug {
 			fmt.Println("WARNING: protocol debug enabled")
 			nmdc.Debug = true
 			adc.Debug = true
 		}
+
+		fmt.Println("listening on", host)
 
 		if *fPProf {
 			const pprofPort = ":6060"
@@ -169,18 +192,6 @@ func init() {
 				}
 			}()
 		}
-		h := hub.NewHub(hub.Config{
-			Name:        conf.Name,
-			Desc:        conf.Desc,
-			Owner:       conf.Owner,
-			Website:     conf.Website,
-			Email:       conf.Email,
-			MOTD:        conf.MOTD,
-			ChatLog:     conf.Chat.Log.Max,
-			ChatLogJoin: conf.Chat.Log.Join,
-			Addr:        addr,
-			TLS:         tlsConf,
-		})
 		if conf.Database.Type != "" && conf.Database.Type != "mem" {
 			fmt.Printf("using database: %s (%s)\n", conf.Database.Path, conf.Database.Type)
 			db, err := hubdb.Open(conf.Database.Type, conf.Database.Path)

@@ -312,7 +312,7 @@ func TestUnmarshal(t *testing.T) {
 			name += " " + c.name
 		}
 		t.Run(name, func(t *testing.T) {
-			m, err := (&RawCommand{Name: c.typ, Data: []byte(c.data)}).Decode()
+			m, err := (&RawCommand{Name: c.typ, Data: []byte(c.data)}).Decode(nil)
 			if err != nil {
 				t.Fatal(err)
 			} else if !reflect.DeepEqual(m, c.msg) {
@@ -329,7 +329,7 @@ func TestMarshal(t *testing.T) {
 			name += " " + c.name
 		}
 		t.Run(name, func(t *testing.T) {
-			data, err := c.msg.MarshalNMDC()
+			data, err := c.msg.MarshalNMDC(nil)
 			exp := c.expData
 			if exp == "" {
 				exp = c.data

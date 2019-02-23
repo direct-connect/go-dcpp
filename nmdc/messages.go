@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/text/encoding"
+
 	"github.com/direct-connect/go-dcpp/tiger"
 )
 
@@ -51,8 +53,8 @@ func init() {
 
 type Message interface {
 	Cmd() string
-	MarshalNMDC() ([]byte, error)
-	UnmarshalNMDC(data []byte) error
+	MarshalNMDC(enc *encoding.Encoder) ([]byte, error)
+	UnmarshalNMDC(dec *encoding.Decoder, data []byte) error
 }
 
 func RegisterMessage(m Message) {
@@ -67,12 +69,12 @@ func RegisterMessage(m Message) {
 	messages[name] = rt
 }
 
-func Marshal(m Message) ([]byte, error) {
+func Marshal(enc *encoding.Encoder, m Message) ([]byte, error) {
 	if cm, ok := m.(*ChatMessage); ok {
 		// special case
-		return cm.MarshalNMDC()
+		return cm.MarshalNMDC(enc)
 	}
-	data, err := m.MarshalNMDC()
+	data, err := m.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -104,22 +106,22 @@ func (m *RawCommand) Cmd() string {
 	return m.Name
 }
 
-func (m *RawCommand) MarshalNMDC() ([]byte, error) {
+func (m *RawCommand) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 	return m.Data, nil
 }
 
-func (m *RawCommand) UnmarshalNMDC(data []byte) error {
+func (m *RawCommand) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	m.Data = data
 	return nil
 }
 
-func (m *RawCommand) Decode() (Message, error) {
+func (m *RawCommand) Decode(dec *encoding.Decoder) (Message, error) {
 	rt, ok := messages[m.Name]
 	if !ok {
 		return m, nil
 	}
 	msg := reflect.New(rt).Interface().(Message)
-	if err := msg.UnmarshalNMDC(m.Data); err != nil {
+	if err := msg.UnmarshalNMDC(dec, m.Data); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -141,28 +143,27 @@ func (m *ChatMessage) Cmd() string {
 	return "" // special case
 }
 
-func (m *ChatMessage) MarshalNMDC() ([]byte, error) {
+func (m *ChatMessage) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	if m.Name != "" {
 		buf.WriteByte('<')
-		name, err := m.Name.MarshalNMDC()
+		name, err := m.Name.MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
 		buf.Write(name)
 		buf.WriteString("> ")
 	}
-	text, err := String(m.Text).MarshalNMDC()
+	text, err := String(m.Text).MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
-	// TODO: convert to connection encoding
 	buf.Write(text)
 	buf.WriteByte('|')
 	return buf.Bytes(), nil
 }
 
-func (m *ChatMessage) UnmarshalNMDC(data []byte) error {
+func (m *ChatMessage) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	panic("special case")
 }
 
@@ -238,11 +239,11 @@ func (*Version) Cmd() string {
 	return "Version"
 }
 
-func (m *Version) MarshalNMDC() ([]byte, error) {
+func (m *Version) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 	return []byte(m.Vers), nil
 }
 
-func (m *Version) UnmarshalNMDC(data []byte) error {
+func (m *Version) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	m.Vers = string(data)
 	return nil
 }
@@ -255,13 +256,13 @@ func (*HubTopic) Cmd() string {
 	return "HubTopic"
 }
 
-func (m *HubTopic) MarshalNMDC() ([]byte, error) {
-	return String(m.Text).MarshalNMDC()
+func (m *HubTopic) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
+	return String(m.Text).MarshalNMDC(enc)
 }
 
-func (m *HubTopic) UnmarshalNMDC(data []byte) error {
+func (m *HubTopic) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	var s String
-	if err := s.UnmarshalNMDC(data); err != nil {
+	if err := s.UnmarshalNMDC(dec, data); err != nil {
 		return err
 	}
 	m.Text = string(s)
@@ -278,7 +279,7 @@ func (*Lock) Cmd() string {
 	return "Lock"
 }
 
-func (m *Lock) MarshalNMDC() ([]byte, error) {
+func (m *Lock) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 	lock := []string{m.Lock}
 	if m.PK != "" {
 		lock = append(lock, " Pk=", m.PK)
@@ -292,7 +293,7 @@ func (m *Lock) MarshalNMDC() ([]byte, error) {
 	return []byte(strings.Join(lock, "")), nil
 }
 
-func (m *Lock) UnmarshalNMDC(data []byte) error {
+func (m *Lock) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	*m = Lock{}
 	i := bytes.Index(data, []byte(" "))
 	if i < 0 {
@@ -323,11 +324,11 @@ func (*Key) Cmd() string {
 	return "Key"
 }
 
-func (m *Key) MarshalNMDC() ([]byte, error) {
+func (m *Key) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 	return []byte(m.Key), nil
 }
 
-func (m *Key) UnmarshalNMDC(data []byte) error {
+func (m *Key) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	m.Key = string(data)
 	return nil
 }
@@ -340,57 +341,38 @@ func (*Supports) Cmd() string {
 	return "Supports"
 }
 
-func (m *Supports) MarshalNMDC() ([]byte, error) {
+func (m *Supports) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 	return []byte(strings.Join(m.Ext, " ")), nil
 }
 
-func (m *Supports) UnmarshalNMDC(data []byte) error {
+func (m *Supports) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	data = bytes.TrimSuffix(data, []byte(" "))
 	m.Ext = strings.Split(string(data), " ")
 	return nil
 }
 
-type BadPass struct{}
+type BadPass struct {
+	NoArgs
+}
 
 func (*BadPass) Cmd() string {
 	return "BadPass"
 }
 
-func (m *BadPass) MarshalNMDC() ([]byte, error) {
-	return nil, nil
+type GetPass struct {
+	NoArgs
 }
-
-func (m *BadPass) UnmarshalNMDC(data []byte) error {
-	return nil
-}
-
-type GetPass struct{}
 
 func (*GetPass) Cmd() string {
 	return "GetPass"
 }
 
-func (m *GetPass) MarshalNMDC() ([]byte, error) {
-	return nil, nil
+type GetNickList struct {
+	NoArgs
 }
-
-func (m *GetPass) UnmarshalNMDC(data []byte) error {
-	return nil
-}
-
-type GetNickList struct{}
 
 func (*GetNickList) Cmd() string {
 	return "GetNickList"
-}
-
-func (m *GetNickList) MarshalNMDC() ([]byte, error) {
-	return nil, nil
-}
-
-func (m *GetNickList) UnmarshalNMDC(data []byte) error {
-	// TODO: validate
-	return nil
 }
 
 type HubINFO struct {
@@ -411,15 +393,15 @@ func (*HubINFO) Cmd() string {
 	return "HubINFO"
 }
 
-func (m *HubINFO) MarshalNMDC() ([]byte, error) {
+func (m *HubINFO) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	var a [][]byte
-	name, err := m.Name.MarshalNMDC()
+	name, err := m.Name.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	a = append(a, name)
 	a = append(a, []byte(m.Host))
-	desc, err := m.Desc.MarshalNMDC()
+	desc, err := m.Desc.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +412,7 @@ func (m *HubINFO) MarshalNMDC() ([]byte, error) {
 	a = append(a, []byte(strconv.Itoa(m.I4)))
 	a = append(a, []byte(m.Soft))
 	a = append(a, []byte(m.Owner))
-	state, err := m.State.MarshalNMDC()
+	state, err := m.State.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +422,7 @@ func (m *HubINFO) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *HubINFO) UnmarshalNMDC(data []byte) error {
+func (m *HubINFO) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	fields := bytes.SplitN(data, []byte("$"), 12)
 	if len(fields) > 11 {
 		return fmt.Errorf("hub info contain: %v parameters", len(fields))
@@ -448,13 +430,13 @@ func (m *HubINFO) UnmarshalNMDC(data []byte) error {
 	for i, field := range fields {
 		switch i {
 		case 0:
-			if err := m.Name.UnmarshalNMDC(field); err != nil {
+			if err := m.Name.UnmarshalNMDC(dec, field); err != nil {
 				return err
 			}
 		case 1:
 			m.Host = string(field)
 		case 2:
-			if err := m.Desc.UnmarshalNMDC(field); err != nil {
+			if err := m.Desc.UnmarshalNMDC(dec, field); err != nil {
 				return err
 			}
 		case 3:
@@ -486,7 +468,7 @@ func (m *HubINFO) UnmarshalNMDC(data []byte) error {
 		case 8:
 			m.Owner = string(field)
 		case 9:
-			if err := m.State.UnmarshalNMDC(field); err != nil {
+			if err := m.State.UnmarshalNMDC(dec, field); err != nil {
 				return err
 			}
 		case 10:
@@ -551,18 +533,18 @@ func (*MyInfo) Cmd() string {
 	return "MyINFO"
 }
 
-func (m *MyInfo) MarshalNMDC() ([]byte, error) {
+func (m *MyInfo) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	buf.WriteString("$ALL ")
 
-	name, err := m.Name.MarshalNMDC()
+	name, err := m.Name.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	buf.Write(name)
 
 	buf.WriteString(" ")
-	desc, err := m.Desc.MarshalNMDC()
+	desc, err := m.Desc.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -599,7 +581,7 @@ func (m *MyInfo) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *MyInfo) UnmarshalNMDC(data []byte) error {
+func (m *MyInfo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	if !bytes.HasPrefix(data, []byte("$ALL ")) {
 		return errors.New("invalid info command: wrong prefix")
 	}
@@ -609,7 +591,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 	if i < 0 {
 		return errors.New("invalid info command: no separators")
 	}
-	if err := m.Name.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.Name.UnmarshalNMDC(dec, data[:i]); err != nil {
 		return err
 	}
 	data = data[i+1:]
@@ -639,7 +621,7 @@ func (m *MyInfo) UnmarshalNMDC(data []byte) error {
 					return err
 				}
 			}
-			if err := m.Desc.UnmarshalNMDC(desc); err != nil {
+			if err := m.Desc.UnmarshalNMDC(dec, desc); err != nil {
 				return err
 			}
 		case 1:
@@ -749,13 +731,13 @@ func (m *MyInfo) unmarshalTag(tag []byte) error {
 
 type Names []Name
 
-func (m Names) MarshalNMDC() ([]byte, error) {
+func (m Names) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	if len(m) == 0 {
 		return []byte("$$"), nil
 	}
 	sub := make([][]byte, 0, len(m)+1)
 	for _, name := range m {
-		data, err := name.MarshalNMDC()
+		data, err := name.MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
@@ -765,7 +747,7 @@ func (m Names) MarshalNMDC() ([]byte, error) {
 	return bytes.Join(sub, []byte("$$")), nil
 }
 
-func (m *Names) UnmarshalNMDC(data []byte) error {
+func (m *Names) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	if len(data) == 0 {
 		*m = nil
 		return nil
@@ -775,7 +757,7 @@ func (m *Names) UnmarshalNMDC(data []byte) error {
 	list := make([]Name, 0, len(sub))
 	for _, b := range sub {
 		var name Name
-		if err := name.UnmarshalNMDC(b); err != nil {
+		if err := name.UnmarshalNMDC(dec, b); err != nil {
 			return err
 		}
 		list = append(list, name)
@@ -809,22 +791,22 @@ func (*UserIP) Cmd() string {
 	return "UserIP"
 }
 
-func (m *UserIP) MarshalNMDC() ([]byte, error) {
-	name, err := m.Name.MarshalNMDC()
+func (m *UserIP) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
+	name, err := m.Name.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	return bytes.Join([][]byte{name, []byte(m.IP + "$$")}, []byte(" ")), nil
 }
 
-func (m *UserIP) UnmarshalNMDC(data []byte) error {
+func (m *UserIP) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	data = bytes.TrimSuffix(data, []byte("$$"))
 	i := bytes.Index(data, []byte(" "))
 	if i >= 0 {
 		m.IP = string(data[i+1:])
 		data = data[:i]
 	}
-	if err := m.Name.UnmarshalNMDC(data); err != nil {
+	if err := m.Name.UnmarshalNMDC(dec, data); err != nil {
 		return err
 	}
 	return nil
@@ -840,9 +822,9 @@ func (m *ConnectToMe) Cmd() string {
 	return "ConnectToMe"
 }
 
-func (m *ConnectToMe) MarshalNMDC() ([]byte, error) {
+func (m *ConnectToMe) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
-	data, err := m.Targ.MarshalNMDC()
+	data, err := m.Targ.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -855,12 +837,12 @@ func (m *ConnectToMe) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *ConnectToMe) UnmarshalNMDC(data []byte) error {
+func (m *ConnectToMe) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	i := bytes.Index(data, []byte(" "))
 	if i < 0 {
 		return errors.New("invalid ConnectToMe command")
 	}
-	if err := m.Targ.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.Targ.UnmarshalNMDC(dec, data[:i]); err != nil {
 		return err
 	}
 	addr := data[i+1:]
@@ -880,27 +862,27 @@ func (m *RevConnectToMe) Cmd() string {
 	return "RevConnectToMe"
 }
 
-func (m *RevConnectToMe) MarshalNMDC() ([]byte, error) {
-	from, err := m.From.MarshalNMDC()
+func (m *RevConnectToMe) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
+	from, err := m.From.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
-	to, err := m.To.MarshalNMDC()
+	to, err := m.To.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	return bytes.Join([][]byte{from, to}, []byte(" ")), nil
 }
 
-func (m *RevConnectToMe) UnmarshalNMDC(data []byte) error {
+func (m *RevConnectToMe) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	i := bytes.Index(data, []byte(" "))
 	if i < 0 {
 		return errors.New("invalid RevConnectToMe command")
 	}
-	if err := m.From.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.From.UnmarshalNMDC(dec, data[:i]); err != nil {
 		return err
 	}
-	if err := m.To.UnmarshalNMDC(data[i+1:]); err != nil {
+	if err := m.To.UnmarshalNMDC(dec, data[i+1:]); err != nil {
 		return err
 	}
 	return nil
@@ -916,24 +898,24 @@ func (m *PrivateMessage) Cmd() string {
 	return "To:"
 }
 
-func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
+func (m *PrivateMessage) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 
 	// 'To:' is in the name of the command
-	to, err := m.To.MarshalNMDC()
+	to, err := m.To.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	buf.Write(to)
 
-	from, err := m.From.MarshalNMDC()
+	from, err := m.From.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	buf.WriteString(" From: ")
 	buf.Write(from)
 
-	name, err := m.Name.MarshalNMDC()
+	name, err := m.Name.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -941,7 +923,7 @@ func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
 	buf.Write(name)
 	buf.WriteString("> ")
 
-	text, err := m.Text.MarshalNMDC()
+	text, err := m.Text.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -949,12 +931,12 @@ func (m *PrivateMessage) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
+func (m *PrivateMessage) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	i := bytes.Index(data, []byte(" "))
 	if i < 0 {
 		return errors.New("invalid PrivateMessage")
 	}
-	if err := m.To.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.To.UnmarshalNMDC(dec, data[:i]); err != nil {
 		return err
 	}
 	data = data[i+1:]
@@ -969,7 +951,7 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 		return errors.New("invalid PrivateMessage")
 	}
 	from := data[:i]
-	if err := m.From.UnmarshalNMDC(from); err != nil {
+	if err := m.From.UnmarshalNMDC(dec, from); err != nil {
 		return err
 	}
 	data = data[i+1:]
@@ -985,12 +967,12 @@ func (m *PrivateMessage) UnmarshalNMDC(data []byte) error {
 		return errors.New("invalid PrivateMessage")
 	}
 	name := data[:i]
-	if err := m.Name.UnmarshalNMDC(name); err != nil {
+	if err := m.Name.UnmarshalNMDC(dec, name); err != nil {
 		return err
 	}
 
 	text := data[i+2:]
-	if err := m.Text.UnmarshalNMDC(text); err != nil {
+	if err := m.Text.UnmarshalNMDC(dec, text); err != nil {
 		return err
 	}
 	return nil
@@ -1004,20 +986,20 @@ func (m *Failed) Cmd() string {
 	return "Failed"
 }
 
-func (m *Failed) MarshalNMDC() ([]byte, error) {
+func (m *Failed) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	if m.Err == nil {
 		return nil, nil
 	}
-	text, err := String(m.Err.Error()).MarshalNMDC()
+	text, err := String(m.Err.Error()).MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	return []byte(text), nil
 }
 
-func (m *Failed) UnmarshalNMDC(text []byte) error {
+func (m *Failed) UnmarshalNMDC(dec *encoding.Decoder, text []byte) error {
 	var str String
-	if err := str.UnmarshalNMDC(text); err != nil {
+	if err := str.UnmarshalNMDC(dec, text); err != nil {
 		return err
 	}
 	if str != "" {
@@ -1034,20 +1016,20 @@ func (m *Error) Cmd() string {
 	return "Error"
 }
 
-func (m *Error) MarshalNMDC() ([]byte, error) {
+func (m *Error) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	if m.Err == nil {
 		return nil, nil
 	}
-	text, err := String(m.Err.Error()).MarshalNMDC()
+	text, err := String(m.Err.Error()).MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	return []byte(text), nil
 }
 
-func (m *Error) UnmarshalNMDC(text []byte) error {
+func (m *Error) UnmarshalNMDC(dec *encoding.Decoder, text []byte) error {
 	var str String
-	if err := str.UnmarshalNMDC(text); err != nil {
+	if err := str.UnmarshalNMDC(dec, text); err != nil {
 		return err
 	}
 	if str != "" {
@@ -1085,12 +1067,12 @@ func (*Search) Cmd() string {
 	return "Search"
 }
 
-func (m *Search) MarshalNMDC() ([]byte, error) {
+func (m *Search) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	if m.Address != "" {
 		buf.Write([]byte(m.Address))
 	} else {
-		nick, err := m.Nick.MarshalNMDC()
+		nick, err := m.Nick.MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
@@ -1119,7 +1101,7 @@ func (m *Search) MarshalNMDC() ([]byte, error) {
 		hash := m.TTH.Base32()
 		pattern = append([]byte("TTH:"), hash...)
 	} else {
-		str, err := String(m.Pattern).MarshalNMDC()
+		str, err := String(m.Pattern).MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
@@ -1130,28 +1112,28 @@ func (m *Search) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *Search) UnmarshalNMDC(data []byte) error {
+func (m *Search) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	fields := bytes.SplitN(data, []byte(" "), 3)
 	if len(fields) != 2 {
 		return errors.New("invalid search command")
 	}
 	if bytes.HasPrefix(fields[0], []byte("Hub:")) {
 		field := bytes.TrimPrefix(fields[0], []byte("Hub:"))
-		err := m.Nick.UnmarshalNMDC(field)
+		err := m.Nick.UnmarshalNMDC(dec, field)
 		if err != nil {
 			return err
 		}
 	} else {
 		m.Address = string(fields[0])
 	}
-	err := m.unmarshalString(fields[1])
+	err := m.unmarshalString(dec, fields[1])
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (m *Search) unmarshalString(data []byte) error {
+func (m *Search) unmarshalString(dec *encoding.Decoder, data []byte) error {
 	fields := bytes.SplitN(data, []byte("?"), 6)
 	if len(fields) != 5 {
 		return errors.New("invalid search string")
@@ -1197,7 +1179,7 @@ func (m *Search) unmarshalString(data []byte) error {
 				}
 			} else {
 				var str String
-				err := str.UnmarshalNMDC(field)
+				err := str.UnmarshalNMDC(dec, field)
 				if err != nil {
 					return err
 				}
@@ -1239,8 +1221,8 @@ func (*SR) Cmd() string {
 	return "SR"
 }
 
-func (m *SR) MarshalNMDC() ([]byte, error) {
-	src, err := m.Source.MarshalNMDC()
+func (m *SR) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
+	src, err := m.Source.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -1263,7 +1245,7 @@ func (m *SR) MarshalNMDC() ([]byte, error) {
 	buf.Write([]byte(strconv.Itoa(m.FreeSlots)))
 	buf.WriteByte('/')
 	buf.Write([]byte(strconv.Itoa(m.TotalSlots)))
-	hubName, err := m.HubName.MarshalNMDC()
+	hubName, err := m.HubName.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -1274,7 +1256,7 @@ func (m *SR) MarshalNMDC() ([]byte, error) {
 	buf.Write([]byte(m.Address))
 	buf.WriteByte(')')
 	if m.Target != "" {
-		target, err := m.Target.MarshalNMDC()
+		target, err := m.Target.MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
@@ -1284,7 +1266,7 @@ func (m *SR) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *SR) UnmarshalNMDC(data []byte) error {
+func (m *SR) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	arr := bytes.SplitN(data, []byte(" "), 5)
 	if len(arr) != 4 {
 		return fmt.Errorf("invalid SR command")
@@ -1292,7 +1274,7 @@ func (m *SR) UnmarshalNMDC(data []byte) error {
 	for i, f := range arr {
 		switch i {
 		case 0:
-			err := m.Source.UnmarshalNMDC(f)
+			err := m.Source.UnmarshalNMDC(dec, f)
 			if err != nil {
 				return err
 			}
@@ -1330,7 +1312,7 @@ func (m *SR) UnmarshalNMDC(data []byte) error {
 				return fmt.Errorf("invalid TotalSlots: %v", err)
 			}
 			m.TotalSlots = total
-			err = m.HubName.UnmarshalNMDC(f[i+1:])
+			err = m.HubName.UnmarshalNMDC(dec, f[i+1:])
 			if err != nil {
 				return err
 			}
@@ -1341,7 +1323,7 @@ func (m *SR) UnmarshalNMDC(data []byte) error {
 				continue
 			}
 			m.Address = string(f[1 : i-1])
-			err := m.Target.UnmarshalNMDC(f[i+1:])
+			err := m.Target.UnmarshalNMDC(dec, f[i+1:])
 			if err != nil {
 				return err
 			}
@@ -1358,11 +1340,11 @@ func (*FailOver) Cmd() string {
 	return "FailOver"
 }
 
-func (m *FailOver) MarshalNMDC() ([]byte, error) {
+func (m *FailOver) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 	return []byte(strings.Join(m.Host, ",")), nil
 }
 
-func (m *FailOver) UnmarshalNMDC(data []byte) error {
+func (m *FailOver) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
 	hosts := bytes.Split(data, []byte(","))
 	for _, host := range hosts {
 		m.Host = append(m.Host, string(host))
@@ -1379,20 +1361,20 @@ func (*MCTo) Cmd() string {
 	return "MCTo"
 }
 
-func (m *MCTo) MarshalNMDC() ([]byte, error) {
-	target, err := m.Target.MarshalNMDC()
+func (m *MCTo) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
+	target, err := m.Target.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	buf := bytes.NewBuffer(nil)
 	buf.Write(target)
-	sender, err := m.Sender.MarshalNMDC()
+	sender, err := m.Sender.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
 	buf.WriteString(" $")
 	buf.Write(sender)
-	text, err := m.Text.MarshalNMDC()
+	text, err := m.Text.MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
@@ -1401,12 +1383,12 @@ func (m *MCTo) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *MCTo) UnmarshalNMDC(data []byte) error {
+func (m *MCTo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	i := bytes.Index(data, []byte(" $"))
 	if i < 0 {
 		return errors.New("invalid PrivateMessage")
 	}
-	if err := m.Target.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.Target.UnmarshalNMDC(dec, data[:i]); err != nil {
 		return err
 	}
 	data = data[i+2:]
@@ -1414,10 +1396,10 @@ func (m *MCTo) UnmarshalNMDC(data []byte) error {
 	if i < 0 {
 		return errors.New("invalid PrivateMessage")
 	}
-	if err := m.Sender.UnmarshalNMDC(data[:i]); err != nil {
+	if err := m.Sender.UnmarshalNMDC(dec, data[:i]); err != nil {
 		return err
 	}
-	if err := m.Text.UnmarshalNMDC(data[i+1:]); err != nil {
+	if err := m.Text.UnmarshalNMDC(dec, data[i+1:]); err != nil {
 		return err
 	}
 	return nil
@@ -1452,7 +1434,7 @@ func (*UserCommand) Cmd() string {
 	return "UserCommand"
 }
 
-func (m *UserCommand) MarshalNMDC() ([]byte, error) {
+func (m *UserCommand) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	buf.Write([]byte(strconv.Itoa(int(m.Type))))
 	buf.WriteString(" ")
@@ -1460,7 +1442,7 @@ func (m *UserCommand) MarshalNMDC() ([]byte, error) {
 	if len(m.Path) != 0 {
 		path := make([][]byte, 0, len(m.Path))
 		for _, s := range m.Path {
-			b, err := s.MarshalNMDC()
+			b, err := s.MarshalNMDC(enc)
 			if err != nil {
 				return nil, err
 			}
@@ -1471,7 +1453,7 @@ func (m *UserCommand) MarshalNMDC() ([]byte, error) {
 	}
 	if m.Command != "" {
 		buf.WriteString(" $")
-		command, err := m.Command.MarshalNMDC()
+		command, err := m.Command.MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
@@ -1480,7 +1462,7 @@ func (m *UserCommand) MarshalNMDC() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *UserCommand) UnmarshalNMDC(data []byte) error {
+func (m *UserCommand) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	arr := bytes.SplitN(data, []byte(" "), 3)
 	for i, value := range arr {
 		switch i {
@@ -1504,7 +1486,7 @@ func (m *UserCommand) UnmarshalNMDC(data []byte) error {
 			arr = bytes.Split(value[:i], []byte("\\"))
 			for _, path := range arr {
 				var s String
-				err := s.UnmarshalNMDC(path)
+				err := s.UnmarshalNMDC(dec, path)
 				if err != nil {
 					return errors.New("invalid path user command")
 				}

@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/text/encoding"
+
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
@@ -24,6 +26,7 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 		return err
 	}
 	defer c.Close()
+	c.SetFallbackEncoding(h.fallback)
 
 	peer, err := h.nmdcHandshake(c)
 	if err != nil {
@@ -70,10 +73,9 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdc.Features, nmdc.Na
 	} else if !fea.Has(nmdc.FeaNoGetINFO) {
 		return nil, "", errors.New("NoGetINFO is not supported")
 	}
-	var nick nmdc.ValidateNick
-	err = c.ReadMsgTo(deadline, &nick)
+	nick, err := c.ReadValidateNick(deadline)
 	if err != nil {
-		return nil, "", fmt.Errorf("expected validate: %v", err)
+		return nil, "", err
 	}
 	return fea, nick.Name, nil
 }
@@ -298,9 +300,9 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return fmt.Errorf("expected version: %v", err)
 	}
 	curName := peer.user.Name
-	err = c.ReadMsgTo(deadline, &peer.user)
+	err = c.ReadMyInfoTo(deadline, &peer.user)
 	if err != nil {
-		return fmt.Errorf("expected user info: %v", err)
+		return err
 	} else if curName != peer.user.Name {
 		return errors.New("nick mismatch")
 	}
@@ -475,7 +477,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			}
 		default:
 			// TODO
-			data, _ := msg.MarshalNMDC()
+			data, _ := msg.MarshalNMDC(nil)
 			log.Printf("%s: nmdc: $%s %v|", peer.RemoteAddr(), msg.Cmd(), string(data))
 		}
 	}
@@ -532,7 +534,7 @@ func (p *nmdcPeer) setUser(u *nmdc.MyInfo) {
 	if u != &p.user {
 		p.user = *u
 	}
-	data, err := nmdc.Marshal(u)
+	data, err := nmdc.Marshal(p.conn.TextEncoder(), u)
 	if err != nil {
 		panic(err)
 	}
@@ -566,11 +568,11 @@ func (p *nmdcPeer) Name() string {
 	return string(name)
 }
 
-func (p *nmdcPeer) rawInfo() []byte {
+func (p *nmdcPeer) rawInfo() ([]byte, encoding.Encoding) {
 	p.mu.RLock()
 	data := p.userRaw
 	p.mu.RUnlock()
-	return data
+	return data, p.conn.Encoding()
 }
 
 func (p *nmdcPeer) Info() nmdc.MyInfo {
@@ -642,9 +644,9 @@ func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
 }
 
 func (p *nmdcPeer) BroadcastJoin(peers []Peer) {
-	join := p.rawInfo()
+	join, enc := p.rawInfo()
 	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok {
+		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.conn.Encoding() == nil {
 			_ = p2.writeOneRaw(join)
 			continue
 		}
@@ -697,11 +699,13 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	}
 	for _, peer := range peers {
 		if p2, ok := peer.(*nmdcPeer); ok {
-			data := p2.rawInfo()
-			if err := writeRaw(data); err != nil {
-				return err
+			data, enc := p2.rawInfo()
+			if enc == nil && p.conn.Encoding() == nil {
+				if err := writeRaw(data); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 		info := peer.User().toNMDC()
 		if err := write(&info); err != nil {
@@ -712,14 +716,15 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 }
 
 func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
-	quit, err := nmdc.Marshal(&nmdc.Quit{
+	enc := p.conn.TextEncoder()
+	quit, err := nmdc.Marshal(enc, &nmdc.Quit{
 		Name: nmdc.Name(p.Name()),
 	})
 	if err != nil {
 		panic(err)
 	}
 	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok {
+		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p2.conn.TextEncoder() == nil {
 			_ = p2.writeOneRaw(quit)
 			continue
 		}

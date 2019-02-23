@@ -14,6 +14,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding"
 )
 
 const (
@@ -96,6 +99,11 @@ type Conn struct {
 	cmu    sync.Mutex
 	closed chan struct{}
 
+	encoding encoding.Encoding
+	fallback encoding.Encoding
+	enc      *encoding.Encoder
+	dec      *encoding.Decoder
+
 	// bin should be acquired as RLock on commands read/write
 	// and as Lock when switching to binary mode.
 	bin sync.RWMutex
@@ -122,6 +130,41 @@ type Conn struct {
 
 func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
+}
+
+func (c *Conn) Encoding() encoding.Encoding {
+	return c.encoding
+}
+
+func (c *Conn) TextEncoder() *encoding.Encoder {
+	return c.enc
+}
+
+func (c *Conn) TextDecoder() *encoding.Decoder {
+	return c.dec
+}
+
+func (c *Conn) setEncoding(enc encoding.Encoding) {
+	c.encoding = enc
+	if enc != nil {
+		c.enc = enc.NewEncoder()
+		c.dec = enc.NewDecoder()
+	} else {
+		c.enc = nil
+		c.dec = nil
+	}
+}
+
+func (c *Conn) SetEncoding(enc encoding.Encoding) {
+	c.read.Lock()
+	defer c.read.Unlock()
+	c.write.Lock()
+	defer c.write.Unlock()
+	c.setEncoding(enc)
+}
+
+func (c *Conn) SetFallbackEncoding(enc encoding.Encoding) {
+	c.fallback = enc
 }
 
 // Close closes the connection.
@@ -168,7 +211,7 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 // WriteMsg writes a single message to the connection's buffer.
 // Caller should call Flush or FlushLazy to schedule the write.
 func (c *Conn) WriteMsg(m Message) error {
-	data, err := Marshal(m)
+	data, err := Marshal(c.enc, m)
 	if err != nil {
 		return err
 	}
@@ -178,7 +221,7 @@ func (c *Conn) WriteMsg(m Message) error {
 // WriteOneMsg writes a single message to the connection's buffer
 // and schedules the write.
 func (c *Conn) WriteOneMsg(m Message) error {
-	data, err := Marshal(m)
+	data, err := Marshal(c.enc, m)
 	if err != nil {
 		return err
 	}
@@ -368,7 +411,7 @@ func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 			return err
 		}
 		if msg == nil {
-			m, err := raw.Decode()
+			m, err := raw.Decode(c.dec)
 			if err != nil {
 				return err
 			}
@@ -378,7 +421,7 @@ func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 		if msg.Cmd() != raw.Name {
 			return fmt.Errorf("expected %q, got %q", msg.Cmd(), raw.Name)
 		}
-		return msg.UnmarshalNMDC(raw.Data)
+		return msg.UnmarshalNMDC(c.dec, raw.Data)
 	}
 }
 
@@ -440,7 +483,7 @@ func (c *Conn) readChatMsg(m *ChatMessage) error {
 		if len(name) == 0 {
 			return errors.New("empty name in chat message")
 		}
-		if err = m.Name.UnmarshalNMDC(name); err != nil {
+		if err = m.Name.UnmarshalNMDC(c.dec, name); err != nil {
 			return err
 		}
 	}
@@ -454,14 +497,25 @@ func (c *Conn) readChatMsg(m *ChatMessage) error {
 	if bytes.ContainsAny(msg, "\x00") {
 		return errors.New("chat message should not contain null characters")
 	}
-	// TODO: convert to UTF8
 	var text String
-	if err = text.UnmarshalNMDC(msg); err != nil {
+	if err = text.UnmarshalNMDC(c.dec, msg); err != nil {
 		return err
+	}
+	if c.enc == nil && c.fallback != nil && !utf8.ValidString(string(text)) {
+		// try fallback encoding
+		dec := c.fallback.NewDecoder()
+		if str, err := dec.String(string(text)); err == nil && utf8.ValidString(str) {
+			// fallback is valid - switch encoding
+			text = String(str)
+			// already holding read lock, only need to acquire write lock
+			c.write.Lock()
+			c.setEncoding(c.fallback)
+			c.write.Unlock()
+		}
 	}
 	m.Text = string(text)
 	if Debug {
-		data, _ := m.MarshalNMDC()
+		data, _ := m.MarshalNMDC(c.enc)
 		log.Println("<-", string(data))
 	}
 	return nil
@@ -497,5 +551,5 @@ func (c *Conn) readCommand() (Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	return raw.Decode()
+	return raw.Decode(c.dec)
 }

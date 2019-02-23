@@ -13,6 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/htmlindex"
+
 	"golang.org/x/net/http2"
 
 	"github.com/direct-connect/go-dcpp/adc"
@@ -21,20 +24,21 @@ import (
 )
 
 type Config struct {
-	Name        string
-	Desc        string
-	Addr        string
-	Owner       string
-	Website     string
-	Email       string
-	Soft        Software
-	MOTD        string
-	ChatLog     int
-	ChatLogJoin int
-	TLS         *tls.Config
+	Name             string
+	Desc             string
+	Addr             string
+	Owner            string
+	Website          string
+	Email            string
+	Soft             Software
+	MOTD             string
+	ChatLog          int
+	ChatLogJoin      int
+	FallbackEncoding string
+	TLS              *tls.Config
 }
 
-func NewHub(conf Config) *Hub {
+func NewHub(conf Config) (*Hub, error) {
 	if conf.Soft.Name == "" {
 		conf.Soft.Name = version.Name
 	}
@@ -52,6 +56,13 @@ func NewHub(conf Config) *Hub {
 		conf:    conf,
 		tls:     conf.TLS,
 	}
+	if conf.FallbackEncoding != "" {
+		enc, err := htmlindex.Get(conf.FallbackEncoding)
+		if err != nil {
+			return nil, err
+		}
+		h.fallback = enc
+	}
 	h.peers.reserved = make(map[string]struct{})
 	h.peers.byName = make(map[string]Peer)
 	h.peers.bySID = make(map[SID]Peer)
@@ -62,7 +73,7 @@ func NewHub(conf Config) *Hub {
 	h.initHTTP()
 	h.userDB = NewUserDatabase()
 	h.initCommands()
-	return h
+	return h, nil
 }
 
 type SID = adc.SID
@@ -77,6 +88,8 @@ type Hub struct {
 	userDB UserDatabase
 
 	lastSID uint32
+
+	fallback encoding.Encoding
 
 	peers struct {
 		sync.RWMutex

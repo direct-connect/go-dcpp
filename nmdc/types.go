@@ -5,52 +5,95 @@ import (
 	"errors"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/encoding"
 )
+
+type NoArgs struct{}
+
+func (*NoArgs) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
+	return nil, nil
+}
+
+func (*NoArgs) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
+	if len(data) != 0 {
+		return errors.New("unexpected argument for the command")
+	}
+	return nil
+}
 
 type Name string
 
-func (s Name) MarshalNMDC() ([]byte, error) {
+func (s Name) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	if len(s) > maxName {
 		return nil, errors.New("name is too long")
 	} else if strings.ContainsAny(string(s), invalidCharsName) {
 		return nil, errors.New("invalid characters in name")
 	}
-	// TODO: encoding
-	str := EscapeName(string(s))
+	str := string(s)
+	if enc != nil {
+		var err error
+		str, err = enc.String(str)
+		if err != nil {
+			return nil, err
+		}
+	}
+	str = EscapeName(str)
 	return []byte(str), nil
 }
-func (s *Name) UnmarshalNMDC(data []byte) error {
+
+func (s *Name) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	if len(data) > maxName {
 		return errors.New("name is too long")
 	} else if bytes.ContainsAny(data, invalidCharsName) {
 		return errors.New("invalid characters in name")
 	}
-	// TODO: encoding
 	str := Unescape(string(data))
+	if dec != nil {
+		var err error
+		str, err = dec.String(str)
+		if err != nil {
+			return err
+		}
+	}
 	*s = Name(str)
 	return nil
 }
 
 type String string
 
-func (s String) MarshalNMDC() ([]byte, error) {
+func (s String) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	if len(s) > maxText {
 		return nil, errors.New("text is too long")
 	} else if strings.ContainsAny(string(s), "\x00") {
 		return nil, errors.New("invalid characters in text")
 	}
-	// TODO: encoding
-	str := Escape(string(s))
+	str := string(s)
+	if enc != nil {
+		var err error
+		str, err = enc.String(str)
+		if err != nil {
+			return nil, err
+		}
+	}
+	str = Escape(str)
 	return []byte(str), nil
 }
-func (s *String) UnmarshalNMDC(data []byte) error {
+
+func (s *String) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	if len(data) > maxText {
 		return errors.New("text is too long")
 	} else if bytes.ContainsAny(data, "\x00") {
 		return errors.New("invalid characters in text")
 	}
-	// TODO: encoding
 	str := Unescape(string(data))
+	if dec != nil {
+		var err error
+		str, err = dec.String(str)
+		if err != nil {
+			return err
+		}
+	}
 	*s = String(str)
 	return nil
 }
