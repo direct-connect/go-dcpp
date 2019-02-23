@@ -10,6 +10,7 @@ require (
 	github.com/hidal-go/hidalgo v0.0.0-20190206034238-1b78aeeb8c22
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
+	github.com/rakyll/statik v0.1.5
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.3.1
 	github.com/stretchr/testify v1.3.0 // indirect

@@ -7,16 +7,16 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/net/http2"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
-
-	"golang.org/x/net/http2"
 
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/adc/types"
@@ -30,6 +30,7 @@ type Config struct {
 	Owner            string
 	Website          string
 	Email            string
+	Keyprint         string
 	Soft             Software
 	MOTD             string
 	ChatLog          int
@@ -70,7 +71,9 @@ func NewHub(conf Config) (*Hub, error) {
 	h.rooms.bySID = make(map[SID]*Room)
 	h.globalChat = h.newRoom("")
 	h.initADC()
-	h.initHTTP()
+	if err := h.initHTTP(); err != nil {
+		return nil, err
+	}
 	h.userDB = NewUserDatabase()
 	h.initCommands()
 	return h, nil
@@ -82,6 +85,7 @@ type Hub struct {
 	created time.Time
 	conf    Config
 	tls     *tls.Config
+	h1      *http.Server
 	h2      *http2.Server
 	h2conf  *http2.ServeConnOpts
 
@@ -150,6 +154,7 @@ type Stats struct {
 	Enc      string   `json:"encoding,omitempty"`
 	Soft     Software `json:"soft"`
 	Uptime   uint64   `json:"uptime,omitempty"`
+	Keyprint string   `json:"-"`
 }
 
 func (st *Stats) DefaultAddr() string {
@@ -164,14 +169,16 @@ func (h *Hub) Stats() Stats {
 	users := len(h.peers.byName)
 	h.peers.RUnlock()
 	st := Stats{
-		Name:    h.conf.Name,
-		Desc:    h.conf.Desc,
-		Owner:   h.conf.Owner,
-		Website: h.conf.Website,
-		Email:   h.conf.Email,
-		Users:   users,
-		Enc:     "utf-8",
-		Soft:    h.conf.Soft,
+		Name:     h.conf.Name,
+		Desc:     h.conf.Desc,
+		Owner:    h.conf.Owner,
+		Website:  h.conf.Website,
+		Email:    h.conf.Email,
+		Icon:     "icon.png",
+		Users:    users,
+		Enc:      "utf-8",
+		Soft:     h.conf.Soft,
+		Keyprint: h.conf.Keyprint,
 	}
 	if h.conf.Addr != "" {
 		st.Addr = append(st.Addr, h.conf.Addr)
@@ -242,18 +249,18 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 		proto := tconn.ConnectionState().NegotiatedProtocol
 		if proto != "" {
 			log.Printf("%s: ALPN negotiated %q", tconn.RemoteAddr(), proto)
-		} else {
-			log.Printf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
 		}
 		switch proto {
 		case "nmdc":
 			return h.ServeNMDC(tconn)
 		case "adc":
 			return h.ServeADC(tconn)
-		case "h2":
+		case "http/0.9", "http/1.0", "http/1.1":
+			return h.ServeHTTP1(tconn)
+		case "h2", "h2c":
 			return h.ServeHTTP2(tconn)
 		case "":
-			// ALPN is not supported
+			log.Printf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
 			return h.serve(tconn, false)
 		default:
 			return fmt.Errorf("unsupported protocol: %q", proto)
@@ -266,6 +273,9 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 	case "NICK":
 		// IRC handshake
 		return h.ServeIRC(conn)
+	case "HEAD", "GET ", "POST", "PUT ", "DELE", "OPTI":
+		// HTTP1 request
+		return h.ServeHTTP1(conn)
 	}
 	return fmt.Errorf("unknown protocol magic: %q", string(buf))
 }

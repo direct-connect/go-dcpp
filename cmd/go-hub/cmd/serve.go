@@ -170,6 +170,7 @@ func init() {
 			ChatLogJoin:      conf.Chat.Log.Join,
 			Addr:             addr,
 			TLS:              tlsConf,
+			Keyprint:         kp,
 		})
 		if err != nil {
 			return err
@@ -216,8 +217,9 @@ dchub://%s
 ircs://%s/hub
 irc://%s/hub
 
-[ HTTPS stats ]
+[ HTTP stats ]
 https://%s%s
+http://%s%s
 
 `,
 			addr, kp,
@@ -228,6 +230,7 @@ https://%s%s
 			addr,
 			addr,
 
+			addr, hub.HTTPInfoPathV0,
 			addr, hub.HTTPInfoPathV0,
 		)
 		return h.ListenAndServe(host)
