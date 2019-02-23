@@ -10,9 +10,9 @@ import (
 )
 
 type PingHubInfo struct {
-	Ext     []string
-	HubInfo HubInfo
-	Users   []User
+	HubInfo
+	Ext   []string
+	Users []User
 }
 
 func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
@@ -157,7 +157,7 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 						return nil, err
 					}
 					// done, should switch to NORMAL
-					return nil, nil
+					return &hub, nil
 				}
 				// other users
 				var u User

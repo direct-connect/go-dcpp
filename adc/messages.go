@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/direct-connect/go-dcpp/tiger"
 )
@@ -232,6 +233,14 @@ type User struct {
 
 func (User) Cmd() MsgType {
 	return MsgType{'I', 'N', 'F'}
+}
+
+func (u *User) Normalize() {
+	if u.Application == "" {
+		if i := strings.LastIndex(u.Version, " "); i >= 0 {
+			u.Application, u.Version = u.Version[:i], u.Version[i+1:]
+		}
+	}
 }
 
 var (

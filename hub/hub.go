@@ -159,7 +159,7 @@ func (h *Hub) Stats() Stats {
 		Website: h.conf.Website,
 		Email:   h.conf.Email,
 		Users:   users,
-		Enc:     "utf8",
+		Enc:     "utf-8",
 		Soft:    h.conf.Soft,
 	}
 	if h.conf.Addr != "" {

@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/htmlindex"
+
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -32,11 +35,76 @@ type HubInfo struct {
 	Bots     []string
 }
 
+func (h *HubInfo) decodeWith(enc encoding.Encoding) error {
+	dec := enc.NewDecoder()
+	for _, ptr := range []*string{
+		&h.Name,
+		&h.Desc,
+		&h.Topic,
+		&h.Owner,
+	} {
+		s, err := dec.String(*ptr)
+		if err != nil {
+			return err
+		}
+		*ptr = s
+	}
+	for i := range h.Users {
+		u := &h.Users[i]
+		s, err := dec.String(string(u.Name))
+		if err != nil {
+			return err
+		}
+		u.Name = Name(s)
+		s, err = dec.String(string(u.Desc))
+		if err != nil {
+			return err
+		}
+		u.Desc = String(s)
+	}
+	return nil
+}
+
+func (h *HubInfo) decode() error {
+	if strings.Contains(h.Encoding, "@") {
+		// YnHub may send an email in the encoding field
+		if h.Owner == "" {
+			h.Owner = h.Encoding
+		}
+		h.Encoding = ""
+		return nil
+	}
+	code := strings.ToLower(h.Encoding)
+	// some hubs are misconfigured and send garbage in the encoding field
+	code = strings.Trim(code, "= ")
+	if h.Encoding == "" {
+		return nil
+	}
+	if len(code) == 4 {
+		// some hubs forget the "cp" prefix and just use "1250" as an encoding
+		if _, err := strconv.Atoi(code); err == nil {
+			code = "cp" + code
+		}
+	}
+	enc, err := htmlindex.Get(code)
+	if err != nil {
+		return nil
+	}
+	err = h.decodeWith(enc)
+	if err != nil {
+		return nil
+	}
+	if code, _ = htmlindex.Name(enc); code != "" {
+		h.Encoding = code
+	}
+	return nil
+}
+
 type timeoutErr interface {
 	Timeout() bool
 }
 
-func Ping(ctx context.Context, addr string) (*HubInfo, error) {
+func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 	addr, err := NormalizeAddr(addr)
 	if err != nil {
 		return nil, err
@@ -85,6 +153,12 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 	}
 
 	var hub HubInfo
+	defer func() {
+		// make sure to decode the info at the end
+		if gerr == nil {
+			gerr = hub.decode()
+		}
+	}()
 
 	// TODO: check if it's always the case
 	pk := strings.SplitN(lock.PK, " ", 2)

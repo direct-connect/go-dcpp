@@ -247,6 +247,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 			u.Ip4 = ip
 		}
 	}
+	u.Normalize()
 	peer.user = u
 
 	st := h.Stats()
@@ -538,11 +539,6 @@ func (p *adcPeer) Info() adc.User {
 
 func (p *adcPeer) User() User {
 	u := p.Info()
-	if u.Application == "" {
-		if i := strings.Index(u.Version, " "); i >= 0 {
-			u.Application, u.Version = u.Version[:i], u.Version[i+1:]
-		}
-	}
 	return User{
 		Name:  u.Name,
 		Share: uint64(u.ShareSize),
