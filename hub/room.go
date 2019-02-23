@@ -115,9 +115,10 @@ func (r *Room) Join(p Peer) {
 	_, ok := r.peers[p]
 	if !ok {
 		r.peers[p] = struct{}{}
-		r.h.rooms.Lock()
-		r.h.rooms.peers[p] = append(r.h.rooms.peers[p], r)
-		r.h.rooms.Unlock()
+		pb := p.base()
+		pb.rooms.Lock()
+		pb.rooms.list = append(pb.rooms.list, r)
+		pb.rooms.Unlock()
 	}
 	r.pmu.Unlock()
 	if !ok {

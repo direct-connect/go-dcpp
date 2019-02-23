@@ -2,9 +2,12 @@ package hub
 
 import (
 	"net"
+	"sync"
 )
 
 type Peer interface {
+	base() *BasePeer
+
 	SID() SID
 	Name() string
 	RemoteAddr() net.Addr
@@ -34,6 +37,15 @@ type BasePeer struct {
 
 	addr net.Addr
 	sid  SID
+
+	rooms struct {
+		sync.RWMutex
+		list []*Room
+	}
+}
+
+func (p *BasePeer) base() *BasePeer {
+	return p
 }
 
 func (p *BasePeer) SID() SID {

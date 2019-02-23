@@ -57,7 +57,6 @@ func NewHub(conf Config) *Hub {
 	h.peers.bySID = make(map[SID]Peer)
 	h.rooms.byName = make(map[string]*Room)
 	h.rooms.bySID = make(map[SID]*Room)
-	h.rooms.peers = make(map[Peer][]*Room)
 	h.globalChat = h.newRoom("")
 	h.initADC()
 	h.initHTTP()
@@ -106,7 +105,6 @@ type Hub struct {
 		sync.RWMutex
 		byName map[string]*Room
 		bySID  map[SID]*Room
-		peers  map[Peer][]*Room
 	}
 }
 
@@ -414,13 +412,13 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 
 func (h *Hub) leaveRooms(peer Peer) {
 	h.globalChat.Leave(peer)
-	h.rooms.Lock()
-	list := h.rooms.peers[peer]
-	delete(h.rooms.peers, peer)
-	h.rooms.Unlock()
-	for _, r := range list {
+	pb := peer.base()
+	pb.rooms.Lock()
+	defer pb.rooms.Unlock()
+	for _, r := range pb.rooms.list {
 		r.Leave(peer)
 	}
+	pb.rooms.list = nil
 }
 
 func (h *Hub) connectReq(from, to Peer, addr, token string, secure bool) {
