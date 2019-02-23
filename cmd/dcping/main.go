@@ -73,6 +73,7 @@ func init() {
 	pingOut := pingCmd.Flags().String("out", "json", "output format (json or xml)")
 	pingUsers := pingCmd.Flags().Bool("users", false, "return user list as well")
 	pingDebug := pingCmd.Flags().Bool("debug", false, "print protocol messages to stderr")
+	pingPretty := pingCmd.Flags().Bool("pretty", false, "pretty-print an output")
 	Root.AddCommand(pingCmd)
 	pingCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
@@ -86,9 +87,17 @@ func init() {
 		)
 		switch *pingOut {
 		case "json", "":
-			enc = json.NewEncoder(w)
+			e := json.NewEncoder(w)
+			if *pingPretty {
+				e.SetIndent("", "\t")
+			}
+			enc = e
 		case "xml":
-			enc = xml.NewEncoder(w)
+			e := xml.NewEncoder(w)
+			if *pingPretty {
+				e.Indent("", "\t")
+			}
+			enc = e
 		default:
 			return fmt.Errorf("unsupported format: %q", *pingOut)
 		}
