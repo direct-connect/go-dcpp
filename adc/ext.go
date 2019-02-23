@@ -19,7 +19,8 @@ var (
 	extZLIG = Feature{'Z', 'L', 'I', 'G'} // Compressed communication (Get)
 	extPING = Feature{'P', 'I', 'N', 'G'} // Pinger extension (additional info about hub)
 	FeaSEGA = Feature{'S', 'E', 'G', 'A'} // Grouping of file extensions in search
-	extUCMD = Feature{'U', 'C', 'M', 'D'} // User commands
+	FeaUCMD = Feature{'U', 'C', 'M', 'D'} // User commands
+	FeaUCM0 = Feature{'U', 'C', 'M', '0'} // User commands
 	FeaADCS = Feature{'A', 'D', 'C', 'S'} // ADC over TLS for C-H
 
 	FeaADC0 = Feature{'A', 'D', 'C', '0'} // ADC over TLS for C-C

@@ -121,6 +121,8 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 		adc.FeaTIGR: true,
 		// extensions
 		adc.FeaPING: true,
+		adc.FeaUCMD: true,
+		adc.FeaUCM0: true,
 	}
 
 	mutual := hubFeatures.Intersect(sup.Features)
@@ -291,10 +293,12 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 
-	err = h.adcSendUserCommand(peer)
-	if err != nil {
-		unbind()
-		return err
+	if peer.fea.IsSet(adc.FeaUCMD) || peer.fea.IsSet(adc.FeaUCM0) {
+		err = h.adcSendUserCommand(peer)
+		if err != nil {
+			unbind()
+			return err
+		}
 	}
 
 	// finally accept the user on the hub

@@ -33,8 +33,15 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 		//       if this extension is specified
 		//adc.FeaPING: true,
 
+		FeaUCMD: true,
+		FeaUCM0: true,
 		FeaBZIP: true,
-		// TODO: ZLIG
+		FeaSEGA: true,
+		extZLIF: true,
+		extONID: true,
+		extASCH: true,
+		extNAT0: true,
+		// TODO: anything else?
 	}
 
 	err = c.WriteHubMsg(Supported{

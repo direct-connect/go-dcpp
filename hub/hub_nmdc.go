@@ -79,11 +79,12 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdc.Features, nmdc.Na
 }
 
 var nmdcFeatures = nmdc.Features{
-	nmdc.FeaNoHello:   {},
-	nmdc.FeaNoGetINFO: {},
-	nmdc.FeaBotINFO:   {},
-	nmdc.FeaTTHSearch: {},
-	nmdc.FeaUserIP2:   {},
+	nmdc.FeaNoHello:     {},
+	nmdc.FeaNoGetINFO:   {},
+	nmdc.FeaBotINFO:     {},
+	nmdc.FeaTTHSearch:   {},
+	nmdc.FeaUserIP2:     {},
+	nmdc.FeaUserCommand: {},
 }
 
 func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
@@ -320,9 +321,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 
-	err = h.nmdcSendUserCommand(peer)
-	if err != nil {
-		return err
+	if peer.fea.Has(nmdc.FeaUserCommand) {
+		err = h.nmdcSendUserCommand(peer)
+		if err != nil {
+			return err
+		}
 	}
 
 	// send user list (except his own info)
