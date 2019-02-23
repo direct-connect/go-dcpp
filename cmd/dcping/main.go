@@ -10,13 +10,14 @@ import (
 	"log"
 	"os"
 	"runtime"
-
-	"github.com/direct-connect/go-dcpp/adc"
-	"github.com/direct-connect/go-dcpp/nmdc"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	dc "github.com/direct-connect/go-dcpp"
+	"github.com/direct-connect/go-dcpp/adc"
+	"github.com/direct-connect/go-dcpp/hublist"
+	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -107,18 +108,61 @@ func init() {
 		ctx := context.Background()
 		for _, addr := range args {
 			info, err := dc.Ping(ctx, addr)
-			if err != nil {
-				log.Println(err)
-				_ = enc.Encode(struct {
-					Error string `json:"error"`
-				}{Error: err.Error()})
-				continue
-			}
 			if !*pingUsers {
 				info.UserList = nil
 			}
-			if err = enc.Encode(info); err != nil {
-				return err
+			switch *pingOut {
+			case "json", "":
+				if err != nil {
+					log.Println(err)
+					_ = enc.Encode(struct {
+						Addr   []string `json:"addr"`
+						Status string   `json:"status"`
+					}{
+						Addr:   []string{addr},
+						Status: "offline",
+					})
+					continue
+				}
+				if err = enc.Encode(info); err != nil {
+					return err
+				}
+			case "xml":
+				var out hublist.Hub
+				if err != nil {
+					log.Println(err)
+					out = hublist.Hub{
+						Address: addr,
+						Status:  "Offline",
+					}
+				} else {
+					out = hublist.Hub{
+						Name:        info.Name,
+						Address:     info.Addr[0],
+						Description: info.Desc,
+						Email:       info.Email,
+						Encoding:    strings.ToUpper(info.Enc),
+						Icon:        info.Icon,
+						Website:     info.Website,
+						Users:       info.Users,
+						Shared:      info.Share,
+						Status:      "Online",
+					}
+					if info.Server != nil {
+						out.Software = info.Server.Name
+					}
+					for _, addr2 := range info.Addr[1:] {
+						if !strings.HasPrefix(addr, addr2) && !strings.HasPrefix(addr2, addr) {
+							out.Failover = addr2
+							break
+						}
+					}
+				}
+				if err = enc.Encode(out); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("unsupported format: %q", *pingOut)
 			}
 		}
 		return nil
