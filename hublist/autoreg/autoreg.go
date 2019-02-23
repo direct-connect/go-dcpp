@@ -259,6 +259,12 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 	if err != nil {
 		return err
 	}
+	u, err := nmdc.ParseAddr(info.Host)
+	if err != nil {
+		return err
+	}
+	info.Host = u.Host
+
 	info.Desc, err = readString()
 	if err != nil {
 		return err
