@@ -41,5 +41,5 @@ It also supports XML output:
 
 ```
 $ dcping ping --out=xml example.org
-<HubInfo Name="Example Hub" Description="Hub description" Address="adcs://example.org:411" Encoding="utf-8" Users="123" Files="2356" Shared="115350897664"><Software Name="test-hub" Version="1.0" Ext="TIGR" Ext="PING" Ext="BASE"></Software></HubInfo>
+<Hub Name="Example Hub" Description="Hub description" Address="adcs://example.org:411" Encoding="UTF-8" Users="123" Shared="115350897664" Software="test-hub" Status="Online"></Hub>
 ```
