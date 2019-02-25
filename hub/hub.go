@@ -372,6 +372,27 @@ func (h *Hub) registerCommand(cmd Command) {
 	}
 }
 
+func (h *Hub) isCommand(peer Peer, text string) bool {
+	if text == "" {
+		return true // pretend that this is a command
+	} else if text == "/fav" {
+		return true // special case
+	}
+	switch text[0] {
+	case '!', '+', '/':
+	default:
+		return false
+	}
+	sub := strings.SplitN(text, " ", 2)
+	cmd := sub[0][1:]
+	args := ""
+	if len(sub) > 1 {
+		args = sub[1]
+	}
+	h.command(peer, cmd, args)
+	return true
+}
+
 func (h *Hub) command(peer Peer, cmd string, args string) {
 	c, ok := h.cmds.byName[cmd]
 	if !ok {

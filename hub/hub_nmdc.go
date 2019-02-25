@@ -399,14 +399,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if string(msg.Name) != peer.Name() {
 				return errors.New("invalid name in the chat message")
 			}
-			if strings.HasPrefix(msg.Text, "!") {
-				sub := strings.SplitN(msg.Text, " ", 2)
-				cmd := sub[0][1:]
-				args := ""
-				if len(sub) > 1 {
-					args = sub[1]
-				}
-				h.command(peer, cmd, args)
+			if h.isCommand(peer, msg.Text) {
 				continue
 			}
 			h.globalChat.SendChat(peer, string(msg.Text))

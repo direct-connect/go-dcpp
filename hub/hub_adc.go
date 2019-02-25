@@ -66,10 +66,13 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed broadcast")
 			}
-			// TODO: read INF, update peer info
-			// TODO: update nick, make sure there is no duplicates
-			// TODO: disallow STA and some others
-			h.adcBroadcast(p, peer, h.Peers())
+			h.adcBroadcast(p, peer)
+		case *adc.FeaturePacket:
+			if peer.sid != p.ID {
+				return fmt.Errorf("malformed features broadcast")
+			}
+			// TODO: we ignore feature selectors for now
+			h.adcBroadcast(&adc.BroadcastPacket{BasePacket: p.BasePacket, ID: p.ID}, peer)
 		case *adc.EchoPacket:
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed echo packet")
@@ -80,7 +83,6 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 			if err = peer.conn.Flush(); err != nil {
 				return err
 			}
-			// TODO: disallow INF, STA and some others
 			h.adcDirect((*adc.DirectPacket)(p), peer)
 		case *adc.DirectPacket:
 			if peer.sid != p.ID {
@@ -396,16 +398,10 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
 		text := string(msg.Text)
-		if !strings.HasPrefix(text, "!") {
+		if h.isCommand(from, text) {
 			return
 		}
-		sub := strings.SplitN(text, " ", 2)
-		cmd := sub[0][1:]
-		args := ""
-		if len(sub) > 1 {
-			args = sub[1]
-		}
-		h.command(from, cmd, args)
+		// ignore
 	default:
 		// TODO: decode other packets
 	}
@@ -425,26 +421,19 @@ func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 	return peer.conn.Flush()
 }
 
-func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
-	if peers == nil {
-		peers = h.Peers()
-	}
+func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 	msg, err := p.Decode()
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
 		return
 	}
+	// TODO: read INF, update peer info
+	// TODO: update nick, make sure there is no duplicates
+	// TODO: disallow STA and some others
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
 		text := string(msg.Text)
-		if strings.HasPrefix(text, "!") {
-			sub := strings.SplitN(text, " ", 2)
-			cmd := sub[0][1:]
-			args := ""
-			if len(sub) > 1 {
-				args = sub[1]
-			}
-			h.command(from, cmd, args)
+		if h.isCommand(from, text) {
 			return
 		}
 		h.globalChat.SendChat(from, text)
@@ -454,6 +443,7 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from Peer, peers []Peer) {
 }
 
 func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
+	// TODO: disallow INF, STA and some others
 	peer := h.bySID(p.Targ)
 	if peer == nil {
 		r := h.roomBySID(p.Targ)
