@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -115,9 +116,10 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 
 	peer := &nmdcPeer{
 		BasePeer: BasePeer{
-			hub:  h,
-			addr: c.RemoteAddr(),
-			sid:  h.nextSID(),
+			hub:      h,
+			hubAddr:  c.LocalAddr(),
+			peerAddr: c.RemoteAddr(),
+			sid:      h.nextSID(),
 		},
 		conn: c, ip: addr.IP,
 		fea: nmdcFeatures.Intersect(fea),
@@ -463,23 +465,81 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 					return fmt.Errorf("search: invalid nick: %q", msg.Nick)
 				}
 			}
-			// TODO: convert to ADC
-			notify := h.Peers()
-			for _, p := range notify {
-				p2, ok := p.(*nmdcPeer)
-				if !ok || p2 == peer {
-					continue
-				}
-				if p.User().Share == 0 {
-					continue
-				}
-				_ = p2.writeOne(msg)
+			h.nmdcHandleSearch(peer, msg)
+		case *nmdc.SR:
+			if string(msg.Source) != peer.Name() {
+				return fmt.Errorf("search: invalid nick: %q", msg.Source)
 			}
+			to := h.byName(string(msg.Target))
+			if to == nil {
+				continue
+			}
+			h.nmdcHandleResult(peer, to, msg)
 		default:
 			// TODO
 			data, _ := msg.MarshalNMDC(nil)
 			log.Printf("%s: nmdc: $%s %v|", peer.RemoteAddr(), msg.Cmd(), string(data))
 		}
+	}
+}
+
+func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdc.Search) {
+	s := peer.newSearch(msg)
+	if msg.DataType == nmdc.DataTypeTTH {
+		// ignore other parameters
+		h.SearchTTH(*msg.TTH, s)
+		return
+	}
+	req := SearchReq{
+		Pattern: msg.Pattern,
+	}
+	if msg.SizeRestricted {
+		if msg.IsMaxSize {
+			req.MaxSize = msg.Size
+		} else {
+			req.MinSize = msg.Size
+		}
+	}
+	switch msg.DataType {
+	case nmdc.DataTypeAudio:
+		req.FileType = FileTypeAudio
+	case nmdc.DataTypeCompressed:
+		req.FileType = FileTypeCompressed
+	case nmdc.DataTypeDocument:
+		req.FileType = FileTypeDocuments
+	case nmdc.DataTypeExecutable:
+		req.FileType = FileTypeExecutable
+	case nmdc.DataTypePicture:
+		req.FileType = FileTypePicture
+	case nmdc.DataTypeVideo:
+		req.FileType = FileTypeVideo
+	case nmdc.DataTypeFolders:
+		req.FileType = FileTypeFolder
+	}
+	h.Search(req, s)
+}
+
+func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdc.SR) {
+	peer.search.RLock()
+	cur := peer.search.peers[to]
+	peer.search.RUnlock()
+
+	if cur.out == nil {
+		// not searching for anything
+		return
+	}
+	var res SearchResult
+	if msg.DirName != "" {
+		res = Dir{Peer: peer, Path: msg.DirName}
+	} else {
+		res = File{Peer: peer, Path: msg.FileName, Size: msg.FileSize, TTH: msg.TTH}
+	}
+	if !cur.req.Validate(res) {
+		return
+	}
+	if err := cur.out.SendResult(res); err != nil {
+		_ = cur.out.Close()
+		// TODO: remove from the map?
 	}
 }
 
@@ -524,6 +584,16 @@ type nmdcPeer struct {
 	user    nmdc.MyInfo
 	userRaw []byte
 	closeMu sync.Mutex
+
+	search struct {
+		sync.RWMutex
+		peers map[Peer]nmdcSearchRun
+	}
+}
+
+type nmdcSearchRun struct {
+	req *SearchReq // nil for TTH search
+	out Search
 }
 
 func (p *nmdcPeer) getState() uint32 {
@@ -641,6 +711,14 @@ func (p *nmdcPeer) writeOneNow(msg nmdc.Message) error {
 		return err
 	}
 	return nil
+}
+
+func (p *nmdcPeer) failed(e error) error {
+	return p.writeOneNow(&nmdc.Failed{Err: e})
+}
+
+func (p *nmdcPeer) error(e error) error {
+	return p.writeOneNow(&nmdc.Error{Err: e})
 }
 
 func (p *nmdcPeer) BroadcastJoin(peers []Peer) {
@@ -844,10 +922,103 @@ func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	})
 }
 
-func (p *nmdcPeer) failed(e error) error {
-	return p.writeOneNow(&nmdc.Failed{Err: e})
+func (p *nmdcPeer) newSearch(req *nmdc.Search) Search {
+	return &nmdcSearch{p: p, req: req}
 }
 
-func (p *nmdcPeer) error(e error) error {
-	return p.writeOneNow(&nmdc.Error{Err: e})
+type nmdcSearch struct {
+	p   *nmdcPeer
+	req *nmdc.Search
+}
+
+func (s *nmdcSearch) Peer() Peer {
+	return s.p
+}
+
+func (s *nmdcSearch) SendResult(r SearchResult) error {
+	h := s.p.hub
+	// TODO: additional filtering?
+	sr := &nmdc.SR{
+		Source:    nmdc.Name(r.From().Name()),
+		FreeSlots: 3, TotalSlots: 3, // TODO
+		HubName:    nmdc.Name(h.Stats().Name),
+		HubAddress: s.p.LocalAddr().String(),
+	}
+	switch r := r.(type) {
+	case File:
+		sr.FileName = r.Path
+		sr.FileSize = r.Size
+		if r.TTH != nil {
+			sr.HubName = ""
+			sr.TTH = r.TTH
+		}
+	case Dir:
+		sr.DirName = r.Path
+	default:
+		return nil // ignore
+	}
+	return s.p.writeOne(sr)
+}
+
+func (s *nmdcSearch) Close() error {
+	return nil // TODO: block new results
+}
+
+func (p *nmdcPeer) setActiveSearch(out Search, req *SearchReq) {
+	p2 := out.Peer()
+	p.search.Lock()
+	defer p.search.Unlock()
+	cur := p.search.peers[p2]
+	if cur.out != nil {
+		_ = cur.out.Close()
+	}
+	if p.search.peers == nil {
+		p.search.peers = make(map[Peer]nmdcSearchRun)
+	}
+	p.search.peers[p2] = nmdcSearchRun{out: out, req: req}
+}
+
+func (p *nmdcPeer) Search(ctx context.Context, req SearchReq, out Search) error {
+	p.setActiveSearch(out, &req)
+
+	msg := &nmdc.Search{
+		Nick:           nmdc.Name(out.Peer().Name()),
+		Pattern:        req.Pattern,
+		DataType:       nmdc.DataTypeAny,
+		SizeRestricted: req.MinSize != 0 || req.MaxSize != 0,
+	}
+	if req.MaxSize != 0 {
+		// prefer max size
+		msg.IsMaxSize = true
+		msg.Size = req.MaxSize
+	} else if req.MinSize != 0 {
+		msg.IsMaxSize = false
+		msg.Size = req.MinSize
+	}
+	switch req.FileType {
+	case FileTypeAudio:
+		msg.DataType = nmdc.DataTypeAudio
+	case FileTypeCompressed:
+		msg.DataType = nmdc.DataTypeCompressed
+	case FileTypeDocuments:
+		msg.DataType = nmdc.DataTypeDocument
+	case FileTypeExecutable:
+		msg.DataType = nmdc.DataTypeExecutable
+	case FileTypePicture:
+		msg.DataType = nmdc.DataTypePicture
+	case FileTypeVideo:
+		msg.DataType = nmdc.DataTypeVideo
+	case FileTypeFolder:
+		msg.DataType = nmdc.DataTypeFolders
+	}
+	return p.writeOne(msg)
+}
+
+func (p *nmdcPeer) SearchTTH(ctx context.Context, tth TTH, out Search) error {
+	p.setActiveSearch(out, nil) // TTH search
+
+	return p.writeOne(&nmdc.Search{
+		Nick:     nmdc.Name(out.Peer().Name()),
+		DataType: nmdc.DataTypeTTH, TTH: &tth,
+	})
 }

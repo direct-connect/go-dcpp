@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"net"
 	"sync"
 )
@@ -10,6 +11,7 @@ type Peer interface {
 
 	SID() SID
 	Name() string
+	LocalAddr() net.Addr
 	RemoteAddr() net.Addr
 	User() User
 
@@ -30,13 +32,17 @@ type Peer interface {
 
 	ConnectTo(peer Peer, addr string, token string, secure bool) error
 	RevConnectTo(peer Peer, token string, secure bool) error
+
+	Search(ctx context.Context, req SearchReq, out Search) error
+	SearchTTH(ctx context.Context, tth TTH, out Search) error
 }
 
 type BasePeer struct {
 	hub *Hub
 
-	addr net.Addr
-	sid  SID
+	hubAddr  net.Addr
+	peerAddr net.Addr
+	sid      SID
 
 	rooms struct {
 		sync.RWMutex
@@ -52,6 +58,10 @@ func (p *BasePeer) SID() SID {
 	return p.sid
 }
 
+func (p *BasePeer) LocalAddr() net.Addr {
+	return p.hubAddr
+}
+
 func (p *BasePeer) RemoteAddr() net.Addr {
-	return p.addr
+	return p.peerAddr
 }

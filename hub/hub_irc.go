@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -140,9 +141,10 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 
 	peer := &ircPeer{
 		BasePeer: BasePeer{
-			hub:  h,
-			addr: conn.RemoteAddr(),
-			sid:  h.nextSID(),
+			hub:      h,
+			hubAddr:  conn.LocalAddr(),
+			peerAddr: conn.RemoteAddr(),
+			sid:      h.nextSID(),
 		},
 		hostPref: pref,
 		ownPref: &irc.Prefix{
@@ -481,5 +483,13 @@ func (p *ircPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 
 func (p *ircPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	// TODO: DCC?
+	return nil
+}
+
+func (p *ircPeer) Search(ctx context.Context, req SearchReq, out Search) error {
+	return nil
+}
+
+func (p *ircPeer) SearchTTH(ctx context.Context, tth TTH, out Search) error {
 	return nil
 }

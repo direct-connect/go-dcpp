@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -153,9 +154,10 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 	}
 	return &adcPeer{
 		BasePeer: BasePeer{
-			hub:  h,
-			addr: c.RemoteAddr(),
-			sid:  sid,
+			hub:      h,
+			hubAddr:  c.LocalAddr(),
+			peerAddr: c.RemoteAddr(),
+			sid:      sid,
 		},
 		conn: c,
 		fea:  mutual,
@@ -244,7 +246,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 
 	if u.Ip4 == "0.0.0.0" {
-		ip, _, _ := net.SplitHostPort(peer.addr.String())
+		ip, _, _ := net.SplitHostPort(peer.peerAddr.String())
 		if ip != "" {
 			u.Ip4 = ip
 		}
@@ -802,4 +804,12 @@ func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 		return err
 	}
 	return p.conn.Flush()
+}
+
+func (p *adcPeer) Search(ctx context.Context, req SearchReq, out Search) error {
+	return nil // TODO: implement
+}
+
+func (p *adcPeer) SearchTTH(ctx context.Context, tth TTH, out Search) error {
+	return nil // TODO: implement
 }

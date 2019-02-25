@@ -1041,26 +1041,28 @@ func (m *Error) UnmarshalNMDC(dec *encoding.Decoder, text []byte) error {
 type DataType byte
 
 const (
-	DataTypeAnyFileType     = DataType('1')
-	DataTypeAudioFiles      = DataType('2')
-	DataTypeCompressedFiles = DataType('3')
-	DataTypeDocumentFiles   = DataType('4')
-	DataTypeExecutableFiles = DataType('5')
-	DataTypePictureFiles    = DataType('6')
-	DataTypeVideoFiles      = DataType('7')
-	DataTypeFolders         = DataType('8')
-	DataTypeTTH             = DataType('9')
+	DataTypeAny        = DataType('1')
+	DataTypeAudio      = DataType('2')
+	DataTypeCompressed = DataType('3')
+	DataTypeDocument   = DataType('4')
+	DataTypeExecutable = DataType('5')
+	DataTypePicture    = DataType('6')
+	DataTypeVideo      = DataType('7')
+	DataTypeFolders    = DataType('8')
+	DataTypeTTH        = DataType('9')
 )
 
 type Search struct {
-	Address        string
-	Nick           Name
+	Address string
+	Nick    Name
+
 	SizeRestricted bool
 	IsMaxSize      bool
 	Size           uint64
 	DataType       DataType
-	Pattern        string
-	TTH            *tiger.Hash
+
+	Pattern string
+	TTH     *tiger.Hash
 }
 
 func (*Search) Cmd() string {
@@ -1081,15 +1083,16 @@ func (m *Search) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	}
 	buf.WriteByte(' ')
 	var a [][]byte
-	if m.SizeRestricted == true {
+	if m.SizeRestricted {
 		a = append(a, []byte{'T'})
+		if m.IsMaxSize {
+			a = append(a, []byte{'T'})
+		} else {
+			a = append(a, []byte{'F'})
+		}
 	} else {
 		a = append(a, []byte{'F'})
-	}
-	if m.IsMaxSize == true {
-		a = append(a, []byte{'T'})
-	} else {
-		a = append(a, []byte{'F'})
+		a = append(a, []byte{'T'}) // should be set to T
 	}
 	a = append(a, []byte(strconv.FormatUint(m.Size, 10)))
 	a = append(a, []byte{byte(m.DataType)})
@@ -1210,8 +1213,9 @@ type SR struct {
 	DirName    string
 	FreeSlots  int
 	TotalSlots int
-	HubName    HubName
-	Address    string
+	HubName    Name
+	TTH        *tiger.Hash
+	HubAddress string
 	Target     Name
 }
 
@@ -1230,30 +1234,42 @@ func (m *SR) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf.Write(src)
 	buf.WriteByte(' ')
 	if m.FileName == "" && m.DirName == "" {
-		return nil, fmt.Errorf("invalid SR command")
+		return nil, fmt.Errorf("invalid SR command: empty name and path")
 	}
+	var path string
 	if m.FileName != "" {
-		fileName := strings.Replace(m.FileName, "/", "\\", -1)
-		buf.Write([]byte(fileName))
-		buf.WriteByte(srSep)
-		buf.Write([]byte(strconv.FormatUint(m.FileSize, 10)))
+		path = m.FileName
 	} else {
-		dirName := strings.Replace(m.DirName, "/", "\\", -1)
-		buf.Write([]byte(dirName))
+		path = m.DirName
 	}
-	buf.WriteByte(' ')
-	buf.Write([]byte(strconv.Itoa(m.FreeSlots)))
-	buf.WriteByte('/')
-	buf.Write([]byte(strconv.Itoa(m.TotalSlots)))
-	hubName, err := m.HubName.MarshalNMDC(enc)
+	path = strings.Replace(path, "/", "\\", -1)
+	data, err := String(path).MarshalNMDC(enc)
 	if err != nil {
 		return nil, err
 	}
+	buf.Write(data)
+	if m.FileName != "" {
+		buf.WriteByte(srSep)
+		buf.WriteString(strconv.FormatUint(m.FileSize, 10))
+	}
+	buf.WriteByte(' ')
+	buf.WriteString(strconv.Itoa(m.FreeSlots))
+	buf.WriteByte('/')
+	buf.WriteString(strconv.Itoa(m.TotalSlots))
 	buf.WriteByte(srSep)
-	buf.Write([]byte(hubName))
+	if m.TTH != nil {
+		buf.WriteString("TTH:")
+		buf.WriteString(m.TTH.Base32())
+	} else {
+		hubName, err := m.HubName.MarshalNMDC(enc)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(hubName)
+	}
 	buf.WriteByte(' ')
 	buf.WriteByte('(')
-	buf.Write([]byte(m.Address))
+	buf.WriteString(m.HubAddress)
 	buf.WriteByte(')')
 	if m.Target != "" {
 		target, err := m.Target.MarshalNMDC(enc)
@@ -1267,69 +1283,91 @@ func (m *SR) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 }
 
 func (m *SR) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
-	arr := bytes.SplitN(data, []byte(" "), 5)
-	if len(arr) != 4 {
-		return fmt.Errorf("invalid SR command")
+	i := bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid SR command: missing name")
 	}
-	for i, f := range arr {
-		switch i {
-		case 0:
-			err := m.Source.UnmarshalNMDC(dec, f)
-			if err != nil {
-				return err
-			}
-		case 1:
-			i = bytes.Index(f, []byte{srSep})
-			if i < 0 {
-				dirName := strings.Replace(string(f), "\\", "/", -1)
-				m.DirName = dirName
-				continue
-			}
-			fileName := strings.Replace(string(f[:i]), "\\", "/", -1)
-			m.FileName = fileName
-			size, err := strconv.ParseUint(strings.TrimSpace(string(f[i+1:])), 10, 64)
-			if err != nil {
-				return err
-			}
-			m.FileSize = size
-		case 2:
-			i = bytes.Index(f, []byte("/"))
-			if i < 0 {
-				return fmt.Errorf("invalid SR command")
-			}
-			free, err := strconv.Atoi(string(f[:i]))
-			if err != nil {
-				return fmt.Errorf("invalid FreeSlots: %v", err)
-			}
-			m.FreeSlots = free
-			f = f[i+1:]
-			i = bytes.Index(f, []byte{srSep})
-			if i < 0 {
-				return fmt.Errorf("invalid SR command")
-			}
-			total, err := strconv.Atoi(string(f[:i]))
-			if err != nil {
-				return fmt.Errorf("invalid TotalSlots: %v", err)
-			}
-			m.TotalSlots = total
-			err = m.HubName.UnmarshalNMDC(dec, f[i+1:])
-			if err != nil {
-				return err
-			}
-		case 3:
-			i = bytes.Index(f, []byte{srSep})
-			if i < 0 {
-				m.Address = string(f[1 : len(f)-1])
-				continue
-			}
-			m.Address = string(f[1 : i-1])
-			err := m.Target.UnmarshalNMDC(dec, f[i+1:])
-			if err != nil {
-				return err
-			}
+	err := m.Source.UnmarshalNMDC(dec, data[:i])
+	if err != nil {
+		return err
+	}
+	data = data[i+1:]
+
+	i = bytes.Index(data, []byte(" "))
+	if i < 0 {
+		return errors.New("invalid SR command: missing size")
+	}
+	res := data[:i]
+	data = data[i+1:]
+
+	var path String
+	if i = bytes.Index(res, []byte{srSep}); i >= 0 {
+		if err := path.UnmarshalNMDC(dec, res[:i]); err != nil {
+			return err
+		}
+		m.FileName = strings.Replace(string(path), "\\", "/", -1)
+		m.FileSize, err = strconv.ParseUint(strings.TrimSpace(string(res[i+1:])), 10, 64)
+		if err != nil {
+			return err
+		}
+	} else {
+		if err := path.UnmarshalNMDC(dec, res); err != nil {
+			return err
+		}
+		m.DirName = strings.Replace(string(path), "\\", "/", -1)
+	}
+
+	i = bytes.Index(data, []byte{srSep})
+	if i < 0 {
+		return errors.New("invalid SR command: missing slots")
+	}
+	res = data[:i]
+	data = data[i+1:]
+
+	i = bytes.Index(res, []byte("/"))
+	if i < 0 {
+		return errors.New("invalid SR command: missing slots separator")
+	}
+	m.FreeSlots, err = strconv.Atoi(strings.TrimSpace(string(res[:i])))
+	if err != nil {
+		return err
+	}
+	m.TotalSlots, err = strconv.Atoi(strings.TrimSpace(string(res[i+1:])))
+	if err != nil {
+		return err
+	}
+
+	i = bytes.Index(data, []byte(" ("))
+	if i < 0 {
+		return errors.New("invalid SR command: missing TTH or hub name")
+	}
+	name := data[:i]
+	data = data[i+2:]
+	if bytes.HasPrefix(name, []byte("TTH:")) {
+		m.TTH = new(tiger.Hash)
+		err = m.TTH.FromBase32(string(name[4:]))
+		if err != nil {
+			return err
+		}
+	} else {
+		err = m.HubName.UnmarshalNMDC(dec, name)
+		if err != nil {
+			return err
 		}
 	}
-	return nil
+	i = bytes.Index(data, []byte(")"))
+	if i < 0 {
+		return errors.New("invalid SR command: missing hub address")
+	}
+	m.HubAddress = string(data[:i])
+	data = data[i+1:]
+	if len(data) == 0 {
+		return nil
+	} else if data[0] != srSep || len(data) == 1 {
+		return errors.New("invalid SR command: missing target")
+	}
+	data = data[1:]
+	return m.Target.UnmarshalNMDC(dec, data)
 }
 
 type FailOver struct {
