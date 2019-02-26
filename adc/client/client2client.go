@@ -298,7 +298,7 @@ func (c *PeerConn) StatFile(ctx context.Context, path string) (FileInfo, error) 
 		// TODO: handle not found error
 		return FileInfo{}, err
 	}
-	return FileInfo{Size: info.Size, TTH: info.Tiger}, nil
+	return FileInfo{Size: info.Size, TTH: info.TTH}, nil
 }
 
 func (c *PeerConn) GetFile(ctx context.Context, path string) (File, error) {
@@ -422,5 +422,5 @@ func (f *peerFile) Size() int64 {
 }
 
 func (f *peerFile) TTH() adc.TTH {
-	return f.info.Tiger
+	return f.info.TTH
 }

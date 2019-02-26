@@ -11,6 +11,7 @@ Requires Go 1.11+.
 - Fully multi-threaded.
 - Support NMDC, ADC and IRC users on the same hub.
 - Uses a single port for all protocols (protocol auto-detection).
+- Search between NMDC and ADC.
 - Supports TLS for ADC and NMDC.
 - Automatic TLS certificate generation.
 - HTTP pinger support.
@@ -20,7 +21,6 @@ Requires Go 1.11+.
 
 **TODO:**
 
-- Search between NMDC and ADC.
 - Operators.
 - Extensions and scripts.
 - Spam filters.

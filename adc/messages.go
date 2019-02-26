@@ -464,7 +464,7 @@ type SearchRequest struct {
 	Type FileType `adc:"TY"`
 
 	// TIGR ext
-	Tiger string `adc:"TR"`
+	TTH *TTH `adc:"TR"`
 
 	// SEGA ext
 	Group ExtGroup `adc:"GR"`
@@ -484,7 +484,7 @@ type SearchResult struct {
 	Slots int    `adc:"SL"`
 
 	// TIGR ext
-	Tiger TTH `adc:"TR"`
+	TTH *TTH `adc:"TR"`
 }
 
 func (SearchResult) Cmd() MsgType {

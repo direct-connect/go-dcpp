@@ -88,10 +88,8 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 			if peer.sid != p.ID {
 				return fmt.Errorf("malformed direct packet")
 			}
-			// TODO: disallow INF, STA and some others
 			h.adcDirect(p, peer)
 		case *adc.HubPacket:
-			// TODO: disallow INF, STA and some others
 			h.adcHub(p, peer)
 		default:
 			data, _ := p.MarshalPacket()
@@ -390,6 +388,7 @@ func (h *Hub) adcCheckUserPass(name string, salt []byte, hash tiger.Hash) (bool,
 }
 
 func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
+	// TODO: disallow INF, STA and some others
 	msg, err := p.Decode()
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
@@ -437,6 +436,8 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 			return
 		}
 		h.globalChat.SendChat(from, text)
+	case adc.SearchRequest:
+		h.adcHandleSearch(from, &msg)
 	default:
 		// TODO: decode other packets
 	}
@@ -459,11 +460,6 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 		case adc.ChatMessage:
 			r.SendChat(from, string(msg.Text))
 		}
-		return
-	}
-	if p2, ok := peer.(*adcPeer); ok {
-		_ = p2.conn.WritePacket(p)
-		_ = p2.conn.Flush()
 		return
 	}
 	msg, err := p.Decode()
@@ -494,8 +490,83 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	case adc.RevConnectRequest:
 		secure := strings.HasPrefix(msg.Proto, "ADCS")
 		h.revConnectReq(from, peer, msg.Token, secure)
+	case adc.SearchResult:
+		h.adcHandleResult(from, peer, &msg)
 	default:
 		// TODO: decode other packets
+	}
+}
+
+func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest) {
+	s := peer.newSearch(req.Token)
+	if req.TTH != nil {
+		// ignore other parameters
+		h.Search(TTHSearch(*req.TTH), s)
+		return
+	}
+	name := NameSearch{
+		And: req.And,
+		Not: req.Not,
+	}
+	var sr SearchRequest = name
+	if req.Type == adc.FileTypeFile ||
+		req.Eq != 0 || req.Le != 0 || req.Ge != 0 ||
+		len(req.Ext) != 0 || len(req.NoExt) != 0 ||
+		req.Group != adc.ExtNone {
+		freq := FileSearch{
+			NameSearch: name,
+			MinSize:    uint64(req.Ge),
+			MaxSize:    uint64(req.Le),
+			Ext:        req.Ext,
+			NoExt:      req.NoExt,
+		}
+		if req.Eq != 0 {
+			freq.MinSize = uint64(req.Eq)
+			freq.MaxSize = uint64(req.Eq)
+		}
+		switch req.Group {
+		case adc.ExtAudio:
+			freq.FileType = FileTypeAudio
+		case adc.ExtArch:
+			freq.FileType = FileTypeCompressed
+		case adc.ExtDoc:
+			freq.FileType = FileTypeDocuments
+		case adc.ExtExe:
+			freq.FileType = FileTypeExecutable
+		case adc.ExtImage:
+			freq.FileType = FileTypePicture
+		case adc.ExtVideo:
+			freq.FileType = FileTypeVideo
+		}
+		sr = freq
+	}
+	h.Search(sr, s)
+}
+
+func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
+	if to, ok := to.(*adcPeer); ok {
+		_ = to.conn.WriteDirect(peer.SID(), to.SID(), *res)
+		_ = to.conn.Flush()
+		return
+	}
+	peer.search.RLock()
+	s := peer.search.tokens[res.Token]
+	peer.search.RUnlock()
+	if s == nil {
+		return
+	}
+	res.Path = strings.TrimPrefix(res.Path, "/")
+	var sr SearchResult
+	if res.TTH != nil {
+		sr = File{Peer: peer, Path: res.Path, Size: uint64(res.Size), TTH: res.TTH}
+	} else {
+		sr = Dir{Peer: peer, Path: res.Path}
+	}
+	if err := s.SendResult(sr); err != nil {
+		_ = s.Close()
+		peer.search.Lock()
+		delete(peer.search.tokens, res.Token)
+		peer.search.Unlock()
 	}
 }
 
@@ -512,6 +583,11 @@ type adcPeer struct {
 
 	closeMu sync.Mutex
 	closed  bool
+
+	search struct {
+		sync.RWMutex
+		tokens map[string]Search
+	}
 }
 
 func (p *adcPeer) Name() string {
@@ -796,10 +872,120 @@ func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	return p.conn.Flush()
 }
 
-func (p *adcPeer) Search(ctx context.Context, req SearchReq, out Search) error {
-	return nil // TODO: implement
+func (p *adcPeer) newSearch(token string) Search {
+	return &adcSearch{p: p, token: token}
 }
 
-func (p *adcPeer) SearchTTH(ctx context.Context, tth TTH, out Search) error {
-	return nil // TODO: implement
+type adcSearch struct {
+	p     *adcPeer
+	token string
+}
+
+func (s *adcSearch) Peer() Peer {
+	return s.p
+}
+
+func (s *adcSearch) SendResult(r SearchResult) error {
+	sr := adc.SearchResult{
+		Token: s.token,
+		Slots: 1, // TODO
+	}
+	switch r := r.(type) {
+	case Dir:
+		if !strings.HasPrefix(r.Path, "/") {
+			r.Path = "/" + r.Path
+		}
+		sr.Path = r.Path
+	case File:
+		if !strings.HasPrefix(r.Path, "/") {
+			r.Path = "/" + r.Path
+		}
+		sr.Path = r.Path
+		sr.Size = int64(r.Size)
+		sr.TTH = r.TTH
+	default:
+		return nil // ignore
+	}
+	err := s.p.conn.WriteDirect(r.From().SID(), s.p.SID(), sr)
+	if err == nil {
+		err = s.p.conn.Flush()
+	}
+	return err
+}
+
+func (s *adcSearch) Close() error {
+	return nil // TODO: block new results
+}
+
+func (p *adcPeer) searchToken(out Search) string {
+	token := strconv.FormatUint(rand.Uint64(), 16)
+	p.search.Lock()
+	if p.search.tokens == nil {
+		p.search.tokens = make(map[string]Search)
+	}
+	p.search.tokens[token] = out
+	p.search.Unlock()
+	return token
+}
+
+func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
+	token := ""
+	if as, ok := out.(*adcSearch); ok {
+		token = as.token
+	} else {
+		token = p.searchToken(out)
+	}
+	msg := adc.SearchRequest{
+		Token: token,
+	}
+	if r, ok := req.(TTHSearch); ok {
+		msg.TTH = (*TTH)(&r)
+	} else {
+		var name NameSearch
+		switch r := req.(type) {
+		case NameSearch:
+			name = r
+		case DirSearch:
+			name = r.NameSearch
+			msg.Type = adc.FileTypeDir
+		case FileSearch:
+			name = r.NameSearch
+			msg.Type = adc.FileTypeFile
+			if r.MinSize != 0 {
+				msg.Ge = int64(r.MinSize)
+			}
+			if r.MaxSize != 0 {
+				msg.Le = int64(r.MaxSize)
+			}
+			if r.MinSize == r.MaxSize {
+				msg.Le, msg.Ge = 0, 0
+				msg.Eq = int64(r.MaxSize)
+			}
+			msg.Ext = r.Ext
+			msg.NoExt = r.NoExt
+			switch r.FileType {
+			case FileTypeAudio:
+				msg.Group = adc.ExtAudio
+			case FileTypeCompressed:
+				msg.Group = adc.ExtArch
+			case FileTypeDocuments:
+				msg.Group = adc.ExtDoc
+			case FileTypeExecutable:
+				msg.Group = adc.ExtExe
+			case FileTypePicture:
+				msg.Group = adc.ExtImage
+			case FileTypeVideo:
+				msg.Group = adc.ExtVideo
+			}
+		default:
+			return nil // ignore
+		}
+		msg.And = name.And
+		msg.Not = name.Not
+	}
+	err := p.conn.WriteBroadcast(out.Peer().SID(), msg)
+	if err == nil {
+		err = p.conn.Flush()
+	}
+	return err
 }

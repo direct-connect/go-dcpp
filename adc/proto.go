@@ -283,6 +283,56 @@ const (
 	ExtVideo ExtGroup = 0x20
 )
 
+var extGroups = map[string]ExtGroup{
+	// audio
+	"ape": ExtAudio, "flac": ExtAudio, "m4a": ExtAudio,
+	"mid": ExtAudio, "mp3": ExtAudio, "mpc": ExtAudio,
+	"ogg": ExtAudio, "ra": ExtAudio, "wav": ExtAudio,
+	"wma": ExtAudio,
+	// compressed
+	"7z": ExtArch, "ace": ExtArch, "arj": ExtArch,
+	"bz2": ExtArch, "gz": ExtArch, "lha": ExtArch,
+	"lzh": ExtArch, "rar": ExtArch, "tar": ExtArch,
+	"tz": ExtArch, "z": ExtArch, "zip": ExtArch,
+	// document
+	"doc": ExtDoc, "docx": ExtDoc, "htm": ExtDoc,
+	"html": ExtDoc, "nfo": ExtDoc, "odf": ExtDoc,
+	"odp": ExtDoc, "ods": ExtDoc, "odt": ExtDoc,
+	"pdf": ExtDoc, "ppt": ExtDoc, "pptx": ExtDoc,
+	"rtf": ExtDoc, "txt": ExtDoc, "xls": ExtDoc,
+	"xlsx": ExtDoc, "xml": ExtDoc, "xps": ExtDoc,
+	// executable
+	"app": ExtExe, "bat": ExtExe, "cmd": ExtExe,
+	"com": ExtExe, "dll": ExtExe, "exe": ExtExe,
+	"jar": ExtExe, "msi": ExtExe, "ps1": ExtExe,
+	"vbs": ExtExe, "wsf": ExtExe,
+	// picture
+	"bmp": ExtImage, "cdr": ExtImage, "eps": ExtImage,
+	"gif": ExtImage, "ico": ExtImage, "img": ExtImage,
+	"jpeg": ExtImage, "jpg": ExtImage, "png": ExtImage,
+	"ps": ExtImage, "psd": ExtImage, "sfw": ExtImage,
+	"tga": ExtImage, "tif": ExtImage, "webp": ExtImage,
+	// video
+	"3gp": ExtVideo, "asf": ExtVideo, "asx": ExtVideo,
+	"avi": ExtVideo, "divx": ExtVideo, "flv": ExtVideo,
+	"mkv": ExtVideo, "mov": ExtVideo, "mp4": ExtVideo,
+	"mpeg": ExtVideo, "mpg": ExtVideo, "ogm": ExtVideo,
+	"pxp": ExtVideo, "qt": ExtVideo, "rm": ExtVideo,
+	"rmvb": ExtVideo, "swf": ExtVideo, "vob": ExtVideo,
+	"webm": ExtVideo, "wmv": ExtVideo,
+}
+
 type ExtGroup int
 
-func (t ExtGroup) Is(st ExtGroup) bool { return t&st != 0 }
+func (t ExtGroup) Has(st ExtGroup) bool { return t&st != 0 }
+
+func (t ExtGroup) Matches(ext string) bool {
+	if t == 0 {
+		return true
+	}
+	if i := strings.LastIndex(ext, "."); i >= 0 {
+		ext = ext[i+1:]
+	}
+	ext = strings.ToLower(ext)
+	return t.Has(extGroups[ext])
+}

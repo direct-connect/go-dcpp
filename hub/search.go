@@ -11,9 +11,8 @@ type TTH = tiger.Hash
 type FileType int
 
 const (
-	FileTypeAny    = FileType(0)
-	FileTypeFolder = FileType(1 << iota)
-	FileTypePicture
+	FileTypeAny     = FileType(0)
+	FileTypePicture = FileType(1 << iota)
 	FileTypeAudio
 	FileTypeVideo
 	FileTypeCompressed
@@ -21,38 +20,80 @@ const (
 	FileTypeExecutable
 )
 
-type SearchReq struct {
-	Pattern  string // TODO: define what it means
-	MinSize  uint64
-	MaxSize  uint64
-	FileType FileType
+type NameSearch struct {
+	And []string
+	Not []string
 }
 
-func (r *SearchReq) Validate(res SearchResult) bool {
-	if r == nil {
-		return true
+func (NameSearch) isSearchReq() {}
+func (f NameSearch) MatchName(name string) bool {
+	return true // TODO
+}
+func (f NameSearch) Match(r SearchResult) bool {
+	switch r := r.(type) {
+	case Dir:
+		return f.MatchName(r.Path)
+	case File:
+		return f.MatchName(r.Path)
 	}
-	if r.FileType == FileTypeFolder {
-		if _, ok := res.(Dir); !ok {
-			return false
-		}
-	} else if r.FileType != FileTypeAny {
-		if _, ok := res.(File); !ok {
-			return false
-		}
-	}
-	if r.MinSize != 0 && r.MaxSize != 0 {
-		if f, ok := res.(File); ok {
-			if r.MinSize != 0 && f.Size < r.MinSize {
-				return false
-			}
-			if r.MaxSize != 0 && f.Size > r.MaxSize {
-				return false
-			}
-		}
-	}
-	// TODO: validate pattern
 	return true
+}
+
+type TTHSearch TTH
+
+func (TTHSearch) isSearchReq() {}
+func (h TTHSearch) Match(r SearchResult) bool {
+	switch r := r.(type) {
+	case File:
+		if r.TTH != nil {
+			return TTH(h) == *r.TTH
+		}
+	}
+	return true
+}
+
+type SearchRequest interface {
+	Match(r SearchResult) bool
+	isSearchReq()
+}
+
+type FileSearch struct {
+	NameSearch
+	Ext      []string
+	NoExt    []string
+	FileType FileType
+	MinSize  uint64
+	MaxSize  uint64
+}
+
+func (FileSearch) isSearchReq() {}
+func (s FileSearch) Match(r SearchResult) bool {
+	switch r := r.(type) {
+	case File:
+		if s.MinSize != 0 && s.MaxSize != 0 {
+			if s.MinSize != 0 && r.Size < s.MinSize {
+				return false
+			}
+			if s.MaxSize != 0 && r.Size > s.MaxSize {
+				return false
+			}
+		}
+		return s.NameSearch.MatchName(r.Path)
+	}
+	return false
+}
+
+type DirSearch struct {
+	NameSearch
+}
+
+func (DirSearch) isSearchReq() {}
+func (s DirSearch) Match(r SearchResult) bool {
+	switch r := r.(type) {
+	case Dir:
+		return s.NameSearch.MatchName(r.Path)
+	}
+	return false
 }
 
 type SearchResult interface {
@@ -88,7 +129,7 @@ type Search interface {
 	Close() error
 }
 
-func (h *Hub) Search(req SearchReq, s Search) {
+func (h *Hub) Search(req SearchRequest, s Search) {
 	peer := s.Peer()
 	// FIXME: should be bound to the close channel of the peer
 	ctx := context.TODO()
@@ -99,19 +140,5 @@ func (h *Hub) Search(req SearchReq, s Search) {
 			continue
 		}
 		_ = p.Search(ctx, req, s)
-	}
-}
-
-func (h *Hub) SearchTTH(tth TTH, s Search) {
-	peer := s.Peer()
-	// FIXME: should be bound to the close channel of the peer
-	ctx := context.TODO()
-	for _, p := range h.Peers() {
-		if p == peer {
-			continue
-		} else if p.User().Share == 0 {
-			continue
-		}
-		_ = p.SearchTTH(ctx, tth, s)
 	}
 }

@@ -33,8 +33,7 @@ type Peer interface {
 	ConnectTo(peer Peer, addr string, token string, secure bool) error
 	RevConnectTo(peer Peer, token string, secure bool) error
 
-	Search(ctx context.Context, req SearchReq, out Search) error
-	SearchTTH(ctx context.Context, tth TTH, out Search) error
+	Search(ctx context.Context, req SearchRequest, out Search) error
 }
 
 type BasePeer struct {

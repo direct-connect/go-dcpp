@@ -486,10 +486,6 @@ func (p *ircPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	return nil
 }
 
-func (p *ircPeer) Search(ctx context.Context, req SearchReq, out Search) error {
-	return nil
-}
-
-func (p *ircPeer) SearchTTH(ctx context.Context, tth TTH, out Search) error {
+func (p *ircPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
 	return nil
 }

@@ -405,7 +405,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			h.globalChat.SendChat(peer, string(msg.Text))
 		case *nmdc.GetNickList:
 			list := h.Peers()
-			peer.PeersJoin(list)
+			_ = peer.PeersJoin(list)
 		case *nmdc.ConnectToMe:
 			targ := h.byName(string(msg.Targ))
 			if targ == nil {
@@ -480,34 +480,40 @@ func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdc.Search) {
 	s := peer.newSearch(msg)
 	if msg.DataType == nmdc.DataTypeTTH {
 		// ignore other parameters
-		h.SearchTTH(*msg.TTH, s)
+		h.Search(TTHSearch(*msg.TTH), s)
 		return
 	}
-	req := SearchReq{
-		Pattern: msg.Pattern,
+	var name NameSearch
+	if p := strings.TrimSpace(msg.Pattern); p != "" {
+		name.And = strings.Split(p, " ")
 	}
-	if msg.SizeRestricted {
-		if msg.IsMaxSize {
-			req.MaxSize = msg.Size
-		} else {
-			req.MinSize = msg.Size
+	var req SearchRequest = name
+	if msg.DataType == nmdc.DataTypeFolders {
+		req = DirSearch{name}
+	} else if msg.DataType != nmdc.DataTypeAny || msg.SizeRestricted {
+		freq := FileSearch{NameSearch: name}
+		if msg.SizeRestricted {
+			if msg.IsMaxSize {
+				freq.MaxSize = msg.Size
+			} else {
+				freq.MinSize = msg.Size
+			}
 		}
-	}
-	switch msg.DataType {
-	case nmdc.DataTypeAudio:
-		req.FileType = FileTypeAudio
-	case nmdc.DataTypeCompressed:
-		req.FileType = FileTypeCompressed
-	case nmdc.DataTypeDocument:
-		req.FileType = FileTypeDocuments
-	case nmdc.DataTypeExecutable:
-		req.FileType = FileTypeExecutable
-	case nmdc.DataTypePicture:
-		req.FileType = FileTypePicture
-	case nmdc.DataTypeVideo:
-		req.FileType = FileTypeVideo
-	case nmdc.DataTypeFolders:
-		req.FileType = FileTypeFolder
+		switch msg.DataType {
+		case nmdc.DataTypeAudio:
+			freq.FileType = FileTypeAudio
+		case nmdc.DataTypeCompressed:
+			freq.FileType = FileTypeCompressed
+		case nmdc.DataTypeDocument:
+			freq.FileType = FileTypeDocuments
+		case nmdc.DataTypeExecutable:
+			freq.FileType = FileTypeExecutable
+		case nmdc.DataTypePicture:
+			freq.FileType = FileTypePicture
+		case nmdc.DataTypeVideo:
+			freq.FileType = FileTypeVideo
+		}
+		req = freq
 	}
 	h.Search(req, s)
 }
@@ -527,7 +533,7 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdc.SR) {
 	} else {
 		res = File{Peer: peer, Path: msg.FileName, Size: msg.FileSize, TTH: msg.TTH}
 	}
-	if !cur.req.Validate(res) {
+	if !cur.req.Match(res) {
 		return
 	}
 	if err := cur.out.SendResult(res); err != nil {
@@ -585,7 +591,7 @@ type nmdcPeer struct {
 }
 
 type nmdcSearchRun struct {
-	req *SearchReq // nil for TTH search
+	req SearchRequest
 	out Search
 }
 
@@ -957,7 +963,7 @@ func (s *nmdcSearch) Close() error {
 	return nil // TODO: block new results
 }
 
-func (p *nmdcPeer) setActiveSearch(out Search, req *SearchReq) {
+func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 	p2 := out.Peer()
 	p.search.Lock()
 	defer p.search.Unlock()
@@ -971,47 +977,55 @@ func (p *nmdcPeer) setActiveSearch(out Search, req *SearchReq) {
 	p.search.peers[p2] = nmdcSearchRun{out: out, req: req}
 }
 
-func (p *nmdcPeer) Search(ctx context.Context, req SearchReq, out Search) error {
-	p.setActiveSearch(out, &req)
+func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
+	p.setActiveSearch(out, req)
+	if req, ok := req.(TTHSearch); ok {
+		return p.writeOne(&nmdc.Search{
+			Nick:     nmdc.Name(out.Peer().Name()),
+			DataType: nmdc.DataTypeTTH, TTH: (*TTH)(&req),
+		})
+	}
 
 	msg := &nmdc.Search{
-		Nick:           nmdc.Name(out.Peer().Name()),
-		Pattern:        req.Pattern,
-		DataType:       nmdc.DataTypeAny,
-		SizeRestricted: req.MinSize != 0 || req.MaxSize != 0,
-	}
-	if req.MaxSize != 0 {
-		// prefer max size
-		msg.IsMaxSize = true
-		msg.Size = req.MaxSize
-	} else if req.MinSize != 0 {
-		msg.IsMaxSize = false
-		msg.Size = req.MinSize
-	}
-	switch req.FileType {
-	case FileTypeAudio:
-		msg.DataType = nmdc.DataTypeAudio
-	case FileTypeCompressed:
-		msg.DataType = nmdc.DataTypeCompressed
-	case FileTypeDocuments:
-		msg.DataType = nmdc.DataTypeDocument
-	case FileTypeExecutable:
-		msg.DataType = nmdc.DataTypeExecutable
-	case FileTypePicture:
-		msg.DataType = nmdc.DataTypePicture
-	case FileTypeVideo:
-		msg.DataType = nmdc.DataTypeVideo
-	case FileTypeFolder:
-		msg.DataType = nmdc.DataTypeFolders
-	}
-	return p.writeOne(msg)
-}
-
-func (p *nmdcPeer) SearchTTH(ctx context.Context, tth TTH, out Search) error {
-	p.setActiveSearch(out, nil) // TTH search
-
-	return p.writeOne(&nmdc.Search{
 		Nick:     nmdc.Name(out.Peer().Name()),
-		DataType: nmdc.DataTypeTTH, TTH: &tth,
-	})
+		DataType: nmdc.DataTypeAny,
+	}
+	var name NameSearch
+	switch req := req.(type) {
+	case NameSearch:
+		name = req
+	case DirSearch:
+		name = req.NameSearch
+		msg.DataType = nmdc.DataTypeFolders
+	case FileSearch:
+		name = req.NameSearch
+		if req.MaxSize != 0 {
+			// prefer max size
+			msg.SizeRestricted = true
+			msg.IsMaxSize = true
+			msg.Size = req.MaxSize
+		} else if req.MinSize != 0 {
+			msg.SizeRestricted = true
+			msg.IsMaxSize = false
+			msg.Size = req.MinSize
+		}
+		switch req.FileType {
+		case FileTypeAudio:
+			msg.DataType = nmdc.DataTypeAudio
+		case FileTypeCompressed:
+			msg.DataType = nmdc.DataTypeCompressed
+		case FileTypeDocuments:
+			msg.DataType = nmdc.DataTypeDocument
+		case FileTypeExecutable:
+			msg.DataType = nmdc.DataTypeExecutable
+		case FileTypePicture:
+			msg.DataType = nmdc.DataTypePicture
+		case FileTypeVideo:
+			msg.DataType = nmdc.DataTypeVideo
+		}
+	default:
+		return nil // ignore
+	}
+	msg.Pattern += strings.Join(name.And, " ")
+	return p.writeOne(msg)
 }
