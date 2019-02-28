@@ -108,7 +108,7 @@ func init() {
 		ctx := context.Background()
 		for _, addr := range args {
 			info, err := dc.Ping(ctx, addr)
-			if !*pingUsers {
+			if err == nil && !*pingUsers {
 				info.UserList = nil
 			}
 			switch *pingOut {
