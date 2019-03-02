@@ -95,11 +95,33 @@ func (h *Hub) serveIndex(w http.ResponseWriter, r *http.Request) {
 	_ = indexTmpl.Execute(w, st)
 }
 
+type userStats struct {
+	Name  string `json:"name"`
+	Share uint64 `json:"share,omitempty"`
+}
+
 func (h *Hub) serveV0Stats(w http.ResponseWriter, r *http.Request) {
 	st := h.Stats()
 	hd := w.Header()
 	hd.Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(st)
+
+	qu := r.URL.Query()
+	if qu.Get("users") != "1" {
+		_ = json.NewEncoder(w).Encode(st)
+		return
+	}
+
+	resp := struct {
+		Stats
+		UserList []userStats `json:"user_list,omitempty"`
+	}{Stats: st}
+	for _, p := range h.Peers() {
+		u := p.User()
+		resp.UserList = append(resp.UserList, userStats{
+			Name: u.Name, Share: u.Share,
+		})
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 var errHTTPStop = errors.New("http: stopping after a single connection")
