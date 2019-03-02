@@ -74,11 +74,23 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdc.Features, nmdc.Na
 	} else if !fea.Has(nmdc.FeaNoGetINFO) {
 		return nil, "", errors.New("NoGetINFO is not supported")
 	}
+
+	err = c.WriteMsg(&nmdc.Supports{
+		Ext: nmdcFeatures.List(),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	err = c.Flush()
+	if err != nil {
+		return nil, "", err
+	}
+
 	nick, err := c.ReadValidateNick(deadline)
 	if err != nil {
 		return nil, "", err
 	}
-	return fea, nick.Name, nil
+	return nmdcFeatures.Intersect(fea), nick.Name, nil
 }
 
 var nmdcFeatures = nmdc.Features{
@@ -122,7 +134,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 			sid:      h.nextSID(),
 		},
 		conn: c, ip: addr.IP,
-		fea: nmdcFeatures.Intersect(fea),
+		fea: fea,
 	}
 	peer.user.Name = nick
 
@@ -227,13 +239,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 
 	c := peer.conn
-	err := c.WriteMsg(&nmdc.Supports{
-		Ext: peer.fea.List(),
-	})
-	if err != nil {
-		return err
-	}
-	err = c.WriteMsg(&nmdc.HubName{
+	err := c.WriteMsg(&nmdc.HubName{
 		Name: nmdc.Name(h.conf.Name),
 	})
 	if err != nil {
