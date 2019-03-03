@@ -24,9 +24,20 @@ func (s MsgType) String() string { return string(s[:]) }
 type Packet interface {
 	kind() byte
 	Message() RawMessage
+	SetMessage(m RawMessage)
 	Decode() (Message, error)
 	UnmarshalPacket(name MsgType, data []byte) error
 	MarshalPacket() ([]byte, error)
+}
+
+type PeerPacket interface {
+	Packet
+	Source() SID
+}
+
+type TargetPacket interface {
+	PeerPacket
+	Target() SID
 }
 
 type BasePacket struct {
@@ -36,6 +47,10 @@ type BasePacket struct {
 
 func (p BasePacket) Message() RawMessage {
 	return RawMessage{Type: p.Name, Data: p.Data}
+}
+func (p *BasePacket) SetMessage(m RawMessage) {
+	p.Name = m.Type
+	p.Data = m.Data
 }
 func (p BasePacket) Decode() (Message, error) {
 	return UnmarshalMessage(p.Name, p.Data)
@@ -146,7 +161,10 @@ func (p *HubPacket) MarshalPacket() ([]byte, error) {
 	return buf, nil
 }
 
-var _ Packet = (*BroadcastPacket)(nil)
+var (
+	_ Packet     = (*BroadcastPacket)(nil)
+	_ PeerPacket = (*BroadcastPacket)(nil)
+)
 
 type BroadcastPacket struct {
 	BasePacket
@@ -155,6 +173,9 @@ type BroadcastPacket struct {
 
 func (*BroadcastPacket) kind() byte {
 	return kindBroadcast
+}
+func (p *BroadcastPacket) Source() SID {
+	return p.ID
 }
 func (p *BroadcastPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 4 {
@@ -190,7 +211,11 @@ func (p *BroadcastPacket) MarshalPacket() ([]byte, error) {
 	return buf, nil
 }
 
-var _ Packet = (*DirectPacket)(nil)
+var (
+	_ Packet       = (*DirectPacket)(nil)
+	_ PeerPacket   = (*DirectPacket)(nil)
+	_ TargetPacket = (*DirectPacket)(nil)
+)
 
 type DirectPacket struct {
 	BasePacket
@@ -200,6 +225,12 @@ type DirectPacket struct {
 
 func (DirectPacket) kind() byte {
 	return kindDirect
+}
+func (p *DirectPacket) Source() SID {
+	return p.ID
+}
+func (p *DirectPacket) Target() SID {
+	return p.Targ
 }
 func (p *DirectPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 9 {
@@ -243,12 +274,22 @@ func (p DirectPacket) MarshalPacket() ([]byte, error) {
 	return buf, nil
 }
 
-var _ Packet = (*EchoPacket)(nil)
+var (
+	_ Packet       = (*EchoPacket)(nil)
+	_ PeerPacket   = (*EchoPacket)(nil)
+	_ TargetPacket = (*EchoPacket)(nil)
+)
 
 type EchoPacket DirectPacket
 
 func (*EchoPacket) kind() byte {
 	return kindEcho
+}
+func (p *EchoPacket) Source() SID {
+	return p.ID
+}
+func (p *EchoPacket) Target() SID {
+	return p.Targ
 }
 func (p *EchoPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 9 {
@@ -322,7 +363,10 @@ func (p *ClientPacket) MarshalPacket() ([]byte, error) {
 	return buf, nil
 }
 
-var _ Packet = (*FeaturePacket)(nil)
+var (
+	_ Packet     = (*FeaturePacket)(nil)
+	_ PeerPacket = (*FeaturePacket)(nil)
+)
 
 type FeaturePacket struct {
 	BasePacket
@@ -332,6 +376,9 @@ type FeaturePacket struct {
 
 func (*FeaturePacket) kind() byte {
 	return kindFeature
+}
+func (p *FeaturePacket) Source() SID {
+	return p.ID
 }
 func (p *FeaturePacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 4 {

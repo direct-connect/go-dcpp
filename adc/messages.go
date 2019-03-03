@@ -229,6 +229,10 @@ type User struct {
 	Features ExtFeatures `adc:"SU,req"`
 
 	KP string `adc:"KP"`
+
+	// our extensions
+
+	Address string `adc:"EA"`
 }
 
 func (User) Cmd() MsgType {
@@ -249,14 +253,20 @@ var (
 	_ Unmarshaler = (*UserMod)(nil)
 )
 
-type UserMod map[[2]byte]string
+type Tag [2]byte
+
+func (f Tag) String() string {
+	return string(f[:])
+}
+
+type UserMod map[Tag]string
 
 func (m *UserMod) UnmarshalAdc(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
 	if *m == nil {
-		*m = make(map[[2]byte]string)
+		*m = make(map[Tag]string)
 	}
 	mp := *m
 	sub := bytes.Split(data, []byte(" "))
@@ -264,7 +274,7 @@ func (m *UserMod) UnmarshalAdc(data []byte) error {
 		if len(v) < 2 {
 			return fmt.Errorf("invalid field: %q", string(v))
 		}
-		k := [2]byte{v[0], v[1]}
+		k := Tag{v[0], v[1]}
 		v = v[2:]
 		mp[k] = string(v)
 	}
