@@ -3,6 +3,7 @@ package nmdc
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -28,7 +29,7 @@ func (s Name) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	if len(s) > maxName {
 		return nil, errors.New("name is too long")
 	} else if strings.ContainsAny(string(s), invalidCharsName) {
-		return nil, errors.New("invalid characters in name")
+		return nil, fmt.Errorf("invalid characters in name: %q", string(s))
 	}
 	str := string(s)
 	if enc != nil {
@@ -46,7 +47,7 @@ func (s *Name) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	if len(data) > maxName {
 		return errors.New("name is too long")
 	} else if bytes.ContainsAny(data, invalidCharsName) {
-		return errors.New("invalid characters in name")
+		return fmt.Errorf("invalid characters in name: %q", string(data))
 	}
 	str := Unescape(string(data))
 	if dec != nil {

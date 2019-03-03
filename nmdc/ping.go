@@ -202,7 +202,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			hub.Ext = msg.Ext
 		case *HubName:
 			if hub.Name == "" {
-				hub.Name = string(msg.Name)
+				hub.Name = string(msg.String)
 			}
 		case *HubTopic:
 			hub.Topic = msg.Text
@@ -250,6 +250,9 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			}
 			hub.Bots = arr
 		case *HubINFO:
+			if msg.Name != "" {
+				hub.Name = string(msg.Name)
+			}
 			if msg.Desc != "" {
 				hub.Desc = string(msg.Desc)
 			}
@@ -262,6 +265,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 					hub.Server.Name, hub.Server.Vers = msg.Soft[:i], msg.Soft[i+1:]
 				}
 			}
+			// will be decoded later, see defer
 			hub.Encoding = msg.Encoding
 			hub.Owner = msg.Owner
 		case *FailOver:

@@ -176,7 +176,7 @@ func (*Hello) Cmd() string {
 }
 
 type HubName struct {
-	Name
+	String
 }
 
 func (*HubName) Cmd() string {
