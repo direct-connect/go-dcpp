@@ -110,7 +110,7 @@ handshake:
 				return nil, nil, fmt.Errorf("no hello is not supported: %v", msg.Ext)
 			}
 		case *nmdc.HubName:
-			hub.Name = msg.Name
+			hub.Name = msg.String
 		case *nmdc.Hello:
 			if string(msg.Name) != conf.Name {
 				return nil, nil, fmt.Errorf("unexpected name in hello: %q", msg.Name)
@@ -150,7 +150,7 @@ func initConn(c *Conn) error {
 		}
 		switch msg := msg.(type) {
 		case *nmdc.HubName:
-			c.hub.Name = msg.Name
+			c.hub.Name = msg.String
 		case *nmdc.HubTopic:
 			c.hub.Topic = msg.Text
 		case *nmdc.MyInfo:
@@ -251,7 +251,7 @@ func (c *Conn) readLoop() {
 		switch msg := msg.(type) {
 		case *nmdc.HubName:
 			c.imu.Lock()
-			c.hub.Name = msg.Name
+			c.hub.Name = msg.String
 			c.imu.Unlock()
 		case *nmdc.HubTopic:
 			c.imu.Lock()
@@ -302,7 +302,7 @@ func (c *Conn) readLoop() {
 }
 
 type HubInfo struct {
-	Name  nmdc.Name
+	Name  nmdc.String
 	Topic string
 }
 

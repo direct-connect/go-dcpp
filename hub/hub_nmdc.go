@@ -240,7 +240,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 
 	c := peer.conn
 	err := c.WriteMsg(&nmdc.HubName{
-		Name: nmdc.Name(h.conf.Name),
+		String: nmdc.String(h.conf.Name),
 	})
 	if err != nil {
 		return err
