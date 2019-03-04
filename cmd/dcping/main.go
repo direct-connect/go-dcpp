@@ -141,13 +141,18 @@ func init() {
 						Address:     info.Addr[0],
 						Description: info.Desc,
 						Email:       info.Email,
-						Encoding:    strings.ToUpper(info.Enc),
+						Encoding:    info.Enc,
 						Icon:        info.Icon,
 						Website:     info.Website,
 						Users:       info.Users,
 						Shared:      info.Share,
 						Status:      "Online",
 					}
+					// output encoding in the legacy format
+					if strings.HasPrefix(out.Encoding, "windows-") {
+						out.Encoding = "cp" + strings.TrimPrefix(out.Encoding, "windows-")
+					}
+					out.Encoding = strings.ToUpper(out.Encoding)
 					if info.Server != nil {
 						out.Software = info.Server.Name
 					}
