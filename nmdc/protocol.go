@@ -57,7 +57,7 @@ func (c *Conn) SendClientInfo(deadline time.Time, info *MyInfo) error {
 }
 
 func (c *Conn) SendPingerInfo(deadline time.Time, info *MyInfo) error {
-	err := c.WriteMsg(&RawCommand{Name: "BotINFO", Data: []byte(info.Name)})
+	err := c.WriteMsg(&BotINFO{String: String(info.Name)})
 	if err != nil {
 		return err
 	}

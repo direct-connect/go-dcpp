@@ -224,7 +224,7 @@ func (*Quit) Cmd() string {
 }
 
 type BotINFO struct {
-	Name
+	String
 }
 
 func (*BotINFO) Cmd() string {
