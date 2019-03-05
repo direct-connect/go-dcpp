@@ -219,7 +219,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				HubsNormal:     1,
 				HubsRegistered: 0,
 				HubsOperator:   0,
-				Slots:          1,
+				Slots:          5,
 				ShareSize:      13 * 1023 * 1023 * 1023,
 				Conn:           "Cable",
 				Flag:           FlagStatusServer,

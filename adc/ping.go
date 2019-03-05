@@ -100,7 +100,7 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 		Pid:      &pid,
 		Name:     "pinger_" + strconv.FormatInt(num, 16),
 		Features: ext,
-		Slots:    1,
+		Slots:    5,
 	}
 
 	err = c.WriteBroadcast(sid.SID, user)
