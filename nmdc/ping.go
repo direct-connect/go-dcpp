@@ -227,8 +227,8 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			if err != nil {
 				return nil, err
 			}
-		case *Quit:
-			// status update - we are definitely done
+		case *Quit, *ConnectToMe, *RevConnectToMe, *Search:
+			// status update, connection attempt or search - we are definitely done
 			return &hub, nil
 		case *MyInfo:
 			if listEnd {
@@ -262,6 +262,8 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			if msg.Soft != "" {
 				hub.Server.Name = msg.Soft
 				if i := strings.LastIndex(msg.Soft, " "); i > 0 {
+					hub.Server.Name, hub.Server.Vers = msg.Soft[:i], msg.Soft[i+1:]
+				} else if i = strings.LastIndex(msg.Soft, "_"); i > 0 {
 					hub.Server.Name, hub.Server.Vers = msg.Soft[:i], msg.Soft[i+1:]
 				}
 			}
