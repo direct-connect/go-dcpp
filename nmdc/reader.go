@@ -357,7 +357,7 @@ func (r *Reader) readRawCommand() (*RawCommand, error) {
 		}
 	} else if !isASCII(name) {
 		return nil, &ErrProtocolViolation{
-			Err: errors.New("command name should be in acsii"),
+			Err: fmt.Errorf("command name should be in acsii: %q", string(name)),
 		}
 	}
 	return &RawCommand{Name: string(name), Data: data}, nil
@@ -365,7 +365,7 @@ func (r *Reader) readRawCommand() (*RawCommand, error) {
 
 func isASCII(p []byte) bool {
 	for _, b := range p {
-		if b == '/' || b == '-' || b == '_' || b == '.' {
+		if b == '/' || b == '-' || b == '_' || b == '.' || b == ':' {
 			continue
 		}
 		if b < '0' || b > 'z' {

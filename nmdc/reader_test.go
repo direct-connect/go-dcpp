@@ -52,7 +52,19 @@ var casesReader = []struct {
 		name:  "non-ascii in command",
 		input: "$Some\tCommand|",
 		err: &ErrProtocolViolation{
-			Err: errors.New("command name should be in acsii"),
+			Err: errors.New(`command name should be in acsii: "Some\tCommand"`),
+		},
+	},
+	{
+		name:  "to",
+		input: "$To: alice From: bob $<bob> hi|",
+		exp: []Message{
+			&PrivateMessage{
+				To:   "alice",
+				From: "bob",
+				Name: "bob",
+				Text: "hi",
+			},
 		},
 	},
 }
