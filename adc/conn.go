@@ -10,7 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"strings"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -33,20 +33,26 @@ func Dial(addr string) (*Conn, error) {
 
 // DialContext connects to a specified address.
 func DialContext(ctx context.Context, addr string) (*Conn, error) {
-	secure := false
-	if i := strings.Index(addr, "://"); i >= 0 {
-		proto := addr[:i]
-		addr = addr[i+3:]
-		switch proto {
-		case SchemaADC:
-			// continue
-		case SchemaADCS:
-			secure = true
-		default:
-			return nil, fmt.Errorf("unsupported protocol: %q", proto)
+	u, err := url.Parse(addr)
+	if err != nil {
+		return nil, err
+	}
+	if u.Host == "" {
+		u, err = url.Parse("adc://" + addr)
+		if err != nil {
+			return nil, err
 		}
 	}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	secure := false
+	switch u.Scheme {
+	case SchemaADC:
+		// continue
+	case SchemaADCS:
+		secure = true
+	default:
+		return nil, fmt.Errorf("unsupported protocol: %q", u.Scheme)
+	}
+	conn, err := dialer.DialContext(ctx, "tcp", u.Host)
 	if err != nil {
 		return nil, err
 	}
