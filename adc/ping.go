@@ -9,6 +9,12 @@ import (
 	"github.com/direct-connect/go-dcpp/adc/types"
 )
 
+const (
+	fakeSlots = 5
+	fakeFiles = 113
+	fakeShare = 33 * 1023 * 1023 * 1023
+)
+
 type PingHubInfo struct {
 	HubInfo
 	Ext   []string
@@ -96,11 +102,14 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 	pid := types.NewPID()
 	num := int64(time.Now().Nanosecond())
 	user := User{
-		Id:       pid.Hash(),
-		Pid:      &pid,
-		Name:     "pinger_" + strconv.FormatInt(num, 16),
-		Features: ext,
-		Slots:    5,
+		Id:         pid.Hash(),
+		Pid:        &pid,
+		Name:       "pinger_" + strconv.FormatInt(num, 16),
+		Features:   ext,
+		Slots:      fakeSlots,
+		SlotsFree:  fakeSlots,
+		ShareSize:  fakeShare,
+		ShareFiles: fakeFiles,
 	}
 
 	err = c.WriteBroadcast(sid.SID, user)

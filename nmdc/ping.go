@@ -15,6 +15,11 @@ import (
 	"github.com/direct-connect/go-dcpp/version"
 )
 
+const (
+	fakeSlots = 5
+	fakeShare = 33 * 1023 * 1023 * 1023
+)
+
 type Software struct {
 	Name string
 	Vers string
@@ -135,13 +140,14 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 		FeaMCTo, FeaNickChange, FeaClientNick,
 		FeaIN, FeaFeaturedNetworks, FeaGetZBlock, FeaClientID,
 		FeaXmlBZList, FeaMinislots, FeaTTHL, FeaTTHF,
-		FeaZLIG, FeaACTM, FeaBZList, FeaSaltPass, FeaDHT0,
+		FeaZLIG, FeaACTM, FeaBZList, FeaSaltPass,
 		FeaFailOver, FeaHubTopic, FeaOpPlus,
 		FeaBanMsg, FeaNickRule, FeaSearchRule, FeaExtJSON2,
 		// proposals
 		FeaLocale,
 
 		//FeaQuickList, // some hubs doesn't like this
+		//FeaDHT0, // some hubs ask users to disable it and drops the connection
 	)
 	if err != nil {
 		return nil, err
@@ -240,10 +246,10 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				Version:        version.Vers,
 				Mode:           UserModePassive,
 				HubsNormal:     1,
-				HubsRegistered: 0,
+				HubsRegistered: 1,
 				HubsOperator:   0,
-				Slots:          5,
-				ShareSize:      13 * 1023 * 1023 * 1023,
+				Slots:          fakeSlots,
+				ShareSize:      fakeShare,
 				Conn:           "Cable",
 				Flag:           FlagStatusServer,
 			})
