@@ -50,6 +50,33 @@ func init() {
 	}
 	Root.AddCommand(versionCmd)
 
+	addrsCmd := &cobra.Command{
+		Use:   "addrs hublist.xml.bz",
+		Short: "read hub addresses from the file and prints them",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New("expected file name")
+			}
+			f, err := os.Open(args[0])
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			list, err := hublist.DecodeBZip2(f)
+			if err != nil {
+				return err
+			}
+			log.Println(len(list), "hubs")
+			for _, h := range list {
+				fmt.Print(h.Address + " ")
+			}
+			fmt.Println()
+			return nil
+		},
+	}
+	Root.AddCommand(addrsCmd)
+
 	probeCmd := &cobra.Command{
 		Use:   "probe host[:port] [...]",
 		Short: "detects DC protocol used by the host",
@@ -178,7 +205,7 @@ func init() {
 						Icon:        info.Icon,
 						Website:     info.Website,
 						Users:       info.Users,
-						Shared:      info.Share,
+						Shared:      hublist.Size(info.Share),
 						Status:      "Online",
 					}
 					// output encoding in the legacy format

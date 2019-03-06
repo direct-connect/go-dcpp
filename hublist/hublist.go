@@ -3,9 +3,12 @@ package hublist
 import (
 	"compress/bzip2"
 	"context"
+	"encoding"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 )
 
 // Lists well-known hub lists.
@@ -23,6 +26,41 @@ func Get(ctx context.Context, url string) ([]Hub, error) {
 	}
 	err := getRaw(ctx, url, &resp)
 	return resp.List, err
+}
+
+// DecodeBZip2 decodes a .xml.bz2 files list.
+func DecodeBZip2(r io.Reader) ([]Hub, error) {
+	var list struct {
+		List []Hub `xml:"Hubs>Hub"`
+	}
+	zr := bzip2.NewReader(r)
+	if err := xml.NewDecoder(zr).Decode(&list); err != nil {
+		return nil, err
+	}
+	return list.List, nil
+}
+
+var _ encoding.TextUnmarshaler = (*Size)(nil)
+
+type Size uint64
+
+func (s *Size) UnmarshalText(text []byte) error {
+	str := string(text)
+	if str == "" {
+		*s = 0
+		return nil
+	}
+	v, err := strconv.ParseUint(str, 10, 64)
+	if err == nil {
+		*s = Size(v)
+		return nil
+	}
+	f, err2 := strconv.ParseFloat(str, 64)
+	if err2 != nil {
+		return err
+	}
+	*s = Size(f)
+	return nil
 }
 
 func getRaw(ctx context.Context, url string, dst interface{}) error {

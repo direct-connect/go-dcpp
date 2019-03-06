@@ -16,13 +16,13 @@ type Hub struct {
 	Logo        string `xml:"Logo,attr,omitempty"`
 	Maxhubs     int    `xml:"Maxhubs,attr,omitempty"`
 	Maxusers    int    `xml:"Maxusers,attr,omitempty"`
-	Minshare    uint64 `xml:"Minshare,attr,omitempty"`
+	Minshare    Size   `xml:"Minshare,attr,omitempty"`
 	Minslots    int    `xml:"Minslots,attr,omitempty"`
 	Network     string `xml:"Network,attr,omitempty"`
 	Operators   int    `xml:"Operators,attr,omitempty"`
 	Rating      string `xml:"Rating,attr,omitempty"`
 	Reliability string `xml:"Reliability,attr,omitempty"`
-	Shared      uint64 `xml:"Shared,attr,omitempty"`
+	Shared      Size   `xml:"Shared,attr,omitempty"`
 	Software    string `xml:"Software,attr,omitempty"`
 	Status      string `xml:"Status,attr,omitempty"`
 	Users       int    `xml:"Users,attr,omitempty"`
