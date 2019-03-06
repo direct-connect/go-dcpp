@@ -1507,21 +1507,21 @@ func (m *UserCommand) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 		case 0:
 			t, err := strconv.Atoi(string(value))
 			if err != nil {
-				return errors.New("invalid type in user command")
+				return fmt.Errorf("invalid type in user command: %q", string(value))
 			}
 			m.Type = Type(t)
 		case 1:
 			c, err := strconv.Atoi(string(value))
 			if err != nil {
-				return errors.New("invalid context in user command")
+				return fmt.Errorf("invalid context in user command: %q", string(value))
 			}
 			m.Context = Context(c)
 		case 2:
-			i = bytes.Index(value, []byte(" $"))
+			i = bytes.Index(value, []byte("$"))
 			if i < 1 {
-				return errors.New("invalid raw user command")
+				return fmt.Errorf("invalid raw user command: %q", string(data))
 			}
-			arr = bytes.Split(value[:i], []byte("\\"))
+			arr = bytes.Split(bytes.TrimRight(value[:i], " "), []byte("\\"))
 			for _, path := range arr {
 				var s String
 				err := s.UnmarshalNMDC(dec, path)
@@ -1530,7 +1530,7 @@ func (m *UserCommand) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 				}
 				m.Path = append(m.Path, s)
 			}
-			m.Command = String(value[i+2:])
+			m.Command = String(value[i+1:])
 		}
 	}
 	return nil

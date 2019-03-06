@@ -305,6 +305,18 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:     "UserCommand",
+		name:    "raw",
+		data:    `1 3 a\b\c$<%[mynick]> +cchist`,
+		expData: `1 3 a\b\c $<%[mynick]> +cchist`,
+		msg: &UserCommand{
+			Type:    TypeRaw,
+			Context: ContextHub | ContextUser,
+			Path:    []String{"a", "b", "c"},
+			Command: "<%[mynick]> +cchist",
+		},
+	},
+	{
 		typ:  "UserCommand",
 		name: "erase",
 		data: `255 1`,
