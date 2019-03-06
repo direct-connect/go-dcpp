@@ -171,7 +171,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 		lastMsg     string
 		listStarted bool
 		listEnd     bool
-		ynVers      bool
+		poweredBy   bool
 	)
 	for {
 		msg, err := c.ReadMsg(time.Time{})
@@ -200,11 +200,21 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			// an error before hub drops the connection
 			lastMsg = msg.Text
 
-			if ynVers { // YnHub version check
-				ynVers = false
-				const pref = "YnHub version: "
-				if i := strings.Index(lastMsg, pref); i >= 0 {
-					vers := lastMsg[i+len(pref):]
+			if poweredBy { // YnHub and PtokaX version check
+				poweredBy = false
+				const (
+					prefYn = "YnHub version: "
+					prefPx = "PtokaX DC Hub "
+				)
+				if i := strings.Index(lastMsg, prefYn); i >= 0 {
+					vers := lastMsg[i+len(prefYn):]
+					if i = strings.Index(vers, " "); i >= 0 {
+						vers = vers[:i]
+					}
+					hub.Server.Vers = vers
+				}
+				if i := strings.Index(lastMsg, prefPx); i >= 0 {
+					vers := lastMsg[i+len(prefPx):]
 					if i = strings.Index(vers, " "); i >= 0 {
 						vers = vers[:i]
 					}
@@ -217,7 +227,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			if hub.Name == "" {
 				hub.Name = string(msg.String)
 			}
-			ynVers = true
+			poweredBy = true
 		case *HubTopic:
 			hub.Topic = msg.Text
 		case *Hello:
