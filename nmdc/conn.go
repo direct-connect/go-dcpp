@@ -349,6 +349,9 @@ func (c *Conn) WriteOneRaw(data []byte) error {
 }
 
 func (c *Conn) onUnknownEncoding(text string) (string, *encoding.Decoder, error) {
+	if c.fallback == nil {
+		return "", nil, nil
+	}
 	// try fallback encoding
 	dec := c.fallback.NewDecoder()
 	str, err := dec.String(string(text))
