@@ -146,6 +146,9 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 				stage = optStatus
 			case optStatus:
 				// optionally wait for status command
+				if cmd.Name == (ChatMessage{}).Cmd() {
+					continue // ignore
+				}
 				if cmd.Name != (Status{}).Cmd() {
 					return nil, fmt.Errorf("expected status, received: %#v", cmd)
 				}
