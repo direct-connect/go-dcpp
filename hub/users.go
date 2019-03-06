@@ -25,7 +25,7 @@ type UserDatabase interface {
 
 func (h *Hub) validateUserName(name string) error {
 	if name == "" {
-		return errors.New("name should be empty")
+		return errors.New("name should not be empty")
 	}
 	if len(name) > userNameMax {
 		return errors.New("name is too long")
@@ -43,7 +43,7 @@ func (h *Hub) validateUserName(name string) error {
 		return errors.New("name should not contain null characters")
 	}
 	if strings.ContainsAny(name, "<>") {
-		return errors.New("name contains on of the invalid characters")
+		return errors.New("name contains one of the invalid characters")
 	}
 	return nil
 }
