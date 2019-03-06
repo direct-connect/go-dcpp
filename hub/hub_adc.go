@@ -437,9 +437,15 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 		}
 		h.globalChat.SendChat(from, text)
 	case adc.SearchRequest:
-		h.adcHandleSearch(from, &msg)
+		h.adcHandleSearch(from, &msg, nil)
 	default:
 		// TODO: decode other packets
+		for _, peer := range h.Peers() {
+			if p2, ok := peer.(*adcPeer); ok {
+				_ = p2.conn.WritePacket(p)
+				_ = p2.conn.Flush()
+			}
+		}
 	}
 }
 
@@ -490,18 +496,24 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	case adc.RevConnectRequest:
 		secure := strings.HasPrefix(msg.Proto, "ADCS")
 		h.revConnectReq(from, peer, msg.Token, secure)
+	case adc.SearchRequest:
+		h.adcHandleSearch(from, &msg, []Peer{peer})
 	case adc.SearchResult:
 		h.adcHandleResult(from, peer, &msg)
 	default:
 		// TODO: decode other packets
+		if p2, ok := peer.(*adcPeer); ok {
+			_ = p2.conn.WritePacket(p)
+			_ = p2.conn.Flush()
+		}
 	}
 }
 
-func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest) {
+func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest, peers []Peer) {
 	s := peer.newSearch(req.Token)
 	if req.TTH != nil {
 		// ignore other parameters
-		h.Search(TTHSearch(*req.TTH), s)
+		h.Search(TTHSearch(*req.TTH), s, peers)
 		return
 	}
 	name := NameSearch{
@@ -540,7 +552,7 @@ func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest) {
 		}
 		sr = freq
 	}
-	h.Search(sr, s)
+	h.Search(sr, s, peers)
 }
 
 func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {

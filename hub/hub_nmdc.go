@@ -486,7 +486,7 @@ func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdc.Search) {
 	s := peer.newSearch(msg)
 	if msg.DataType == nmdc.DataTypeTTH {
 		// ignore other parameters
-		h.Search(TTHSearch(*msg.TTH), s)
+		h.Search(TTHSearch(*msg.TTH), s, nil)
 		return
 	}
 	var name NameSearch
@@ -521,7 +521,7 @@ func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdc.Search) {
 		}
 		req = freq
 	}
-	h.Search(req, s)
+	h.Search(req, s, nil)
 }
 
 func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdc.SR) {

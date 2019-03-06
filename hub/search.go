@@ -129,11 +129,14 @@ type Search interface {
 	Close() error
 }
 
-func (h *Hub) Search(req SearchRequest, s Search) {
+func (h *Hub) Search(req SearchRequest, s Search, peers []Peer) {
 	peer := s.Peer()
+	if peers == nil {
+		peers = h.Peers()
+	}
 	// FIXME: should be bound to the close channel of the peer
 	ctx := context.TODO()
-	for _, p := range h.Peers() {
+	for _, p := range peers {
 		if p == peer {
 			continue
 		} else if p.User().Share == 0 {
