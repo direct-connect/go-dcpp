@@ -386,6 +386,16 @@ var casesUnmarshal = []struct {
 			Context: ContextHub,
 		},
 	},
+	{
+		typ:     "UserCommand",
+		name:    "escaped",
+		data:    `0 3&#124;`,
+		expData: `0 3`,
+		msg: &UserCommand{
+			Type:    TypeSeparator,
+			Context: ContextHub | ContextUser,
+		},
+	},
 }
 
 func getTHPointer(s string) *tiger.Hash {

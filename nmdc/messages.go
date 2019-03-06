@@ -1527,6 +1527,11 @@ func (m *UserCommand) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 			}
 			m.Type = Type(t)
 		case 1:
+			if i := bytes.IndexFunc(value, func(r rune) bool {
+				return r < '0' || r > '9'
+			}); i >= 0 {
+				value = value[:i]
+			}
 			c, err := strconv.Atoi(string(value))
 			if err != nil {
 				return fmt.Errorf("invalid context in user command: %q", string(value))
