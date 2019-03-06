@@ -49,22 +49,31 @@ func init() {
 	probeCmd := &cobra.Command{
 		Use:   "probe host[:port] [...]",
 		Short: "detects DC protocol used by the host",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return errors.New("expected at least one address")
-			}
-			ctx := context.Background()
-			for _, addr := range args {
-				u, err := dc.Probe(ctx, addr)
-				if err != nil {
-					log.Println(err)
-					fmt.Printf("%s - error\n", addr)
-					continue
-				}
+	}
+	probeTimeout := probeCmd.Flags().DurationP("timeout", "t", time.Second*5, "probe timeout")
+	probeCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return errors.New("expected at least one address")
+		}
+		rctx := context.Background()
+
+		probeOne := func(addr string) {
+			ctx, cancel := context.WithTimeout(rctx, *probeTimeout)
+			defer cancel()
+
+			u, err := dc.Probe(ctx, addr)
+			if err != nil {
+				log.Println(err)
+				fmt.Printf("%s - error\n", addr)
+			} else {
 				fmt.Printf("%s\n", u)
 			}
-			return nil
-		},
+		}
+
+		for _, addr := range args {
+			probeOne(addr)
+		}
+		return nil
 	}
 	Root.AddCommand(probeCmd)
 
