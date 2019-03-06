@@ -184,7 +184,7 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:     "MyINFO",
-		name:    "only name",
+		name:    "invalid tag",
 		data:    `$ALL test @ HUB-Bot$ $BOT $mail (3.0.1)$BOT $`,
 		expData: `$ALL test @ HUB-Bot< V:,M:,H:0/0/0,S:0>$ $BOT $mail (3.0.1)$0$`,
 		msg: &MyInfo{
@@ -194,6 +194,16 @@ var casesUnmarshal = []struct {
 			Flag:  FlagTLSUpload,
 			Email: "mail (3.0.1)",
 			Conn:  "BOT",
+		},
+	},
+	{
+		typ:     "MyINFO",
+		name:    "legacy P tag",
+		data:    `$ALL -EA-Sports $P$$$0$`,
+		expData: "$ALL -EA-Sports < V:,M:P,H:0/0/0,S:0>$ $\x00$$0$",
+		msg: &MyInfo{
+			Name: "-EA-Sports",
+			Mode: UserModePassive,
 		},
 	},
 	{

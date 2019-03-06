@@ -600,6 +600,7 @@ func (m *MyInfo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	if len(fields) != 5 {
 		return errors.New("invalid info command")
 	}
+	hasTag := false
 	for i, field := range fields {
 		switch i {
 		case 0:
@@ -609,6 +610,7 @@ func (m *MyInfo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 			if i < 0 {
 				desc = field
 			} else {
+				hasTag = true
 				desc = field[:i]
 				tag := field[i+1:]
 				if len(tag) == 0 {
@@ -625,8 +627,19 @@ func (m *MyInfo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 				return err
 			}
 		case 1:
-			if string(field) != " " {
-				return fmt.Errorf("unknown field before connection %v", string(field))
+			sfield := string(field)
+			if hasTag {
+				if sfield != " " {
+					return fmt.Errorf("unknown field before connection: %q", sfield)
+				}
+				continue
+			}
+			if len(field) != 1 {
+				return fmt.Errorf("unknown leacy user mode: %q", sfield)
+			}
+			m.Mode = UserMode(field[0])
+			if m.Mode == ' ' {
+				m.Mode = UserModeUnknown
 			}
 		case 2:
 			if len(field) > 0 {
