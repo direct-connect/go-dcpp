@@ -35,6 +35,10 @@ var Root = &cobra.Command{
 	Use: "dcping <command>",
 }
 
+type timeoutErr interface {
+	Timeout() bool
+}
+
 func init() {
 	versionCmd := &cobra.Command{
 		Use: "version",
@@ -126,16 +130,25 @@ func init() {
 			if err == nil && !*pingUsers {
 				info.UserList = nil
 			}
+			isTimeout := false
+			if e, ok := err.(timeoutErr); ok && e.Timeout() {
+				isTimeout = true
+			}
 			switch *pingOut {
 			case "json", "":
 				if err != nil {
-					log.Println(err)
+					status := "error"
+					if isTimeout {
+						status = "offline"
+					} else {
+						log.Println(err)
+					}
 					_ = enc.Encode(struct {
 						Addr   []string `json:"addr"`
 						Status string   `json:"status"`
 					}{
 						Addr:   []string{addr},
-						Status: "offline",
+						Status: status,
 					})
 					return nil
 				}
@@ -145,10 +158,15 @@ func init() {
 			case "xml":
 				var out hublist.Hub
 				if err != nil {
-					log.Println(err)
+					status := "Error"
+					if isTimeout {
+						status = "Offline"
+					} else {
+						log.Println(err)
+					}
 					out = hublist.Hub{
 						Address: addr,
-						Status:  "Offline",
+						Status:  status,
 					}
 				} else {
 					out = hublist.Hub{
