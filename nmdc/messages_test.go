@@ -388,6 +388,16 @@ var casesUnmarshal = []struct {
 	},
 	{
 		typ:     "UserCommand",
+		name:    "erase with space",
+		data:    `255 1 `,
+		expData: `255 1`,
+		msg: &UserCommand{
+			Type:    TypeErase,
+			Context: ContextHub,
+		},
+	},
+	{
+		typ:     "UserCommand",
 		name:    "escaped",
 		data:    `0 3&#124;`,
 		expData: `0 3`,

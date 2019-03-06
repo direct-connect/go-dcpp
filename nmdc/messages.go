@@ -1508,7 +1508,7 @@ func (m *UserCommand) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 }
 
 func (m *UserCommand) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
-	arr := bytes.SplitN(data, []byte(" "), 3)
+	arr := bytes.SplitN(bytes.TrimSpace(data), []byte(" "), 3)
 	for i, value := range arr {
 		switch i {
 		case 0:
