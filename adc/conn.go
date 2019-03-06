@@ -3,6 +3,7 @@ package adc
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -23,8 +24,15 @@ type Route interface {
 	Flush() error
 }
 
+var dialer = net.Dialer{}
+
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
+	return DialContext(context.Background(), addr)
+}
+
+// DialContext connects to a specified address.
+func DialContext(ctx context.Context, addr string) (*Conn, error) {
 	secure := false
 	if i := strings.Index(addr, "://"); i >= 0 {
 		proto := addr[:i]
@@ -38,7 +46,7 @@ func Dial(addr string) (*Conn, error) {
 			return nil, fmt.Errorf("unsupported protocol: %q", proto)
 		}
 	}
-	conn, err := net.Dial("tcp", addr)
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}

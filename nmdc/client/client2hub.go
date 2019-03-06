@@ -18,6 +18,7 @@ func DialHub(addr string, info *Config) (*Conn, error) {
 	if !strings.Contains(addr, ":") {
 		addr += ":411"
 	}
+	// TODO: use context
 	conn, err := nmdc.Dial(addr)
 	if err != nil {
 		return nil, err

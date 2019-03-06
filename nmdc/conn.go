@@ -2,6 +2,7 @@ package nmdc
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -50,8 +51,15 @@ func NormalizeAddr(addr string) (string, error) {
 	return u.String(), nil
 }
 
+var dialer = net.Dialer{}
+
 // Dial connects to a specified address.
 func Dial(addr string) (*Conn, error) {
+	return DialContext(context.Background(), addr)
+}
+
+// DialContext connects to a specified address.
+func DialContext(ctx context.Context, addr string) (*Conn, error) {
 	u, err := ParseAddr(addr)
 	if err != nil {
 		return nil, err
@@ -66,7 +74,7 @@ func Dial(addr string) (*Conn, error) {
 		}
 	}
 
-	conn, err := net.Dial("tcp", net.JoinHostPort(host, port))
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		return nil, err
 	}

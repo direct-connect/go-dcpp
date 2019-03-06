@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -75,6 +76,7 @@ func init() {
 	pingUsers := pingCmd.Flags().Bool("users", false, "return user list as well")
 	pingDebug := pingCmd.Flags().Bool("debug", false, "print protocol messages to stderr")
 	pingPretty := pingCmd.Flags().Bool("pretty", false, "pretty-print an output")
+	pingTimeout := pingCmd.Flags().DurationP("timeout", "t", time.Second*5, "ping timeout")
 	Root.AddCommand(pingCmd)
 	pingCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
@@ -105,8 +107,12 @@ func init() {
 		nmdc.Debug = *pingDebug
 		adc.Debug = *pingDebug
 
-		ctx := context.Background()
-		for _, addr := range args {
+		rctx := context.Background()
+
+		pingOne := func(addr string) error {
+			ctx, cancel := context.WithTimeout(rctx, *pingTimeout)
+			defer cancel()
+
 			info, err := dc.Ping(ctx, addr)
 			if err == nil && !*pingUsers {
 				info.UserList = nil
@@ -122,7 +128,7 @@ func init() {
 						Addr:   []string{addr},
 						Status: "offline",
 					})
-					continue
+					return nil
 				}
 				if err = enc.Encode(info); err != nil {
 					return err
@@ -168,6 +174,13 @@ func init() {
 				}
 			default:
 				return fmt.Errorf("unsupported format: %q", *pingOut)
+			}
+			return nil
+		}
+
+		for _, addr := range args {
+			if err := pingOne(addr); err != nil {
+				return err
 			}
 		}
 		return nil

@@ -110,8 +110,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 		return nil, err
 	}
 
-	// TODO: use context
-	c, err := Dial(addr)
+	c, err := DialContext(ctx, addr)
 	if err != nil {
 		return nil, err
 	}

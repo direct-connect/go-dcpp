@@ -16,7 +16,7 @@ type PingHubInfo struct {
 }
 
 func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
-	c, err := Dial(addr)
+	c, err := DialContext(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
