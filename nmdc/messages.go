@@ -637,18 +637,14 @@ func (m *MyInfo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 			}
 		case 1:
 			sfield := string(field)
-			if hasTag {
-				if sfield != " " {
-					return fmt.Errorf("unknown field before connection: %q", sfield)
-				}
-				continue
-			}
 			if len(field) != 1 {
 				return fmt.Errorf("unknown leacy user mode: %q", sfield)
 			}
-			m.Mode = UserMode(field[0])
-			if m.Mode == ' ' {
-				m.Mode = UserModeUnknown
+			if !hasTag {
+				m.Mode = UserMode(field[0])
+				if m.Mode == ' ' {
+					m.Mode = UserModeUnknown
+				}
 			}
 		case 2:
 			if len(field) > 0 {

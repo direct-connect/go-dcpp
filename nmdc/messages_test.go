@@ -225,6 +225,25 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:     "MyINFO",
+		name:    "legacy A tag",
+		data:    `$ALL N8611 <++ V:0.868,M:A,H:34/3/2,S:3>$A$0.005.$$27225945203$`,
+		expData: `$ALL N8611 <++ V:0.868,M:A,H:34/3/2,S:3>$ $0.005.$$27225945203$`,
+		msg: &MyInfo{
+			Name:           "N8611",
+			Client:         "++",
+			Version:        "0.868",
+			Mode:           UserModeActive,
+			HubsNormal:     34,
+			HubsRegistered: 3,
+			HubsOperator:   2,
+			Slots:          3,
+			Conn:           "0.005",
+			Flag:           '.',
+			ShareSize:      27225945203,
+		},
+	},
+	{
 		typ:  "ConnectToMe",
 		data: `john 192.168.1.2:412`,
 		msg: &ConnectToMe{
