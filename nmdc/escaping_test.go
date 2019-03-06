@@ -1,6 +1,10 @@
 package nmdc
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestEscaping(t *testing.T) {
 	var cases = []struct {
@@ -15,13 +19,10 @@ func TestEscaping(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.text, func(t *testing.T) {
 			got := Escape(c.text)
-			if got != c.exp {
-				t.Fatalf("unexpected escaping: %q", got)
-			}
+			require.Equal(t, c.exp, got)
+
 			got = Unescape(c.exp)
-			if got != c.text {
-				t.Fatalf("unexpected text: %q", got)
-			}
+			require.Equal(t, c.text, got)
 		})
 	}
 }

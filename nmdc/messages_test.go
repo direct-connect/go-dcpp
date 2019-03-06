@@ -1,10 +1,10 @@
 package nmdc
 
 import (
-	"bytes"
 	"errors"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/direct-connect/go-dcpp/tiger"
 )
@@ -328,11 +328,8 @@ func TestUnmarshal(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			m, err := (&RawCommand{Name: c.typ, Data: []byte(c.data)}).Decode(nil)
-			if err != nil {
-				t.Fatal(err)
-			} else if !reflect.DeepEqual(m, c.msg) {
-				t.Fatalf("failed: %#v vs %#v", m, c.msg)
-			}
+			require.NoError(t, err)
+			require.Equal(t, c.msg, m)
 		})
 	}
 }
@@ -349,11 +346,8 @@ func TestMarshal(t *testing.T) {
 			if exp == "" {
 				exp = c.data
 			}
-			if err != nil {
-				t.Fatal(err)
-			} else if !bytes.Equal(data, []byte(exp)) {
-				t.Fatalf("failed: %#v vs %#v", string(data), string(exp))
-			}
+			require.NoError(t, err)
+			require.Equal(t, []byte(exp), data)
 		})
 	}
 }

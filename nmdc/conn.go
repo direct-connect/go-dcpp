@@ -2,10 +2,7 @@ package nmdc
 
 import (
 	"bufio"
-	"bytes"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/url"
@@ -25,13 +22,7 @@ const (
 )
 
 const (
-	readBuf          = 4096
-	maxName          = 256
-	maxText          = 4096
-	maxCmdName       = 64
 	invalidCharsName = "<>$\x00\r\n\t"
-	maxChatMsg       = readBuf
-	maxCmd           = readBuf * 4
 )
 
 var Debug bool
@@ -89,8 +80,18 @@ func NewConn(conn net.Conn) (*Conn, error) {
 		closed: make(chan struct{}),
 	}
 	c.write.w = bufio.NewWriter(conn)
-	c.read.r = conn
-	c.read.buf = make([]byte, 0, readBuf)
+	c.read.r = NewReader(conn)
+	c.read.r.OnUnknownEncoding = c.onUnknownEncoding
+	if Debug {
+		c.read.r.OnRawCommand = func(m *RawCommand) (bool, error) {
+			log.Println("<-", "$"+m.Name, string(m.Data))
+			return true, nil
+		}
+		c.read.r.OnChatMessage = func(m *ChatMessage) (bool, error) {
+			log.Println("<-", m.Name, m.Text)
+			return true, nil
+		}
+	}
 	return c, nil
 }
 
@@ -121,10 +122,7 @@ type Conn struct {
 	}
 	read struct {
 		sync.Mutex
-		err error
-		buf []byte
-		i   int
-		r   io.Reader
+		r *Reader
 	}
 }
 
@@ -157,6 +155,7 @@ func (c *Conn) setEncoding(enc encoding.Encoding) {
 		c.enc = nil
 		c.dec = nil
 	}
+	c.read.r.SetDecoder(c.dec)
 }
 
 func (c *Conn) SetEncoding(enc encoding.Encoding) {
@@ -349,84 +348,32 @@ func (c *Conn) WriteOneRaw(data []byte) error {
 	return c.scheduleFlush()
 }
 
-func (c *Conn) peek() ([]byte, error) {
-	if c.read.i < len(c.read.buf) {
-		return c.read.buf[c.read.i:], nil
+func (c *Conn) onUnknownEncoding(text string) (string, *encoding.Decoder, error) {
+	// try fallback encoding
+	dec := c.fallback.NewDecoder()
+	str, err := dec.String(string(text))
+	if err != nil || !utf8.ValidString(str) {
+		return "", nil, nil // use current decoder
 	}
-	c.read.i = 0
-	c.read.buf = c.read.buf[:cap(c.read.buf)]
-	n, err := c.read.r.Read(c.read.buf)
-	if err != nil {
-		select {
-		case <-c.closed:
-			err = io.EOF
-		default:
-		}
-	}
-	c.read.buf = c.read.buf[:n]
-	return c.read.buf, err
-}
+	// fallback is valid - switch encoding
 
-func (c *Conn) discard(n int) {
-	if n < 0 {
-		c.read.i += len(c.read.buf)
-	} else {
-		c.read.i += n
-	}
+	// already holding read lock, only need to acquire write lock
+	c.write.Lock()
+	c.setEncoding(c.fallback)
+	c.write.Unlock()
+
+	return str, dec, nil
 }
 
 func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 	defer c.readMsgLock()()
-
-	if err := c.read.err; err != nil {
-		return err
-	}
 
 	if !deadline.IsZero() {
 		c.conn.SetReadDeadline(deadline)
 		defer c.conn.SetReadDeadline(time.Time{})
 	}
 
-	for {
-		b, err := c.peek()
-		if err != nil {
-			return err
-		}
-		if len(b) == 1 && b[0] == '|' {
-			c.discard(1)
-			continue // keep alive
-		}
-		msg := *ptr
-		if b[0] != '$' {
-			// not a command - chat message
-			m, ok := msg.(*ChatMessage)
-			if !ok {
-				if msg != nil {
-					return errors.New("expected command, got chat message")
-				}
-				m = &ChatMessage{}
-				*ptr = m
-			}
-			return c.readChatMsg(m)
-		}
-		// command
-		raw, err := c.readRawCommand()
-		if err != nil {
-			return err
-		}
-		if msg == nil {
-			m, err := raw.Decode(c.dec)
-			if err != nil {
-				return err
-			}
-			*ptr = m
-			return nil
-		}
-		if msg.Cmd() != raw.Name {
-			return fmt.Errorf("expected %q, got %q", msg.Cmd(), raw.Name)
-		}
-		return msg.UnmarshalNMDC(c.dec, raw.Data)
-	}
+	return c.read.r.readMsgTo(ptr)
 }
 
 func (c *Conn) ReadMsgTo(deadline time.Time, m Message) error {
@@ -442,118 +389,4 @@ func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
 		return nil, err
 	}
 	return m, nil
-}
-
-// readUntil reads a byte slice until the delimiter, up to max bytes.
-// It returns a slice with a delimiter and reads the delimiter from the connection.
-func (c *Conn) readUntil(delim string, max int) ([]byte, error) {
-	var value []byte
-	for {
-		b, err := c.peek()
-		if err != nil {
-			return nil, err
-		}
-		i := bytes.Index(b, []byte(delim))
-		if i >= 0 {
-			value = append(value, b[:i+len(delim)]...)
-			c.discard(i + len(delim))
-			return value, nil
-		}
-		if len(value)+len(b) > max {
-			return nil, errors.New("value is too large")
-		}
-		value = append(value, b...)
-		c.discard(-1)
-	}
-}
-
-func (c *Conn) readChatMsg(m *ChatMessage) error {
-	*m = ChatMessage{}
-	// <Bob> hello|
-	// or
-	// Some info|
-
-	b, err := c.peek()
-	if err != nil {
-		return err
-	}
-	if b[0] == '<' {
-		c.discard(1) // trim '<'
-		name, err := c.readUntil("> ", maxName)
-		if err != nil {
-			return fmt.Errorf("cannot read username in chat message: %v", err)
-		}
-		name = name[:len(name)-2] // trim '> '
-		if len(name) == 0 {
-			return errors.New("empty name in chat message")
-		}
-		if err = m.Name.UnmarshalNMDC(c.dec, name); err != nil {
-			return err
-		}
-	}
-
-	msg, err := c.readUntil("|", maxChatMsg)
-	if err != nil {
-		return fmt.Errorf("cannot read chat message: %v", err)
-	}
-	msg = msg[:len(msg)-1] // trim '|'
-
-	if bytes.ContainsAny(msg, "\x00") {
-		return errors.New("chat message should not contain null characters")
-	}
-	var text String
-	if err = text.UnmarshalNMDC(c.dec, msg); err != nil {
-		return err
-	}
-	if c.enc == nil && c.fallback != nil && !utf8.ValidString(string(text)) {
-		// try fallback encoding
-		dec := c.fallback.NewDecoder()
-		if str, err := dec.String(string(text)); err == nil && utf8.ValidString(str) {
-			// fallback is valid - switch encoding
-			text = String(str)
-			// already holding read lock, only need to acquire write lock
-			c.write.Lock()
-			c.setEncoding(c.fallback)
-			c.write.Unlock()
-		}
-	}
-	m.Text = string(text)
-	if Debug {
-		data, _ := m.MarshalNMDC(c.enc)
-		log.Println("<-", string(data))
-	}
-	return nil
-}
-
-func (c *Conn) readRawCommand() (*RawCommand, error) {
-	// $Name xxx yyy|
-	c.discard(1) // trim '$'
-
-	buf, err := c.readUntil("|", maxCmd)
-	if err == io.EOF {
-		return nil, io.EOF
-	} else if err != nil {
-		return nil, fmt.Errorf("cannot parse command: %v", err)
-	}
-	if bytes.ContainsAny(buf, "\x00") {
-		return nil, errors.New("command should not contain null characters")
-	}
-	if Debug {
-		log.Println("<-", "$"+string(buf))
-	}
-	buf = buf[:len(buf)-1] // trim '|'
-
-	i := bytes.Index(buf, []byte(" "))
-	if i < 0 {
-		return &RawCommand{Name: string(buf)}, nil
-	}
-	return &RawCommand{Name: string(buf[:i]), Data: buf[i+1:]}, nil
-}
-
-func (c *Conn) readCommand() (Message, error) {
-	raw, err := c.readRawCommand()
-	if err != nil {
-		return nil, err
-	}
-	return raw.Decode(c.dec)
 }
