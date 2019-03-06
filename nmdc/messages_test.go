@@ -106,6 +106,24 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:  "HubINFO",
+		name: "12 fields",
+		data: `hub name$dc.example.com:8000$hub desc$3000$32212254720$3$40$YnHub 1.0364$owner$desc 2$admin@example.com$`,
+		msg: &HubINFO{
+			Name:  "hub name",
+			Host:  "dc.example.com:8000",
+			Desc:  "hub desc",
+			I1:    3000,
+			I2:    32212254720,
+			I3:    3,
+			I4:    40,
+			Soft:  "YnHub 1.0364",
+			Owner: "owner",
+			State: "desc 2",
+			Email: "admin@example.com",
+		},
+	},
+	{
 		typ:  "MyINFO",
 		data: `$ALL johndoe RU<ApexDC++ V:0.4.0,M:P,H:27/1/3,S:92,L:512>$ $LAN(T3)K$example@example.com$1234$`,
 		msg: &MyInfo{
