@@ -386,7 +386,6 @@ type HubINFO struct {
 	Soft     string
 	Owner    string
 	State    String
-	Email    string
 	Encoding string
 }
 
@@ -418,18 +417,12 @@ func (m *HubINFO) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 		return nil, err
 	}
 	a = append(a, state)
-	if m.Email != "" {
-		a = append(a, []byte(m.Email))
-	}
 	a = append(a, []byte(m.Encoding))
 	return bytes.Join(a, []byte("$")), nil
 }
 
 func (m *HubINFO) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 	fields := bytes.SplitN(data, []byte("$"), 13)
-	if len(fields) > 12 {
-		return fmt.Errorf("hub info contain: %v parameters: %q", len(fields), string(data))
-	}
 	for i, field := range fields {
 		switch i {
 		case 0:
@@ -475,13 +468,11 @@ func (m *HubINFO) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 				return err
 			}
 		case 10:
-			if len(fields) == 12 {
-				m.Email = string(field)
-			} else {
+			if len(fields) < 12 {
 				m.Encoding = string(field)
 			}
-		case 11:
-			m.Encoding = string(field)
+		default:
+			// ignore everything else
 		}
 	}
 	return nil
