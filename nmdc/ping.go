@@ -181,7 +181,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 	for {
 		msg, err := c.ReadMsg(time.Time{})
 		if err == io.EOF {
-			if listEnd {
+			if listStarted || listEnd {
 				return &hub, nil
 			}
 			if lastMsg != "" {
