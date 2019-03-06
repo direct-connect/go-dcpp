@@ -22,7 +22,7 @@ const (
 )
 
 const (
-	invalidCharsName = "<>$\x00\r\n\t"
+	invalidCharsName = "$\x00\r\n\t"
 )
 
 var Debug bool

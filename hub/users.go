@@ -42,6 +42,9 @@ func (h *Hub) validateUserName(name string) error {
 	if strings.ContainsAny(name, "\x00") {
 		return errors.New("name should not contain null characters")
 	}
+	if strings.ContainsAny(name, "<>") {
+		return errors.New("name contains on of the invalid characters")
+	}
 	return nil
 }
 
