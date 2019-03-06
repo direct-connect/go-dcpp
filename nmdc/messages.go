@@ -640,10 +640,8 @@ func (m *MyInfo) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 			if len(field) == 0 {
 				continue
 			}
-			size, err := strconv.ParseUint(strings.TrimSpace(string(field)), 10, 64)
-			if err != nil {
-				return err
-			}
+			// TODO: add strict mode that will test this
+			size, _ := strconv.ParseUint(string(bytes.TrimSpace(field)), 10, 64)
 			m.ShareSize = size
 		}
 	}

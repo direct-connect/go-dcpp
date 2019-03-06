@@ -183,6 +183,20 @@ var casesUnmarshal = []struct {
 		},
 	},
 	{
+		typ:     "MyINFO",
+		name:    "only name",
+		data:    `$ALL test @ HUB-Bot$ $BOT $mail (3.0.1)$BOT $`,
+		expData: `$ALL test @ HUB-Bot< V:,M:,H:0/0/0,S:0>$ $BOT $mail (3.0.1)$0$`,
+		msg: &MyInfo{
+			Name:  "test",
+			Desc:  "@ HUB-Bot",
+			Mode:  UserModeUnknown,
+			Flag:  FlagTLSUpload,
+			Email: "mail (3.0.1)",
+			Conn:  "BOT",
+		},
+	},
+	{
 		typ:  "ConnectToMe",
 		data: `john 192.168.1.2:412`,
 		msg: &ConnectToMe{
@@ -359,7 +373,7 @@ func TestMarshal(t *testing.T) {
 				exp = c.data
 			}
 			require.NoError(t, err)
-			require.Equal(t, []byte(exp), data)
+			require.Equal(t, exp, string(data))
 		})
 	}
 }
