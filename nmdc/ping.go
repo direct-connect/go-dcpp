@@ -171,6 +171,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 		lastMsg     string
 		listStarted bool
 		listEnd     bool
+		ynVers      bool
 	)
 	for {
 		msg, err := c.ReadMsg(time.Time{})
@@ -198,12 +199,25 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			// we save the last message since it usually describes
 			// an error before hub drops the connection
 			lastMsg = msg.Text
+
+			if ynVers { // YnHub version check
+				ynVers = false
+				const pref = "YnHub version: "
+				if i := strings.Index(lastMsg, pref); i >= 0 {
+					vers := lastMsg[i+len(pref):]
+					if i = strings.Index(vers, " "); i >= 0 {
+						vers = vers[:i]
+					}
+					hub.Server.Vers = vers
+				}
+			}
 		case *Supports:
 			hub.Ext = msg.Ext
 		case *HubName:
 			if hub.Name == "" {
 				hub.Name = string(msg.String)
 			}
+			ynVers = true
 		case *HubTopic:
 			hub.Topic = msg.Text
 		case *Hello:
@@ -272,6 +286,11 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			hub.Owner = msg.Owner
 		case *FailOver:
 			hub.Failover = append(hub.Failover, msg.Host...)
+		case *UserCommand:
+			if hub.Server.Name == "YnHub" {
+				// TODO: check if it's true for other hubs
+				return &hub, nil
+			}
 		case *UserIP:
 			// TODO: some implementations seem to end the list with this message
 		}
