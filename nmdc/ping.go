@@ -270,10 +270,11 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				// if we receive it again after the list ended, it's really
 				// an update, not a part of the list, so we can safely exit
 				return &hub, nil
-			} else if string(msg.Name) != name {
-				listStarted = true
 			}
-			hub.Users = append(hub.Users, *msg)
+			if string(msg.Name) != name {
+				listStarted = true
+				hub.Users = append(hub.Users, *msg)
+			}
 		case *OpList:
 			for _, name := range msg.Names {
 				hub.Ops = append(hub.Ops, string(name))
