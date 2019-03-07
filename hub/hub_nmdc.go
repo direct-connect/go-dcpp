@@ -153,7 +153,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		}
 		st := h.Stats()
 		err = c.WriteMsg(&nmdc.HubINFO{
-			Name:     nmdc.Name(st.Name),
+			Name:     nmdc.String(st.Name),
 			Desc:     nmdc.String(st.Desc),
 			Host:     st.DefaultAddr(),
 			Soft:     st.Soft.Name + " " + st.Soft.Vers,

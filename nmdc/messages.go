@@ -376,7 +376,7 @@ func (*GetNickList) Cmd() string {
 }
 
 type HubINFO struct {
-	Name     Name
+	Name     String
 	Host     string
 	Desc     String
 	I1       int
