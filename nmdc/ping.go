@@ -17,7 +17,7 @@ import (
 
 const (
 	fakeSlots = 5
-	fakeShare = 33 * 1023 * 1023 * 1023
+	fakeShare = 321 * 1023 * 1023 * 1023
 )
 
 type Software struct {
@@ -250,7 +250,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				Name:           Name(name),
 				Client:         version.Name,
 				Version:        version.Vers,
-				Mode:           UserModePassive,
+				Mode:           UserModeActive,
 				HubsNormal:     1,
 				HubsRegistered: 1,
 				HubsOperator:   0,

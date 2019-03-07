@@ -13,7 +13,7 @@ import (
 const (
 	fakeSlots = 5
 	fakeFiles = 113
-	fakeShare = 33 * 1023 * 1023 * 1023
+	fakeShare = 321 * 1023 * 1023 * 1023
 )
 
 type PingHubInfo struct {

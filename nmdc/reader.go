@@ -13,7 +13,7 @@ import (
 const (
 	readBuf    = 4096
 	maxName    = 256
-	maxText    = readBuf * 4
+	maxText    = readBuf * 8
 	maxChatMsg = maxText
 	maxCmd     = readBuf * 2
 	maxCmdName = 32
