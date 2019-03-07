@@ -213,23 +213,19 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 
 			if poweredBy { // YnHub and PtokaX version check
 				poweredBy = false
-				const (
-					prefYn = "YnHub version: "
-					prefPx = "PtokaX DC Hub "
-				)
-				if i := strings.Index(lastMsg, prefYn); i >= 0 {
-					vers := lastMsg[i+len(prefYn):]
-					if i = strings.Index(vers, " "); i >= 0 {
-						vers = vers[:i]
+				for _, pref := range []string{
+					"YnHub version: ",
+					"PtokaX DC Hub ",
+					"Archos DC Hub ",
+				} {
+					if i := strings.Index(lastMsg, pref); i >= 0 {
+						vers := lastMsg[i+len(pref):]
+						if i = strings.Index(vers, " "); i >= 0 {
+							vers = vers[:i]
+						}
+						hub.Server.Vers = vers
+						break
 					}
-					hub.Server.Vers = vers
-				}
-				if i := strings.Index(lastMsg, prefPx); i >= 0 {
-					vers := lastMsg[i+len(prefPx):]
-					if i = strings.Index(vers, " "); i >= 0 {
-						vers = vers[:i]
-					}
-					hub.Server.Vers = vers
 				}
 			}
 		case *Supports:
