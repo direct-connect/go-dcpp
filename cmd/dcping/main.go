@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -118,6 +119,7 @@ func init() {
 	pingUsers := pingCmd.Flags().Bool("users", false, "return user list as well")
 	pingDebug := pingCmd.Flags().Bool("debug", false, "print protocol messages to stderr")
 	pingPretty := pingCmd.Flags().Bool("pretty", false, "pretty-print an output")
+	pingNum := pingCmd.Flags().IntP("num", "n", runtime.NumCPU()*2, "number of parallel pings")
 	pingTimeout := pingCmd.Flags().DurationP("timeout", "t", time.Second*5, "ping timeout")
 	Root.AddCommand(pingCmd)
 	pingCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -125,10 +127,9 @@ func init() {
 			return errors.New("expected at least one address")
 		}
 		var (
+			mu  sync.Mutex
 			w   io.Writer = os.Stdout
-			enc interface {
-				Encode(interface{}) error
-			}
+			enc func(interface{}) error
 		)
 		switch *pingOut {
 		case "json", "":
@@ -136,22 +137,28 @@ func init() {
 			if *pingPretty {
 				e.SetIndent("", "\t")
 			}
-			enc = e
+			enc = e.Encode
 		case "xml":
 			e := xml.NewEncoder(w)
 			if *pingPretty {
 				e.Indent("", "\t")
 			}
-			enc = e
+			enc = e.Encode
 		default:
 			return fmt.Errorf("unsupported format: %q", *pingOut)
+		}
+		cenc := enc
+		enc = func(o interface{}) error {
+			mu.Lock()
+			defer mu.Unlock()
+			return cenc(o)
 		}
 		nmdc.Debug = *pingDebug
 		adc.Debug = *pingDebug
 
 		rctx := context.Background()
 
-		pingOne := func(addr string) error {
+		pingOne := func(addr string) {
 			ctx, cancel := context.WithTimeout(rctx, *pingTimeout)
 			defer cancel()
 
@@ -190,23 +197,23 @@ func init() {
 					}
 				}
 				if info == nil {
-					_ = enc.Encode(struct {
+					_ = enc(struct {
 						Addr   []string `json:"addr"`
 						Status string   `json:"status,omitempty"`
 					}{
 						Addr:   []string{addr},
 						Status: status,
 					})
-					return nil
+					return
 				}
-				if err = enc.Encode(struct {
+				if err = enc(struct {
 					dc.HubInfo
 					Status string `json:"status,omitempty"`
 				}{
 					HubInfo: *info,
 					Status:  status,
 				}); err != nil {
-					return err
+					panic(err)
 				}
 			case "xml":
 				var out hublist.Hub
@@ -250,20 +257,31 @@ func init() {
 					out.Address = addr
 				}
 				out.Status = status
-				if err = enc.Encode(out); err != nil {
-					return err
+				if err = enc(out); err != nil {
+					panic(err)
 				}
 			default:
-				return fmt.Errorf("unsupported format: %q", *pingOut)
+				panic(fmt.Errorf("unsupported format: %q", *pingOut))
 			}
-			return nil
+		}
+
+		var wg sync.WaitGroup
+		jobs := make(chan string, *pingNum)
+		for i := 0; i < *pingNum; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for addr := range jobs {
+					pingOne(addr)
+				}
+			}()
 		}
 
 		for _, addr := range args {
-			if err := pingOne(addr); err != nil {
-				return err
-			}
+			jobs <- addr
 		}
+		close(jobs)
+		wg.Wait()
 		return nil
 	}
 }
