@@ -164,13 +164,18 @@ func init() {
 				isOffline = true
 			} else if e, ok := err.(*net.OpError); ok && e.Op == "dial" {
 				switch e := e.Err.(type) {
-				case *os.SyscallError:
-					// connection refused
-					if e.Err == syscall.Errno(0x6f) {
-						isOffline = true
-					}
 				case *net.DNSError:
 					isOffline = true
+				case *os.SyscallError:
+					if e, ok := e.Err.(syscall.Errno); ok {
+						// TODO: windows
+						switch e {
+						case 0x6f: // connection refused
+							isOffline = true
+						case 0x71: // no route to host
+							isOffline = true
+						}
+					}
 				}
 			}
 			switch *pingOut {
