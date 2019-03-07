@@ -258,31 +258,6 @@ func (r *Reader) readChatMsg(m *ChatMessage) error {
 	// or
 	// Some info|
 
-	b, err := r.peek()
-	if err != nil {
-		return err
-	}
-	if b[0] == '<' {
-		r.discard(1) // trim '<'
-		name, err := r.readUntil("> ", maxName)
-		if err == errValueIsTooLong {
-			return &ErrProtocolViolation{
-				Err: fmt.Errorf("cannot read username in chat message: %v", err),
-			}
-		} else if err != nil {
-			return err
-		}
-		name = name[:len(name)-2] // trim '> '
-		if len(name) == 0 {
-			return &ErrProtocolViolation{
-				Err: errors.New("empty name in chat message"),
-			}
-		}
-		if err = m.Name.UnmarshalNMDC(r.dec, name); err != nil {
-			return &ErrProtocolViolation{Err: err}
-		}
-	}
-
 	msg, err := r.readUntil("|", maxChatMsg)
 	if err == errValueIsTooLong {
 		return &ErrProtocolViolation{
@@ -298,6 +273,34 @@ func (r *Reader) readChatMsg(m *ChatMessage) error {
 			Err: errors.New("chat message should not contain null characters"),
 		}
 	}
+
+	if len(msg) != 0 && msg[0] == '<' {
+		msg = msg[1:]
+		i := bytes.Index(msg, []byte("> "))
+		if i < 0 {
+			i = bytes.Index(msg, []byte(">"))
+		}
+		if i < 0 {
+			return &ErrProtocolViolation{
+				Err: errors.New("name in chat message should have a closing token"),
+			}
+		}
+		name := msg[:i]
+		msg = bytes.TrimPrefix(msg[i+1:], []byte(" "))
+		if len(name) == 0 {
+			return &ErrProtocolViolation{
+				Err: errors.New("empty name in chat message"),
+			}
+		} else if len(name) > maxName {
+			return &ErrProtocolViolation{
+				Err: fmt.Errorf("cannot read username in chat message: %v", err),
+			}
+		}
+		if err = m.Name.UnmarshalNMDC(r.dec, name); err != nil {
+			return &ErrProtocolViolation{Err: err}
+		}
+	}
+
 	var text String
 	if err = text.UnmarshalNMDC(r.dec, msg); err != nil {
 		return &ErrProtocolViolation{Err: err}
