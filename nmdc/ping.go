@@ -185,13 +185,13 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				return &hub, nil
 			}
 			if lastMsg != "" {
-				return nil, fmt.Errorf("connection closed: %s", lastMsg)
+				return &hub, fmt.Errorf("connection closed: %s", lastMsg)
 			}
-			return nil, errors.New("connection closed")
+			return &hub, errors.New("connection closed")
 		} else if e, ok := err.(timeoutErr); ok && e.Timeout() && listStarted {
 			return &hub, nil
 		} else if err != nil {
-			return nil, err
+			return &hub, err
 		}
 		if listStarted {
 			_, ok := msg.(*MyInfo)
@@ -238,7 +238,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 		case *Hello:
 			// TODO: assumes NoHello
 			if string(msg.Name) != name {
-				return nil, fmt.Errorf("unexpected name in hello: %q", msg.Name)
+				return &hub, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
 			err = c.SendPingerInfo(time.Time{}, &MyInfo{
 				Name:           Name(name),
@@ -254,7 +254,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				Flag:           FlagStatusServer,
 			})
 			if err != nil {
-				return nil, err
+				return &hub, err
 			}
 		case *Quit, *ConnectToMe, *RevConnectToMe, *Search:
 			// status update, connection attempt or search - we are definitely done

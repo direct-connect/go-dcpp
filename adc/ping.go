@@ -3,6 +3,7 @@ package adc
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"time"
 
@@ -129,8 +130,10 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 	stage := hubInfo
 	for {
 		cmd, err := c.ReadPacket(deadline)
-		if err != nil {
-			return nil, err
+		if err == io.EOF {
+			return &hub, io.ErrUnexpectedEOF
+		} else if err != nil {
+			return &hub, err
 		}
 		switch cmd := cmd.(type) {
 		case *InfoPacket:
@@ -138,10 +141,10 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 			case hubInfo:
 				// waiting for hub info
 				if cmd.Name != (User{}).Cmd() {
-					return nil, fmt.Errorf("expected hub info, received: %#v", cmd.Data)
+					return &hub, fmt.Errorf("expected hub info, received: %#v", cmd.Data)
 				}
 				if err := Unmarshal(cmd.Data, &hub.HubInfo); err != nil {
-					return nil, err
+					return &hub, err
 				}
 				stage = optStatus
 			case optStatus:
@@ -150,17 +153,17 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 					continue // ignore
 				}
 				if cmd.Name != (Status{}).Cmd() {
-					return nil, fmt.Errorf("expected status, received: %#v", cmd)
+					return &hub, fmt.Errorf("expected status, received: %#v", cmd)
 				}
 				var st Status
 				if err := Unmarshal(cmd.Data, &st); err != nil {
-					return nil, err
+					return &hub, err
 				} else if !st.Ok() {
-					return nil, st.Err()
+					return &hub, st.Err()
 				}
 				stage = userList
 			default:
-				return nil, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
+				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
 			}
 			continue
 		case *BroadcastPacket:
@@ -173,7 +176,7 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 					// make sure to wipe PID, so we don't send it later occasionally
 					user.Pid = nil
 					if err := Unmarshal(cmd.Data, &user); err != nil {
-						return nil, err
+						return &hub, err
 					}
 					// done, should switch to NORMAL
 					return &hub, nil
@@ -181,15 +184,15 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 				// other users
 				var u User
 				if err := Unmarshal(cmd.Data, &u); err != nil {
-					return nil, err
+					return &hub, err
 				}
 				hub.Users = append(hub.Users, u)
 				// continue until we see ourselves in the list
 			default:
-				return nil, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
+				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
 			}
 		default:
-			return nil, fmt.Errorf("unexpected command: %#v", cmd)
+			return &hub, fmt.Errorf("unexpected command: %#v", cmd)
 		}
 	}
 }

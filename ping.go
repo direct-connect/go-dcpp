@@ -25,7 +25,7 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 	switch addr[:i] {
 	case nmdcSchema, nmdcsSchema:
 		hub, err := nmdc.Ping(ctx, addr)
-		if err != nil {
+		if err != nil && hub == nil {
 			return nil, err
 		}
 		info := &HubInfo{
@@ -78,10 +78,10 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			}
 			info.UserList = append(info.UserList, user)
 		}
-		return info, nil
+		return info, err
 	case adcSchema, adcsSchema:
 		hub, err := adc.Ping(ctx, addr)
-		if err != nil {
+		if err != nil && hub == nil {
 			return nil, err
 		}
 		info := &HubInfo{
@@ -119,7 +119,7 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			}
 			info.UserList = append(info.UserList, user)
 		}
-		return info, nil
+		return info, err
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %q", addr)
 	}

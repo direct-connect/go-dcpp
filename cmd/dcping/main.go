@@ -154,7 +154,7 @@ func init() {
 			defer cancel()
 
 			info, err := dc.Ping(ctx, addr)
-			if err == nil && !*pingUsers {
+			if info != nil && !*pingUsers {
 				info.UserList = nil
 			}
 			isTimeout := false
@@ -163,39 +163,46 @@ func init() {
 			}
 			switch *pingOut {
 			case "json", "":
+				status := ""
 				if err != nil {
-					status := "error"
+					status = "error"
 					if isTimeout {
 						status = "offline"
 					} else {
 						log.Println(err)
 					}
+				}
+				if info == nil {
 					_ = enc.Encode(struct {
 						Addr   []string `json:"addr"`
-						Status string   `json:"status"`
+						Status string   `json:"status,omitempty"`
 					}{
 						Addr:   []string{addr},
 						Status: status,
 					})
 					return nil
 				}
-				if err = enc.Encode(info); err != nil {
+				if err = enc.Encode(struct {
+					dc.HubInfo
+					Status string `json:"status,omitempty"`
+				}{
+					HubInfo: *info,
+					Status:  status,
+				}); err != nil {
 					return err
 				}
 			case "xml":
 				var out hublist.Hub
+				status := "Online"
 				if err != nil {
-					status := "Error"
+					status = "Error"
 					if isTimeout {
 						status = "Offline"
 					} else {
 						log.Println(err)
 					}
-					out = hublist.Hub{
-						Address: addr,
-						Status:  status,
-					}
-				} else {
+				}
+				if info != nil {
 					out = hublist.Hub{
 						Name:        info.Name,
 						Address:     info.Addr[0],
@@ -206,7 +213,6 @@ func init() {
 						Website:     info.Website,
 						Users:       info.Users,
 						Shared:      hublist.Size(info.Share),
-						Status:      "Online",
 					}
 					// output encoding in the legacy format
 					if strings.HasPrefix(out.Encoding, "windows-") {
@@ -223,6 +229,10 @@ func init() {
 						}
 					}
 				}
+				if out.Address == "" {
+					out.Address = addr
+				}
+				out.Status = status
 				if err = enc.Encode(out); err != nil {
 					return err
 				}
