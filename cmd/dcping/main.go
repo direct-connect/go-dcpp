@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -157,16 +159,26 @@ func init() {
 			if info != nil && !*pingUsers {
 				info.UserList = nil
 			}
-			isTimeout := false
-			if e, ok := err.(timeoutErr); ok && e.Timeout() {
-				isTimeout = true
+			isOffline := false
+			if te, ok := err.(timeoutErr); ok && te.Timeout() {
+				isOffline = true
+			} else if e, ok := err.(*net.OpError); ok && e.Op == "dial" {
+				switch e := e.Err.(type) {
+				case *os.SyscallError:
+					// connection refused
+					if e.Err == syscall.Errno(0x6f) {
+						isOffline = true
+					}
+				case *net.DNSError:
+					isOffline = true
+				}
 			}
 			switch *pingOut {
 			case "json", "":
 				status := ""
 				if err != nil {
 					status = "error"
-					if isTimeout {
+					if isOffline {
 						status = "offline"
 					} else {
 						log.Println(err)
@@ -196,7 +208,7 @@ func init() {
 				status := "Online"
 				if err != nil {
 					status = "Error"
-					if isTimeout {
+					if isOffline {
 						status = "Offline"
 					} else {
 						log.Println(err)
