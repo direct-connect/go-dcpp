@@ -170,6 +170,12 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 	hub.Server.Name = pk[0]
 	if len(pk) > 1 {
 		hub.Server.Vers = pk[1]
+	} else if strings.HasPrefix(pk[0], "version") {
+		// old versions of Verlihub
+		if i := strings.LastIndex(lock.Lock, "_"); i >= 0 {
+			hub.Server.Name = lock.Lock[i+1:]
+			hub.Server.Vers = strings.TrimPrefix(pk[0], "version")
+		}
 	}
 
 	var (
