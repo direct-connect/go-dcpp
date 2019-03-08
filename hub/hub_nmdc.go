@@ -882,7 +882,7 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	rname := nmdc.Name(room.Name())
 	if rname == "" {
 		return p.writeOne(&nmdc.ChatMessage{
-			Name: nmdc.Name(msg.Name),
+			Name: msg.Name,
 			Text: msg.Text,
 		})
 	}

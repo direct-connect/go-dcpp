@@ -91,12 +91,8 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	c.read.r = NewReader(conn)
 	c.read.r.OnUnknownEncoding = c.onUnknownEncoding
 	if Debug {
-		c.read.r.OnRawCommand = func(m *RawCommand) (bool, error) {
-			log.Println("<-", "$"+m.Name, string(m.Data))
-			return true, nil
-		}
-		c.read.r.OnChatMessage = func(m *ChatMessage) (bool, error) {
-			log.Println("<-", m.Name, m.Text)
+		c.read.r.OnLine = func(data []byte) (bool, error) {
+			log.Println("<-", string(data))
 			return true, nil
 		}
 	}
@@ -356,15 +352,15 @@ func (c *Conn) WriteOneRaw(data []byte) error {
 	return c.scheduleFlush()
 }
 
-func (c *Conn) onUnknownEncoding(text string) (string, *encoding.Decoder, error) {
+func (c *Conn) onUnknownEncoding(text []byte) (*encoding.Decoder, error) {
 	if c.fallback == nil {
-		return "", nil, nil
+		return nil, nil
 	}
 	// try fallback encoding
 	dec := c.fallback.NewDecoder()
 	str, err := dec.String(string(text))
 	if err != nil || !utf8.ValidString(str) {
-		return "", nil, nil // use current decoder
+		return nil, nil // use current decoder
 	}
 	// fallback is valid - switch encoding
 
@@ -373,7 +369,7 @@ func (c *Conn) onUnknownEncoding(text string) (string, *encoding.Decoder, error)
 	c.setEncoding(c.fallback)
 	c.write.Unlock()
 
-	return str, dec, nil
+	return dec, nil
 }
 
 func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {

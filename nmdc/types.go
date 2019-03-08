@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/text/encoding"
 )
@@ -57,6 +58,9 @@ func (s *Name) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 			return err
 		}
 	}
+	if !utf8.ValidString(str) {
+		return &errUnknownEncoding{text: []byte(str)}
+	}
 	*s = Name(str)
 	return nil
 }
@@ -64,9 +68,7 @@ func (s *Name) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 type String string
 
 func (s String) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
-	if len(s) > maxText {
-		return nil, errors.New("text is too long")
-	} else if strings.ContainsAny(string(s), "\x00") {
+	if strings.ContainsAny(string(s), "\x00") {
 		return nil, errors.New("invalid characters in text")
 	}
 	str := string(s)
@@ -82,9 +84,7 @@ func (s String) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 }
 
 func (s *String) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
-	if len(data) > maxText {
-		return errors.New("text is too long")
-	} else if bytes.ContainsAny(data, "\x00") {
+	if bytes.ContainsAny(data, "\x00") {
 		return errors.New("invalid characters in text")
 	}
 	str := Unescape(string(data))
@@ -94,6 +94,9 @@ func (s *String) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
 		if err != nil {
 			return err
 		}
+	}
+	if !utf8.ValidString(str) {
+		return &errUnknownEncoding{text: []byte(str)}
 	}
 	*s = String(str)
 	return nil

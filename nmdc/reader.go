@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"unicode/utf8"
+	"reflect"
 
 	"golang.org/x/text/encoding"
 )
@@ -13,15 +13,14 @@ import (
 const (
 	readBuf    = 4096
 	maxName    = 256
-	maxText    = readBuf * 8
-	maxChatMsg = maxText
-	maxCmd     = readBuf * 2
 	maxCmdName = 32
+	maxLine    = readBuf * 8
 )
 
 var (
 	errValueIsTooLong  = errors.New("value is too long")
 	errExpectedCommand = errors.New("nmdc: expected command, got chat message")
+	errExpectedChat    = errors.New("nmdc: chat message, got command")
 )
 
 type ErrUnexpectedCommand struct {
@@ -41,63 +40,72 @@ func (e *ErrProtocolViolation) Error() string {
 	return fmt.Sprintf("nmdc: protocol error: %v", e.Err)
 }
 
+type errUnknownEncoding struct {
+	text []byte
+}
+
+func (e *errUnknownEncoding) Error() string {
+	return fmt.Sprintf("nmdc: unknown text encoding: %q", string(e.text))
+}
+
 func NewReader(r io.Reader) *Reader {
-	return &Reader{r: r, buf: make([]byte, 0, readBuf)}
+	return &Reader{
+		r: r, buf: make([]byte, 0, readBuf),
+		maxLine:    maxLine,
+		maxCmdName: maxCmdName,
+	}
 }
 
 type Reader struct {
 	r   io.Reader
 	err error
 
-	buf []byte
-	i   int
+	maxLine    int
+	maxCmdName int
+
+	buf  []byte
+	i    int
+	mbuf bytes.Buffer
 
 	// dec is the current decoder for the text values.
 	// It converts connection encoding to UTF8. Nil value means that connection uses UTF8.
 	dec *encoding.Decoder
 
+	// OnLine is called each time a raw protocol line is read from the connection.
+	// The buffer will contain a '|' delimiter and is in the connection encoding.
+	// The function may return (false, nil) to ignore the message.
+	OnLine func(line []byte) (bool, error)
+
 	// OnKeepAlive is called when an empty (keep-alive) message is received.
 	OnKeepAlive func() error
 
+	// OnRawCommand is called each time a message is received.
+	// Protocol commands will have a non-nil name, while chat messages will have a nil name.
+	// The function may return (false, nil) to ignore the message.
+	OnRawMessage func(cmd, args []byte) (bool, error)
+
 	// OnUnknownEncoding is called when a text with non-UTF8 encoding is received.
-	// The function may either return a different decoder and a new string, or
-	// return an error to cancel the decoding.
-	OnUnknownEncoding func(text string) (string, *encoding.Decoder, error)
+	// It may either return a new decoder or return an error to fail the decoding.
+	OnUnknownEncoding func(text []byte) (*encoding.Decoder, error)
 
-	// OnChatMessage is called each time a chat message is parsed.
-	// The function may return false to drop the message, or error to return to the caller.
-	OnChatMessage func(m *ChatMessage) (bool, error)
+	// OnMessage is called each time a protocol message is decoded.
+	// The function may return (false, nil) to ignore the message.
+	OnMessage func(m Message) (bool, error)
+}
 
-	// OnRawCommand is called each time a protocol command is parsed.
-	// The function may return false to drop the command, or error to return to the caller.
-	OnRawCommand func(m *RawCommand) (bool, error)
+// SetMaxLine sets a maximal length of the protocol messages in bytes, including the delimiter.
+func (r *Reader) SetMaxLine(n int) {
+	r.maxLine = n
+}
 
-	// OnCommand is called each time a protocol command is decoded.
-	// The function may return false to drop the command, or error to return to the caller.
-	OnCommand func(m Message) (bool, error)
+// SetMaxCmdName sets a maximal length of the protocol command name in bytes.
+func (r *Reader) SetMaxCmdName(n int) {
+	r.maxCmdName = n
 }
 
 // SetDecoder sets a text decoder for the connection.
 func (r *Reader) SetDecoder(dec *encoding.Decoder) {
 	r.dec = dec
-}
-
-// ReadMsg reads a single message.
-func (r *Reader) ReadMsg() (Message, error) {
-	var m Message
-	if err := r.readMsgTo(&m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// ReadMsgTo will read a message to a pointer passed to the function.
-// If the message read has a different type, an error will be returned.
-func (r *Reader) ReadMsgTo(m Message) error {
-	if m == nil {
-		panic("nil message to decode")
-	}
-	return r.readMsgTo(&m)
 }
 
 func (r *Reader) peek() ([]byte, error) {
@@ -119,120 +127,11 @@ func (r *Reader) discard(n int) {
 	}
 }
 
-func (r *Reader) readMsgTo(ptr *Message) error {
-	if err := r.err; err != nil {
-		return err
-	}
-
-	for {
-		b, err := r.peek()
-		if err != nil {
-			r.err = err
-			return err
-		} else if len(b) == 0 {
-			continue
-		}
-		if b[0] == '|' {
-			r.discard(1)
-			if r.OnKeepAlive != nil {
-				if err := r.OnKeepAlive(); err != nil {
-					return err
-				}
-			}
-			continue // keep alive, skip
-		}
-		out := *ptr
-		if b[0] != '$' {
-			// not a command -> chat message
-			// check that we expect a chat message as well
-			m, ok := out.(*ChatMessage)
-			if !ok {
-				if out != nil {
-					r.err = errExpectedCommand
-					return r.err
-				}
-				m = &ChatMessage{}
-				*ptr = m
-			}
-			err := r.readChatMsg(m)
-			if err != nil {
-				r.err = err
-				return err
-			}
-			if r.OnChatMessage != nil {
-				// call chat message hook
-				ok, err := r.OnChatMessage(m)
-				if err != nil {
-					return err
-				} else if !ok {
-					continue // drop
-				}
-			}
-			return nil
-		}
-		// protocol command
-		raw, err := r.readRawCommand()
-		if err != nil {
-			r.err = err
-			return err
-		}
-		if r.OnRawCommand != nil {
-			// call raw protocol command hook
-			ok, err := r.OnRawCommand(raw)
-			if err != nil {
-				return err
-			} else if !ok {
-				continue // drop
-			}
-		}
-		if out == nil {
-			// do not expect a specific message - decode any
-			m, err := raw.Decode(r.dec)
-			if err != nil {
-				return err
-			}
-			if r.OnCommand != nil {
-				// call protocol command hook
-				ok, err := r.OnCommand(m)
-				if err != nil {
-					return err
-				} else if !ok {
-					continue // drop
-				}
-			}
-			*ptr = m
-			return nil
-		}
-		// expect a specific message - check the type before decoding
-		if out.Cmd() != raw.Name {
-			// TODO: this case also catches cases when we expect chat messages
-			return &ErrUnexpectedCommand{
-				Expected: out.Cmd(),
-				Received: raw,
-			}
-		}
-		err = out.UnmarshalNMDC(r.dec, raw.Data)
-		if err != nil {
-			return err
-		}
-		if r.OnCommand != nil {
-			// call protocol command hook
-			ok, err := r.OnCommand(out)
-			if err != nil {
-				return err
-			} else if !ok {
-				continue // drop
-			}
-		}
-		return nil
-	}
-}
-
 // readUntil reads a byte slice until the delimiter, up to max bytes.
 // It returns a newly allocated slice with a delimiter and reads bytes and the delimiter
 // from the reader.
 func (r *Reader) readUntil(delim string, max int) ([]byte, error) {
-	var value []byte
+	r.mbuf.Reset()
 	for {
 		b, err := r.peek()
 		if err != nil {
@@ -240,130 +139,181 @@ func (r *Reader) readUntil(delim string, max int) ([]byte, error) {
 		}
 		i := bytes.Index(b, []byte(delim))
 		if i >= 0 {
-			value = append(value, b[:i+len(delim)]...)
+			r.mbuf.Write(b[:i+len(delim)])
 			r.discard(i + len(delim))
-			return value, nil
+			return r.mbuf.Bytes(), nil
 		}
-		if len(value)+len(b) > max {
+		if r.mbuf.Len()+len(b) > max {
 			return nil, errValueIsTooLong
 		}
-		value = append(value, b...)
+		r.mbuf.Write(b)
 		r.discard(-1)
 	}
 }
 
-func (r *Reader) readChatMsg(m *ChatMessage) error {
-	*m = ChatMessage{}
-	// <Bob> hello|
-	// or
-	// Some info|
-
-	msg, err := r.readUntil("|", maxChatMsg)
-	if err == errValueIsTooLong {
-		return &ErrProtocolViolation{
-			Err: fmt.Errorf("cannot read chat message: %v", err),
-		}
-	} else if err != nil {
-		return err
+// ReadLine reads a single raw message until the delimiter '|'. The returned buffer
+// contains a '|' delimiter and is in the connection encoding. The buffer is only valid
+// until the next call to Read or ReadLine.
+func (r *Reader) ReadLine() ([]byte, error) {
+	if err := r.err; err != nil {
+		return nil, err
 	}
-	msg = msg[:len(msg)-1] // trim '|'
-
-	if bytes.ContainsAny(msg, "\x00") {
-		return &ErrProtocolViolation{
-			Err: errors.New("chat message should not contain null characters"),
+	for {
+		data, err := r.readUntil("|", r.maxLine)
+		if err == errValueIsTooLong {
+			r.err = &ErrProtocolViolation{
+				Err: fmt.Errorf("cannot read message: %v", err),
+			}
+			return nil, r.err
+		} else if err != nil {
+			r.err = err
+			return nil, err
 		}
-	}
-
-	if len(msg) != 0 && msg[0] == '<' {
-		msg = msg[1:]
-		i := bytes.Index(msg, []byte("> "))
-		if i < 0 {
-			i = bytes.Index(msg, []byte(">"))
-		}
-		if i < 0 {
-			return &ErrProtocolViolation{
-				Err: errors.New("name in chat message should have a closing token"),
+		if r.OnLine != nil {
+			if ok, err := r.OnLine(data); err != nil {
+				r.err = err
+				return nil, err
+			} else if !ok {
+				continue // drop
 			}
 		}
-		name := msg[:i]
-		msg = bytes.TrimPrefix(msg[i+1:], []byte(" "))
-		if len(name) == 0 {
-			return &ErrProtocolViolation{
-				Err: errors.New("empty name in chat message"),
+		if bytes.ContainsAny(data, "\x00") {
+			r.err = &ErrProtocolViolation{
+				Err: errors.New("message should not contain null characters"),
 			}
-		} else if len(name) > maxName {
-			return &ErrProtocolViolation{
-				Err: fmt.Errorf("cannot read username in chat message: %v", err),
-			}
+			return nil, r.err
 		}
-		if err = m.Name.UnmarshalNMDC(r.dec, name); err != nil {
-			return &ErrProtocolViolation{Err: err}
-		}
+		return data, nil
 	}
+}
 
-	var text String
-	if err = text.UnmarshalNMDC(r.dec, msg); err != nil {
-		return &ErrProtocolViolation{Err: err}
+// ReadMsg reads a single message.
+func (r *Reader) ReadMsg() (Message, error) {
+	var m Message
+	if err := r.readMsgTo(&m); err != nil {
+		return nil, err
 	}
-	if r.dec == nil && r.OnUnknownEncoding != nil && !utf8.ValidString(string(text)) {
-		str, dec, err := r.OnUnknownEncoding(string(text))
+	return m, nil
+}
+
+// ReadMsgTo will read a message to a pointer passed to the function.
+// If the message read has a different type, an error will be returned.
+func (r *Reader) ReadMsgTo(m Message) error {
+	if m == nil {
+		panic("nil message to decode")
+	}
+	return r.readMsgTo(&m)
+}
+
+func (r *Reader) readMsgTo(ptr *Message) error {
+	for {
+		line, err := r.ReadLine()
 		if err != nil {
 			return err
 		}
-		if dec != nil {
-			r.dec = dec
-			text = String(str)
+		line = bytes.TrimSuffix(line, []byte("|"))
+		if len(line) == 0 {
+			// keep-alive
+			if r.OnKeepAlive != nil {
+				if err := r.OnKeepAlive(); err != nil {
+					return err
+				}
+			}
+			continue // keep alive, ignore
 		}
-	}
-	m.Text = string(text)
-	return nil
-}
-
-func (r *Reader) readRawCommand() (*RawCommand, error) {
-	// $Name xxx yyy|
-	buf, err := r.readUntil("|", maxCmd)
-	if err == errValueIsTooLong {
-		return nil, &ErrProtocolViolation{
-			Err: fmt.Errorf("cannot parse command: %v", err),
+		var (
+			out  = *ptr
+			cmd  []byte
+			args []byte
+		)
+		if line[0] == '$' {
+			line = line[1:]
+			// protocol command
+			cmd, args = line, nil // only name
+			if i := bytes.Index(line, []byte(" ")); i >= 0 {
+				cmd, args = line[:i], line[i+1:] // name and args
+			}
+			if r.OnRawMessage != nil {
+				if ok, err := r.OnRawMessage(cmd, args); err != nil {
+					return err
+				} else if !ok {
+					continue // drop
+				}
+			}
+			if len(cmd) == 0 {
+				return &ErrProtocolViolation{
+					Err: errors.New("command name is empty"),
+				}
+			} else if len(cmd) > r.maxCmdName {
+				return &ErrProtocolViolation{
+					Err: errors.New("command name is too long"),
+				}
+			} else if !isASCII(cmd) {
+				return &ErrProtocolViolation{
+					Err: fmt.Errorf("command name should be in acsii: %q", string(cmd)),
+				}
+			}
+			if out == nil {
+				// detect type by command name
+				name := string(cmd)
+				if rt, ok := messages[name]; ok {
+					out = reflect.New(rt).Interface().(Message)
+				} else {
+					out = &RawCommand{Name: name}
+				}
+				*ptr = out
+			} else if _, ok := out.(*ChatMessage); ok {
+				return errExpectedCommand
+			} else if got := string(cmd); out.Cmd() != got {
+				return &ErrUnexpectedCommand{
+					Expected: out.Cmd(),
+					Received: &RawCommand{
+						Name: got, Data: args,
+					},
+				}
+			}
+		} else {
+			// chat message
+			cmd, args = nil, line
+			if r.OnRawMessage != nil {
+				if ok, err := r.OnRawMessage(cmd, args); err != nil {
+					return err
+				} else if !ok {
+					continue // drop
+				}
+			}
+			if out == nil {
+				out = &ChatMessage{}
+				*ptr = out
+			} else if _, ok := out.(*ChatMessage); !ok {
+				return errExpectedChat
+			}
 		}
-	} else if err != nil {
-		return nil, err
-	}
-	if !bytes.HasPrefix(buf, []byte{'$'}) {
-		return nil, errors.New("expected command, got chat message")
-	}
-	buf = buf[1 : len(buf)-1] // trim '$' and '|'
-
-	if bytes.Contains(buf, []byte{0x00}) {
-		return nil, &ErrProtocolViolation{
-			Err: errors.New("command should not contain null characters"),
+		err = out.UnmarshalNMDC(r.dec, args)
+		if r.OnUnknownEncoding != nil {
+			if e, ok := err.(*errUnknownEncoding); ok {
+				dec, err := r.OnUnknownEncoding(e.text)
+				if err != nil {
+					return err
+				} else if dec == nil {
+					return e
+				}
+				r.dec = dec
+				err = out.UnmarshalNMDC(r.dec, args)
+			}
 		}
-	}
-	i := bytes.Index(buf, []byte(" "))
-	var (
-		name []byte
-		data []byte
-	)
-	if i < 0 {
-		name = buf
-	} else {
-		name = buf[:i]
-		data = buf[i+1:]
-	}
-	if len(name) == 0 {
-		return nil, &ErrProtocolViolation{
-			Err: errors.New("command name is empty"),
+		if err != nil {
+			return err
 		}
-	} else if len(name) > maxCmdName {
-		return nil, &ErrProtocolViolation{
-			Err: errors.New("command name is too long"),
+		if r.OnMessage != nil {
+			if ok, err := r.OnMessage(out); err != nil {
+				return err
+			} else if !ok {
+				continue // drop
+			}
 		}
-	} else if !isASCII(name) {
-		return nil, &ErrProtocolViolation{
-			Err: fmt.Errorf("command name should be in acsii: %q", string(name)),
-		}
+		return nil
 	}
-	return &RawCommand{Name: string(name), Data: data}, nil
 }
 
 func isASCII(p []byte) bool {

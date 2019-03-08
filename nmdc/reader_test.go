@@ -45,7 +45,7 @@ var casesReader = []struct {
 		name:  "null char in command",
 		input: "$SomeCommand\x00|",
 		err: &ErrProtocolViolation{
-			Err: errors.New("command should not contain null characters"),
+			Err: errors.New("message should not contain null characters"),
 		},
 	},
 	{

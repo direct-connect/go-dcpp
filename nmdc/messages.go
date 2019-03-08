@@ -111,7 +111,8 @@ func (m *RawCommand) MarshalNMDC(_ *encoding.Encoder) ([]byte, error) {
 }
 
 func (m *RawCommand) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
-	m.Data = data
+	m.Data = make([]byte, len(data))
+	copy(m.Data, data)
 	return nil
 }
 
@@ -128,7 +129,7 @@ func (m *RawCommand) Decode(dec *encoding.Decoder) (Message, error) {
 }
 
 type ChatMessage struct {
-	Name Name
+	Name string
 	Text string
 }
 
@@ -147,7 +148,7 @@ func (m *ChatMessage) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	if m.Name != "" {
 		buf.WriteByte('<')
-		name, err := m.Name.MarshalNMDC(enc)
+		name, err := Name(m.Name).MarshalNMDC(enc)
 		if err != nil {
 			return nil, err
 		}
@@ -163,8 +164,44 @@ func (m *ChatMessage) MarshalNMDC(enc *encoding.Encoder) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *ChatMessage) UnmarshalNMDC(_ *encoding.Decoder, data []byte) error {
-	panic("special case")
+func (m *ChatMessage) UnmarshalNMDC(dec *encoding.Decoder, data []byte) error {
+	// <user> message text|
+	// or
+	// message text|
+	if len(data) != 0 && data[0] == '<' {
+		data = data[1:]
+		i := bytes.Index(data, []byte("> "))
+		if i < 0 {
+			i = bytes.Index(data, []byte(">"))
+		}
+		if i < 0 {
+			return &ErrProtocolViolation{
+				Err: errors.New("name in chat message should have a closing token"),
+			}
+		}
+		name := data[:i]
+		data = bytes.TrimPrefix(data[i+1:], []byte(" "))
+		if len(name) == 0 {
+			return &ErrProtocolViolation{
+				Err: errors.New("empty name in chat message"),
+			}
+		} else if len(name) > maxName {
+			return &ErrProtocolViolation{
+				Err: errors.New("name in chat message is too long"),
+			}
+		}
+		var sname String
+		if err := sname.UnmarshalNMDC(dec, name); err != nil {
+			return err
+		}
+		m.Name = string(sname)
+	}
+	var text String
+	if err := text.UnmarshalNMDC(dec, data); err != nil {
+		return err
+	}
+	m.Text = string(text)
+	return nil
 }
 
 type Hello struct {
