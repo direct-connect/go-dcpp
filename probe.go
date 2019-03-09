@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/adc"
-	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
 var (
@@ -26,8 +26,8 @@ type timeoutErr interface {
 const (
 	probeTimeout = time.Second * 5
 
-	nmdcSchema  = nmdc.SchemaNMDC
-	nmdcsSchema = "nmdcs" // TODO: is there a schema for this one?
+	nmdcSchema  = nmdcp.SchemeNMDC
+	nmdcsSchema = nmdcp.SchemeNMDCS
 	adcSchema   = adc.SchemaADC
 	adcsSchema  = adc.SchemaADCS
 )

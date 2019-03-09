@@ -19,10 +19,18 @@ import (
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
+var (
+	errConnectionClosed = errors.New("connection closed")
+)
+
 const nmdcFakeToken = "nmdc"
 
-func (h *Hub) ServeNMDC(conn net.Conn) error {
+func (h *Hub) serveNMDC(conn net.Conn) error {
 	log.Printf("%s: using NMDC", conn.RemoteAddr())
+	return h.ServeNMDC(conn)
+}
+
+func (h *Hub) ServeNMDC(conn net.Conn) error {
 	c, err := nmdc.NewConn(conn)
 	if err != nil {
 		return err
@@ -201,7 +209,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		if err != nil {
 			str = err.Error()
 		}
-		_ = peer.writeOneNow(&nmdcp.ChatMessage{Text: "handshake failed: " + str})
+		_ = peer.conn.WriteMsg(&nmdcp.ChatMessage{Text: "handshake failed: " + str})
 		return nil, err
 	}
 
@@ -217,6 +225,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.peers.bySID[peer.sid] = peer
 	h.peers.byName[name] = peer
 	atomic.StoreUint32(&peer.state, nmdcPeerJoining)
+	h.invalidateList()
 	h.globalChat.Join(peer)
 	h.peers.Unlock()
 
@@ -240,7 +249,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 
 	c := peer.conn
-	err := c.WriteMsg(&nmdcp.HubName{
+	err := c.StartBatch()
+	if err != nil {
+		return err
+	}
+	err = c.WriteMsg(&nmdcp.HubName{
 		String: nmdcp.String(h.conf.Name),
 	})
 	if err != nil {
@@ -258,7 +271,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		if err != nil {
 			return err
 		}
-		err = c.Flush()
+		err = c.EndBatch(true)
 		if err != nil {
 			return err
 		}
@@ -276,13 +289,13 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			if err != nil {
 				return err
 			}
-			err = c.Flush()
-			if err != nil {
-				return err
-			}
 			return errors.New("wrong password")
 		}
 		deadline = time.Now().Add(time.Second * 5)
+		err = c.StartBatch()
+		if err != nil {
+			return err
+		}
 	}
 
 	err = c.WriteMsg(&nmdcp.Hello{
@@ -291,7 +304,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
-	err = c.Flush()
+	err = c.EndBatch(true)
 	if err != nil {
 		return err
 	}
@@ -317,7 +330,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	}
 	peer.setUser(&peer.user)
 
-	err = c.WriteRaw(peer.userRaw)
+	err = c.StartBatch()
+	if err != nil {
+		return err
+	}
+	err = c.WriteLine(peer.userRaw)
 	if err != nil {
 		return err
 	}
@@ -364,7 +381,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			return err
 		}
 	}
-	return nil
+	return c.EndBatch(true)
 }
 
 func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
@@ -562,7 +579,7 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 			return err
 		}
 	}
-	return peer.conn.Flush()
+	return nil
 }
 
 var _ Peer = (*nmdcPeer)(nil)
@@ -676,22 +693,44 @@ func (p *nmdcPeer) Close() error {
 	return p.closeOn(nil)
 }
 
-func (p *nmdcPeer) writeOne(msg nmdcp.Message) error {
+func (p *nmdcPeer) write(msg nmdcp.Message) error {
 	if p.getState() == nmdcPeerClosed {
-		return errors.New("connection closed")
+		return errConnectionClosed
 	}
-	if err := p.conn.WriteOneMsg(msg); err != nil {
+	if err := p.conn.WriteMsg(msg); err != nil {
 		_ = p.Close()
 		return err
 	}
 	return nil
 }
 
-func (p *nmdcPeer) writeOneRaw(data []byte) error {
+func (p *nmdcPeer) writeAsync(msg nmdcp.Message) error {
 	if p.getState() == nmdcPeerClosed {
-		return errors.New("connection closed")
+		return errConnectionClosed
 	}
-	if err := p.conn.WriteOneRaw(data); err != nil {
+	if err := p.conn.WriteMsgAsync(msg); err != nil {
+		_ = p.Close()
+		return err
+	}
+	return nil
+}
+
+func (p *nmdcPeer) writeLine(data []byte) error {
+	if p.getState() == nmdcPeerClosed {
+		return errConnectionClosed
+	}
+	if err := p.conn.WriteLine(data); err != nil {
+		_ = p.Close()
+		return err
+	}
+	return nil
+}
+
+func (p *nmdcPeer) writeLineAsync(data []byte) error {
+	if p.getState() == nmdcPeerClosed {
+		return errConnectionClosed
+	}
+	if err := p.conn.WriteLineAsync(data); err != nil {
 		_ = p.Close()
 		return err
 	}
@@ -700,7 +739,7 @@ func (p *nmdcPeer) writeOneRaw(data []byte) error {
 
 func (p *nmdcPeer) writeOneNow(msg nmdcp.Message) error {
 	if p.getState() == nmdcPeerClosed {
-		return errors.New("connection closed")
+		return errConnectionClosed
 	}
 	// should only be used for closing the connection
 	if err := p.conn.WriteMsg(msg); err != nil {
@@ -724,7 +763,7 @@ func (p *nmdcPeer) BroadcastJoin(peers []Peer) {
 	join, enc := p.rawInfo()
 	for _, p2 := range peers {
 		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.conn.Encoding() == nil {
-			_ = p2.writeOneRaw(join)
+			_ = p2.writeLineAsync(join)
 			continue
 		}
 		_ = p2.PeersJoin([]Peer{p})
@@ -765,30 +804,34 @@ func (u User) toNMDC() nmdcp.MyINFO {
 
 func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	if p.getState() == nmdcPeerClosed {
-		return errors.New("connection closed")
+		return errConnectionClosed
 	}
-	write := p.writeOne
-	writeRaw := p.writeOneRaw
-	if initial {
-		write = p.conn.WriteMsg
-		writeRaw = p.conn.WriteRaw
+	if !initial {
+		err := p.conn.StartBatch()
+		if err != nil {
+			_ = p.Close()
+			return err
+		}
 	}
 	for _, peer := range peers {
 		if p2, ok := peer.(*nmdcPeer); ok {
 			data, enc := p2.rawInfo()
 			if enc == nil && p.conn.Encoding() == nil {
-				if err := writeRaw(data); err != nil {
+				if err := p.conn.WriteLine(data); err != nil {
 					return err
 				}
 				continue
 			}
 		}
 		info := peer.User().toNMDC()
-		if err := write(&info); err != nil {
+		if err := p.conn.WriteMsg(&info); err != nil {
 			return err
 		}
 	}
-	return nil
+	if initial {
+		return nil
+	}
+	return p.conn.EndBatch(false)
 }
 
 func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
@@ -801,7 +844,7 @@ func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
 	}
 	for _, p2 := range peers {
 		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p2.conn.TextEncoder() == nil {
-			_ = p2.writeOneRaw(quit)
+			_ = p2.writeLineAsync(quit)
 			continue
 		}
 		_ = p2.PeersLeave([]Peer{p})
@@ -809,15 +852,33 @@ func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
 }
 
 func (p *nmdcPeer) PeersLeave(peers []Peer) error {
-	if p.getState() == nmdcPeerClosed {
-		return errors.New("connection closed")
+	if len(peers) == 0 {
+		return nil
+	} else if p.getState() == nmdcPeerClosed {
+		return errConnectionClosed
+	}
+	if len(peers) == 1 {
+		return p.writeAsync(&nmdcp.Quit{
+			Name: nmdcp.Name(peers[0].Name()),
+		})
+	}
+	err := p.conn.StartBatch()
+	if err != nil {
+		_ = p.Close()
+		return err
 	}
 	for _, peer := range peers {
-		if err := p.writeOne(&nmdcp.Quit{
+		if err := p.conn.WriteMsg(&nmdcp.Quit{
 			Name: nmdcp.Name(peer.Name()),
 		}); err != nil {
+			_ = p.Close()
 			return err
 		}
+	}
+	err = p.conn.EndBatch(false)
+	if err != nil {
+		_ = p.Close()
+		return err
 	}
 	return nil
 }
@@ -827,7 +888,7 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 	if rname == "" {
 		return nil
 	}
-	err := p.writeOne(&nmdcp.MyINFO{
+	err := p.writeAsync(&nmdcp.MyINFO{
 		Name:       rname,
 		HubsNormal: room.Users(), // TODO: update
 		Client:     p.hub.conf.Soft,
@@ -839,13 +900,13 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 	if err != nil {
 		return err
 	}
-	err = p.writeOne(&nmdcp.OpList{
+	err = p.writeAsync(&nmdcp.OpList{
 		Names: nmdcp.Names{rname},
 	})
 	if err != nil {
 		return err
 	}
-	return p.writeOne(&nmdcp.PrivateMessage{
+	return p.writeAsync(&nmdcp.PrivateMessage{
 		From: rname, Name: rname,
 		To:   p.Name(),
 		Text: "joined the room",
@@ -857,7 +918,7 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 	if rname == "" {
 		return nil
 	}
-	err := p.writeOne(&nmdcp.PrivateMessage{
+	err := p.writeAsync(&nmdcp.PrivateMessage{
 		From: rname, Name: rname,
 		To:   p.Name(),
 		Text: "left the room",
@@ -865,7 +926,7 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 	if err != nil {
 		return err
 	}
-	return p.writeOne(&nmdcp.Quit{
+	return p.writeAsync(&nmdcp.Quit{
 		Name: nmdcp.Name(rname),
 	})
 }
@@ -873,7 +934,7 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	rname := room.Name()
 	if rname == "" {
-		return p.writeOne(&nmdcp.ChatMessage{
+		return p.writeAsync(&nmdcp.ChatMessage{
 			Name: msg.Name,
 			Text: msg.Text,
 		})
@@ -881,7 +942,7 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if from == p {
 		return nil // no echo
 	}
-	return p.writeOne(&nmdcp.PrivateMessage{
+	return p.writeAsync(&nmdcp.PrivateMessage{
 		From: rname,
 		To:   p.Name(),
 		Name: msg.Name,
@@ -891,7 +952,7 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 
 func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 	fname := msg.Name
-	return p.writeOne(&nmdcp.PrivateMessage{
+	return p.writeAsync(&nmdcp.PrivateMessage{
 		From: fname, Name: fname,
 		To:   p.Name(),
 		Text: msg.Text,
@@ -899,12 +960,12 @@ func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
-	return p.writeOne(&nmdcp.ChatMessage{Text: text})
+	return p.writeAsync(&nmdcp.ChatMessage{Text: text})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
 	// TODO: save token somewhere?
-	return p.writeOne(&nmdcp.ConnectToMe{
+	return p.writeAsync(&nmdcp.ConnectToMe{
 		Targ:    peer.Name(),
 		Address: addr,
 		Secure:  secure,
@@ -913,7 +974,7 @@ func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) 
 
 func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	// TODO: save token somewhere?
-	return p.writeOne(&nmdcp.RevConnectToMe{
+	return p.writeAsync(&nmdcp.RevConnectToMe{
 		From: peer.Name(),
 		To:   p.Name(),
 	})
@@ -955,7 +1016,7 @@ func (s *nmdcSearch) SendResult(r SearchResult) error {
 	default:
 		return nil // ignore
 	}
-	return s.p.writeOne(sr)
+	return s.p.writeAsync(sr)
 }
 
 func (s *nmdcSearch) Close() error {
@@ -979,7 +1040,7 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
 	p.setActiveSearch(out, req)
 	if req, ok := req.(TTHSearch); ok {
-		return p.writeOne(&nmdcp.Search{
+		return p.writeAsync(&nmdcp.Search{
 			User:     out.Peer().Name(),
 			DataType: nmdcp.DataTypeTTH, TTH: (*TTH)(&req),
 		})
@@ -1026,5 +1087,5 @@ func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) er
 		return nil // ignore
 	}
 	msg.Pattern += strings.Join(name.And, " ")
-	return p.writeOne(msg)
+	return p.writeAsync(msg)
 }

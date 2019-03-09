@@ -10,7 +10,7 @@ import (
 	"github.com/direct-connect/go-dc/nmdc"
 )
 
-func (c *Conn) SendClientHandshake(deadline time.Time, name string, ext ...string) (*nmdc.Lock, error) {
+func (c *Conn) SendClientHandshake(deadline time.Time, ext ...string) (*nmdc.Lock, error) {
 	var lock nmdc.Lock
 	err := c.ReadMsgTo(deadline, &lock)
 	if err == io.EOF {
@@ -27,10 +27,6 @@ func (c *Conn) SendClientHandshake(deadline time.Time, name string, ext ...strin
 		return nil, err
 	}
 	err = c.WriteMsg(lock.Key())
-	if err != nil {
-		return nil, err
-	}
-	err = c.WriteMsg(&nmdc.ValidateNick{Name: nmdc.Name(name)})
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +67,7 @@ func (c *Conn) ReadValidateNick(deadline time.Time) (*nmdc.ValidateNick, error) 
 	if err != nil {
 		return nil, fmt.Errorf("expected validate: %v", err)
 	}
-	if c.encoding != nil || c.fallback == nil || utf8.ValidString(string(nick.Name)) {
+	if c.Encoding() != nil || c.fallback == nil || utf8.ValidString(string(nick.Name)) {
 		return &nick, nil
 	}
 	// try fallback encoding
@@ -92,7 +88,7 @@ func (c *Conn) ReadMyInfoTo(deadline time.Time, info *nmdc.MyINFO) error {
 	if err != nil {
 		return fmt.Errorf("expected user info: %v", err)
 	}
-	if c.encoding != nil || c.fallback == nil {
+	if c.Encoding() != nil || c.fallback == nil {
 		return nil
 	} else if utf8.ValidString(string(info.Name)) && utf8.ValidString(string(info.Desc)) {
 		return nil

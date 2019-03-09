@@ -317,6 +317,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	h.peers.bySID[peer.sid] = peer
 	h.peers.byCID[u.Id] = peer
 	h.peers.byName[u.Name] = peer
+	h.invalidateList()
 	h.globalChat.Join(peer)
 	h.peers.Unlock()
 

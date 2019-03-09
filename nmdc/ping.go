@@ -107,7 +107,7 @@ type timeoutErr interface {
 }
 
 func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
-	addr, err := NormalizeAddr(addr)
+	addr, err := nmdc.NormalizeAddr(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 
 	num := int64(time.Now().Nanosecond())
 	name := "pinger_" + strconv.FormatInt(num, 16)
-	lock, err := c.SendClientHandshake(time.Time{}, name,
+	lock, err := c.SendClientHandshake(time.Time{},
 		// dump most extensions we know to probe the for support of them
 		nmdc.ExtNoHello, nmdc.ExtNoGetINFO, nmdc.ExtTLS, nmdc.ExtUserIP2,
 		nmdc.ExtUserCommand, nmdc.ExtTTHSearch, nmdc.ExtADCGet,
@@ -227,6 +227,14 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			}
 		case *nmdc.Supports:
 			hub.Ext = msg.Ext
+			err = c.WriteMsg(&nmdc.ValidateNick{Name: nmdc.Name(name)})
+			if err != nil {
+				return nil, err
+			}
+			err = c.Flush()
+			if err != nil {
+				return nil, err
+			}
 		case *nmdc.HubName:
 			if hub.Name == "" {
 				hub.Name = string(msg.String)

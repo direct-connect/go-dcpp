@@ -289,6 +289,7 @@ waitJoin:
 	delete(h.peers.reserved, peer.name)
 	h.peers.byName[peer.name] = peer
 	h.peers.bySID[peer.sid] = peer
+	h.invalidateList()
 	notify := h.listPeers()
 	h.globalChat.Join(peer)
 	h.peers.Unlock()

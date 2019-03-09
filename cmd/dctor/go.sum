@@ -38,6 +38,8 @@ github.com/dgryski/go-farm v0.0.0-20190104051053-3adb47b1fb0f/go.mod h1:SqUrOPUn
 github.com/direct-connect/go-dc v0.1.0 h1:0oANzmLu3vupWI8RJykoa1kRLRwSvxJOKmQTUlt7h7M=
 github.com/direct-connect/go-dc v0.1.0/go.mod h1:N9oVjpObOOqAFc9sT2L5VNQ2aOI1iU/I7qMuHUrihP0=
 github.com/direct-connect/go-dc v0.2.0/go.mod h1:N9oVjpObOOqAFc9sT2L5VNQ2aOI1iU/I7qMuHUrihP0=
+github.com/direct-connect/go-dc v0.2.1/go.mod h1:N9oVjpObOOqAFc9sT2L5VNQ2aOI1iU/I7qMuHUrihP0=
+github.com/direct-connect/go-dc v0.3.0/go.mod h1:N9oVjpObOOqAFc9sT2L5VNQ2aOI1iU/I7qMuHUrihP0=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.3.3/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=

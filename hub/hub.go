@@ -41,6 +41,9 @@ type Config struct {
 }
 
 func NewHub(conf Config) (*Hub, error) {
+	if conf.Name == "" {
+		conf.Name = "GoHub"
+	}
 	if conf.Soft.Name == "" {
 		conf.Soft.Name = version.Name
 	}
@@ -97,6 +100,8 @@ type Hub struct {
 	fallback encoding.Encoding
 
 	peers struct {
+		curList atomic.Value // []Peer
+
 		sync.RWMutex
 		// reserved map is used to temporary bind a username.
 		// The name should be removed from this map as soon as a byName entry is added.
@@ -232,7 +237,7 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 	if err != nil {
 		if te, ok := err.(timeoutErr); ok && te.Timeout() {
 			// only NMDC protocol expects the server to speak first
-			return h.ServeNMDC(conn)
+			return h.serveNMDC(conn)
 		}
 		return err
 	}
@@ -253,7 +258,7 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 		}
 		switch proto {
 		case "nmdc":
-			return h.ServeNMDC(tconn)
+			return h.serveNMDC(tconn)
 		case "adc":
 			return h.ServeADC(tconn)
 		case "http/0.9", "http/1.0", "http/1.1":
@@ -287,16 +292,36 @@ func (h *Hub) Serve(conn net.Conn) error {
 }
 
 func (h *Hub) Peers() []Peer {
+	if l := h.cachedList(); l != nil {
+		return l
+	}
 	h.peers.RLock()
 	defer h.peers.RUnlock()
 	return h.listPeers()
 }
 
+func (h *Hub) cachedList() []Peer {
+	list, _ := h.peers.curList.Load().([]Peer)
+	return list
+}
+
+func (h *Hub) cacheList(list []Peer) {
+	h.peers.curList.Store(list)
+}
+
+func (h *Hub) invalidateList() {
+	h.peers.curList.Store([]Peer(nil))
+}
+
 func (h *Hub) listPeers() []Peer {
+	if l := h.cachedList(); l != nil {
+		return l
+	}
 	list := make([]Peer, 0, len(h.peers.byName))
 	for _, p := range h.peers.byName {
 		list = append(list, p)
 	}
+	h.cacheList(list)
 	return list
 }
 
@@ -434,6 +459,7 @@ func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	h.peers.Lock()
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)
+	h.invalidateList()
 	if notify == nil {
 		notify = h.listPeers()
 	}
@@ -448,6 +474,7 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)
 	delete(h.peers.byCID, cid)
+	h.invalidateList()
 	notify := h.listPeers()
 	h.leaveRooms(peer)
 	h.peers.Unlock()

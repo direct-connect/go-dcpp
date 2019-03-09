@@ -15,7 +15,6 @@ import (
 	"time"
 
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
-	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -258,7 +257,7 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 	if err != nil {
 		return err
 	}
-	u, err := nmdc.ParseAddr(info.Host)
+	u, err := nmdcp.ParseAddr(info.Host)
 	if err != nil {
 		return err
 	}

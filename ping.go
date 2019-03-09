@@ -46,12 +46,12 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			info.Desc = hub.Topic
 		}
 		if hub.Addr != "" {
-			if uri, err := nmdc.NormalizeAddr(hub.Addr); err == nil && uri != addr {
+			if uri, err := nmdcp.NormalizeAddr(hub.Addr); err == nil && uri != addr {
 				info.Addr = append(info.Addr, uri)
 			}
 		}
 		for _, a := range hub.Failover {
-			uri, err := nmdc.NormalizeAddr(a)
+			uri, err := nmdcp.NormalizeAddr(a)
 			if err == nil {
 				info.Addr = append(info.Addr, uri)
 			}

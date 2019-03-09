@@ -77,7 +77,7 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdcp.Extensions, *HubInfo, err
 	}
 	ext = append(ext, conf.Ext...)
 
-	_, err := conn.SendClientHandshake(deadline, conf.Name, ext...)
+	_, err := conn.SendClientHandshake(deadline, ext...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -111,6 +111,14 @@ handshake:
 			if _, ok := mutual[nmdcp.ExtNoHello]; !ok {
 				// TODO: support hello as well
 				return nil, nil, fmt.Errorf("no hello is not supported: %v", msg.Ext)
+			}
+			err = conn.WriteMsg(&nmdcp.ValidateNick{Name: nmdcp.Name(conf.Name)})
+			if err != nil {
+				return nil, nil, err
+			}
+			err = conn.Flush()
+			if err != nil {
+				return nil, nil, err
 			}
 		case *nmdcp.HubName:
 			hub.Name = string(msg.String)
@@ -238,7 +246,7 @@ func (c *Conn) SendChatMsg(msg string) error {
 	c.imu.RLock()
 	name := c.user.Name
 	c.imu.RUnlock()
-	return c.conn.WriteOneMsg(&nmdcp.ChatMessage{
+	return c.conn.WriteMsg(&nmdcp.ChatMessage{
 		Name: name, Text: msg,
 	})
 }
@@ -247,7 +255,7 @@ func (c *Conn) readLoop() {
 	defer close(c.closed)
 	for {
 		msg, err := c.conn.ReadMsg(time.Time{})
-		if err == io.EOF {
+		if err == io.EOF || err == io.ErrClosedPipe {
 			return
 		} else if err != nil {
 			log.Println("read msg:", err)
@@ -272,6 +280,9 @@ func (c *Conn) readLoop() {
 		case *nmdcp.OpList:
 			c.peers.RLock()
 			for _, name := range msg.Names {
+				if name == "" {
+					continue
+				}
 				p := c.peers.byName[name]
 				if p == nil {
 					log.Printf("op user does not exist: %q", name)
