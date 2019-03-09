@@ -5,7 +5,7 @@ import (
 	"encoding"
 	"fmt"
 
-	"github.com/direct-connect/go-dcpp/tiger"
+	"github.com/direct-connect/go-dc/tiger"
 )
 
 const base32Enc = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"

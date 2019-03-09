@@ -3,7 +3,7 @@ package hub
 import (
 	"context"
 
-	"github.com/direct-connect/go-dcpp/tiger"
+	"github.com/direct-connect/go-dc/tiger"
 )
 
 type TTH = tiger.Hash

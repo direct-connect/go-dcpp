@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
@@ -55,8 +56,8 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 		closing: make(chan struct{}),
 		closed:  make(chan struct{}),
 	}
-	c.user.Name = nmdc.Name(conf.Name)
-	c.peers.byName = make(map[nmdc.Name]*Peer)
+	c.user.Name = conf.Name
+	c.peers.byName = make(map[string]*Peer)
 	if err = initConn(c); err != nil {
 		conn.Close()
 		return nil, err
@@ -66,12 +67,12 @@ func HubHandshake(conn *nmdc.Conn, conf *Config) (*Conn, error) {
 	return c, nil
 }
 
-func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, *HubInfo, error) {
+func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdcp.Extensions, *HubInfo, error) {
 	deadline := time.Now().Add(time.Second * 5)
 
 	ext := []string{
-		nmdc.FeaNoHello,
-		nmdc.FeaNoGetINFO,
+		nmdcp.ExtNoHello,
+		nmdcp.ExtNoGetINFO,
 	}
 	ext = append(ext, conf.Ext...)
 
@@ -81,12 +82,12 @@ func hubHanshake(conn *nmdc.Conn, conf *Config) (nmdc.Features, *HubInfo, error)
 	}
 	deadline = deadline.Add(time.Second * 5)
 
-	our := make(nmdc.Features)
+	our := make(nmdcp.Extensions)
 	for _, e := range ext {
 		our.Set(e)
 	}
 	var (
-		mutual nmdc.Features
+		mutual nmdcp.Extensions
 		hub    HubInfo
 	)
 
@@ -99,20 +100,20 @@ handshake:
 			return nil, nil, err
 		}
 		switch msg := msg.(type) {
-		case *nmdc.ChatMessage:
+		case *nmdcp.ChatMessage:
 			// TODO: it seems like the server may send MOTD before replying with $Supports
 			//		 we need to queue those messages and replay them once connection is established
 
 			// skip for now
-		case *nmdc.Supports:
+		case *nmdcp.Supports:
 			mutual = our.IntersectList(msg.Ext)
-			if _, ok := mutual[nmdc.FeaNoHello]; !ok {
+			if _, ok := mutual[nmdcp.ExtNoHello]; !ok {
 				// TODO: support hello as well
 				return nil, nil, fmt.Errorf("no hello is not supported: %v", msg.Ext)
 			}
-		case *nmdc.HubName:
-			hub.Name = msg.String
-		case *nmdc.Hello:
+		case *nmdcp.HubName:
+			hub.Name = string(msg.String)
+		case *nmdcp.Hello:
 			if string(msg.Name) != conf.Name {
 				return nil, nil, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
@@ -123,14 +124,14 @@ handshake:
 		}
 	}
 
-	err = conn.SendClientInfo(deadline, &nmdc.MyInfo{
-		Name:    nmdc.Name(conf.Name),
+	err = conn.SendClientInfo(deadline, &nmdcp.MyINFO{
+		Name:    conf.Name,
 		Client:  version.Name,
 		Version: version.Vers,
-		Flag:    nmdc.FlagStatusNormal | nmdc.FlagIPv4 | nmdc.FlagTLSDownload,
+		Flag:    nmdcp.FlagStatusNormal | nmdcp.FlagIPv4 | nmdcp.FlagTLSDownload,
 
 		// TODO
-		Mode:       nmdc.UserModePassive,
+		Mode:       nmdcp.UserModePassive,
 		HubsNormal: 1,
 		Slots:      1,
 		Conn:       "LAN(T3)",
@@ -150,11 +151,11 @@ func initConn(c *Conn) error {
 			return err
 		}
 		switch msg := msg.(type) {
-		case *nmdc.HubName:
-			c.hub.Name = msg.String
-		case *nmdc.HubTopic:
+		case *nmdcp.HubName:
+			c.hub.Name = string(msg.String)
+		case *nmdcp.HubTopic:
 			c.hub.Topic = msg.Text
-		case *nmdc.MyInfo:
+		case *nmdcp.MyINFO:
 			if msg.Name == c.user.Name {
 				c.user = *msg
 				return nil
@@ -173,22 +174,22 @@ func initConn(c *Conn) error {
 // Conn represents a Client-to-Hub connection.
 type Conn struct {
 	conn *nmdc.Conn
-	fea  nmdc.Features
+	fea  nmdcp.Extensions
 
 	closing chan struct{}
 	closed  chan struct{}
 
 	imu  sync.RWMutex
-	user nmdc.MyInfo
+	user nmdcp.MyINFO
 	hub  HubInfo
 
 	peers struct {
 		sync.RWMutex
-		byName map[nmdc.Name]*Peer
+		byName map[string]*Peer
 	}
 	on struct {
-		chat      func(m *nmdc.ChatMessage) error
-		unhandled func(m nmdc.Message) error
+		chat      func(m *nmdcp.ChatMessage) error
+		unhandled func(m nmdcp.Message) error
 	}
 }
 
@@ -212,11 +213,11 @@ func (c *Conn) Close() error {
 	return err
 }
 
-func (c *Conn) OnChatMessage(fnc func(m *nmdc.ChatMessage) error) {
+func (c *Conn) OnChatMessage(fnc func(m *nmdcp.ChatMessage) error) {
 	c.on.chat = fnc
 }
 
-func (c *Conn) OnUnhandled(fnc func(m nmdc.Message) error) {
+func (c *Conn) OnUnhandled(fnc func(m nmdcp.Message) error) {
 	c.on.unhandled = fnc
 }
 
@@ -234,8 +235,8 @@ func (c *Conn) SendChatMsg(msg string) error {
 	c.imu.RLock()
 	name := c.user.Name
 	c.imu.RUnlock()
-	return c.conn.WriteOneMsg(&nmdc.ChatMessage{
-		Name: string(name), Text: msg,
+	return c.conn.WriteOneMsg(&nmdcp.ChatMessage{
+		Name: name, Text: msg,
 	})
 }
 
@@ -250,22 +251,22 @@ func (c *Conn) readLoop() {
 			return
 		}
 		switch msg := msg.(type) {
-		case *nmdc.HubName:
+		case *nmdcp.HubName:
 			c.imu.Lock()
-			c.hub.Name = msg.String
+			c.hub.Name = string(msg.String)
 			c.imu.Unlock()
-		case *nmdc.HubTopic:
+		case *nmdcp.HubTopic:
 			c.imu.Lock()
 			c.hub.Topic = msg.Text
 			c.imu.Unlock()
-		case *nmdc.ChatMessage:
+		case *nmdcp.ChatMessage:
 			if c.on.chat != nil {
 				if err = c.on.chat(msg); err != nil {
 					log.Println("chat msg:", err)
 					return
 				}
 			}
-		case *nmdc.OpList:
+		case *nmdcp.OpList:
 			c.peers.RLock()
 			for _, name := range msg.Names {
 				p := c.peers.byName[name]
@@ -278,7 +279,7 @@ func (c *Conn) readLoop() {
 				p.mu.Unlock()
 			}
 			c.peers.RUnlock()
-		case *nmdc.BotList:
+		case *nmdcp.BotList:
 			c.peers.RLock()
 			for _, name := range msg.Names {
 				p := c.peers.byName[name]
@@ -303,7 +304,7 @@ func (c *Conn) readLoop() {
 }
 
 type HubInfo struct {
-	Name  nmdc.String
+	Name  string
 	Topic string
 }
 
@@ -311,7 +312,7 @@ type Peer struct {
 	hub *Conn
 
 	mu   sync.RWMutex
-	info nmdc.MyInfo
+	info nmdcp.MyINFO
 	op   bool
 	bot  bool
 }
@@ -330,7 +331,7 @@ func (p *Peer) IsBot() bool {
 	return v
 }
 
-func (p *Peer) Info() nmdc.MyInfo {
+func (p *Peer) Info() nmdcp.MyINFO {
 	p.mu.RLock()
 	u := p.info
 	p.mu.RUnlock()

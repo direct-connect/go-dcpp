@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/direct-connect/go-dc/tiger"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/adc/types"
-	"github.com/direct-connect/go-dcpp/tiger"
 )
 
 func (h *Hub) initADC() {

@@ -15,6 +15,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding"
+
+	"github.com/direct-connect/go-dc/nmdc"
 )
 
 const (
@@ -88,7 +90,7 @@ func NewConn(conn net.Conn) (*Conn, error) {
 		closed: make(chan struct{}),
 	}
 	c.write.w = bufio.NewWriter(conn)
-	c.read.r = NewReader(conn)
+	c.read.r = nmdc.NewReader(conn)
 	c.read.r.OnUnknownEncoding = c.onUnknownEncoding
 	if Debug {
 		c.read.r.OnLine = func(data []byte) (bool, error) {
@@ -126,7 +128,7 @@ type Conn struct {
 	}
 	read struct {
 		sync.Mutex
-		r *Reader
+		r *nmdc.Reader
 	}
 }
 
@@ -217,8 +219,8 @@ func (c *Conn) KeepAlive(interval time.Duration) {
 
 // WriteMsg writes a single message to the connection's buffer.
 // Caller should call Flush or FlushLazy to schedule the write.
-func (c *Conn) WriteMsg(m Message) error {
-	data, err := Marshal(c.enc, m)
+func (c *Conn) WriteMsg(m nmdc.Message) error {
+	data, err := nmdc.Marshal(c.enc, m)
 	if err != nil {
 		return err
 	}
@@ -227,8 +229,8 @@ func (c *Conn) WriteMsg(m Message) error {
 
 // WriteOneMsg writes a single message to the connection's buffer
 // and schedules the write.
-func (c *Conn) WriteOneMsg(m Message) error {
-	data, err := Marshal(c.enc, m)
+func (c *Conn) WriteOneMsg(m nmdc.Message) error {
+	data, err := nmdc.Marshal(c.enc, m)
 	if err != nil {
 		return err
 	}
@@ -372,7 +374,21 @@ func (c *Conn) onUnknownEncoding(text []byte) (*encoding.Decoder, error) {
 	return dec, nil
 }
 
-func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
+func (c *Conn) ReadMsgTo(deadline time.Time, m nmdc.Message) error {
+	if m == nil {
+		panic("nil message to decode")
+	}
+
+	defer c.readMsgLock()()
+
+	if !deadline.IsZero() {
+		c.conn.SetReadDeadline(deadline)
+		defer c.conn.SetReadDeadline(time.Time{})
+	}
+	return c.read.r.ReadMsgTo(m)
+}
+
+func (c *Conn) ReadMsg(deadline time.Time) (nmdc.Message, error) {
 	defer c.readMsgLock()()
 
 	if !deadline.IsZero() {
@@ -380,20 +396,5 @@ func (c *Conn) readMsgTo(deadline time.Time, ptr *Message) error {
 		defer c.conn.SetReadDeadline(time.Time{})
 	}
 
-	return c.read.r.readMsgTo(ptr)
-}
-
-func (c *Conn) ReadMsgTo(deadline time.Time, m Message) error {
-	if m == nil {
-		panic("nil message to decode")
-	}
-	return c.readMsgTo(deadline, &m)
-}
-
-func (c *Conn) ReadMsg(deadline time.Time) (Message, error) {
-	var m Message
-	if err := c.readMsgTo(deadline, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return c.read.r.ReadMsg()
 }

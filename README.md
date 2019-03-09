@@ -1,10 +1,10 @@
-# go-dcpp
+# Go Hub
 
-Go library and hub implementation for ADC and NMDC protocols.
+[![Github Release](https://img.shields.io/github/release/direct-connect/go-dcpp.svg)](https://github.com/direct-connect/go-dcpp/releases)
+
+Direct Connect hub implementation for ADC and NMDC protocols.
 
 Requires Go 1.11+.
-
-## Hub
 
 **Features:**
 
@@ -89,6 +89,6 @@ A profiling endpoint will be available at http://localhost:6060/debug/pprof.
 
 See [pprof](https://golang.org/pkg/net/http/pprof/) documentation for more details.
 
-## License
+### License
 
 BSD 3-Clause License

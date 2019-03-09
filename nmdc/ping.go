@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/direct-connect/go-dc/nmdc"
+
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
 
@@ -35,7 +37,7 @@ type HubInfo struct {
 	Owner    string
 	Server   Software
 	Ext      []string
-	Users    []MyInfo
+	Users    []nmdc.MyINFO
 	Ops      []string
 	Bots     []string
 }
@@ -60,12 +62,12 @@ func (h *HubInfo) decodeWith(enc encoding.Encoding) error {
 		if err != nil {
 			return err
 		}
-		u.Name = Name(s)
+		u.Name = s
 		s, err = dec.String(string(u.Desc))
 		if err != nil {
 			return err
 		}
-		u.Desc = String(s)
+		u.Desc = s
 	}
 	return nil
 }
@@ -134,17 +136,17 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 	name := "pinger_" + strconv.FormatInt(num, 16)
 	lock, err := c.SendClientHandshake(time.Time{}, name,
 		// dump most extensions we know to probe the for support of them
-		FeaNoHello, FeaNoGetINFO, FeaTLS, FeaUserIP2,
-		FeaUserCommand, FeaTTHSearch, FeaADCGet,
-		FeaBotINFO, FeaHubINFO, FeaBotList,
-		FeaMCTo, FeaNickChange, FeaClientNick,
-		FeaIN, FeaFeaturedNetworks, FeaGetZBlock, FeaClientID,
-		FeaXmlBZList, FeaMinislots, FeaTTHL, FeaTTHF,
-		FeaZLIG, FeaACTM, FeaBZList, FeaSaltPass,
-		FeaFailOver, FeaHubTopic, FeaOpPlus,
-		FeaBanMsg, FeaNickRule, FeaSearchRule, FeaExtJSON2,
+		nmdc.ExtNoHello, nmdc.ExtNoGetINFO, nmdc.ExtTLS, nmdc.ExtUserIP2,
+		nmdc.ExtUserCommand, nmdc.ExtTTHSearch, nmdc.ExtADCGet,
+		nmdc.ExtBotINFO, nmdc.ExtHubINFO, nmdc.ExtBotList,
+		nmdc.ExtMCTo, nmdc.ExtNickChange, nmdc.ExtClientNick,
+		nmdc.ExtIN, nmdc.ExtFeaturedNetworks, nmdc.ExtGetZBlock, nmdc.ExtClientID,
+		nmdc.ExtXmlBZList, nmdc.ExtMinislots, nmdc.ExtTTHL, nmdc.ExtTTHF,
+		nmdc.ExtZLIG, nmdc.ExtACTM, nmdc.ExtBZList, nmdc.ExtSaltPass,
+		nmdc.ExtFailOver, nmdc.ExtHubTopic, nmdc.ExtOpPlus,
+		nmdc.ExtBanMsg, nmdc.ExtNickRule, nmdc.ExtSearchRule, nmdc.ExtExtJSON2,
 		// proposals
-		FeaLocale,
+		nmdc.ExtLocale,
 
 		//FeaQuickList, // some hubs doesn't like this
 		//FeaDHT0, // some hubs ask users to disable it and drops the connection
@@ -200,13 +202,13 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			return &hub, err
 		}
 		if listStarted {
-			_, ok := msg.(*MyInfo)
+			_, ok := msg.(*nmdc.MyINFO)
 			if !ok {
 				listEnd = true
 			}
 		}
 		switch msg := msg.(type) {
-		case *ChatMessage:
+		case *nmdc.ChatMessage:
 			// we save the last message since it usually describes
 			// an error before hub drops the connection
 			lastMsg = msg.Text
@@ -228,40 +230,40 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 					}
 				}
 			}
-		case *Supports:
+		case *nmdc.Supports:
 			hub.Ext = msg.Ext
-		case *HubName:
+		case *nmdc.HubName:
 			if hub.Name == "" {
 				hub.Name = string(msg.String)
 			}
 			poweredBy = true
-		case *HubTopic:
+		case *nmdc.HubTopic:
 			hub.Topic = msg.Text
-		case *Hello:
+		case *nmdc.Hello:
 			// TODO: assumes NoHello
 			if string(msg.Name) != name {
 				return &hub, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
-			err = c.SendPingerInfo(time.Time{}, &MyInfo{
-				Name:           Name(name),
+			err = c.SendPingerInfo(time.Time{}, &nmdc.MyINFO{
+				Name:           name,
 				Client:         version.Name,
 				Version:        version.Vers,
-				Mode:           UserModeActive,
+				Mode:           nmdc.UserModeActive,
 				HubsNormal:     1,
 				HubsRegistered: 1,
 				HubsOperator:   0,
 				Slots:          fakeSlots,
 				ShareSize:      fakeShare,
 				Conn:           "Cable",
-				Flag:           FlagStatusServer,
+				Flag:           nmdc.FlagStatusServer,
 			})
 			if err != nil {
 				return &hub, err
 			}
-		case *Quit, *ConnectToMe, *RevConnectToMe, *Search:
+		case *nmdc.Quit, *nmdc.ConnectToMe, *nmdc.RevConnectToMe, *nmdc.Search:
 			// status update, connection attempt or search - we are definitely done
 			return &hub, nil
-		case *MyInfo:
+		case *nmdc.MyINFO:
 			if listEnd {
 				// if we receive it again after the list ended, it's really
 				// an update, not a part of the list, so we can safely exit
@@ -271,22 +273,16 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				listStarted = true
 				hub.Users = append(hub.Users, *msg)
 			}
-		case *OpList:
-			for _, name := range msg.Names {
-				hub.Ops = append(hub.Ops, string(name))
-			}
-		case *BotList:
-			var arr []string
-			for _, name := range msg.Names {
-				arr = append(arr, string(name))
-			}
-			hub.Bots = arr
-		case *HubINFO:
+		case *nmdc.OpList:
+			hub.Ops = msg.Names
+		case *nmdc.BotList:
+			hub.Bots = msg.Names
+		case *nmdc.HubINFO:
 			if msg.Name != "" {
-				hub.Name = string(msg.Name)
+				hub.Name = msg.Name
 			}
 			if msg.Desc != "" {
-				hub.Desc = string(msg.Desc)
+				hub.Desc = msg.Desc
 			}
 			if msg.Host != "" {
 				hub.Addr = msg.Host
@@ -302,14 +298,14 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			// will be decoded later, see defer
 			hub.Encoding = msg.Encoding
 			hub.Owner = msg.Owner
-		case *FailOver:
+		case *nmdc.FailOver:
 			hub.Failover = append(hub.Failover, msg.Host...)
-		case *UserCommand:
+		case *nmdc.UserCommand:
 			if hub.Server.Name == "YnHub" {
 				// TODO: check if it's true for other hubs
 				return &hub, nil
 			}
-		case *UserIP:
+		case *nmdc.UserIP:
 			// TODO: some implementations seem to end the list with this message
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
@@ -67,13 +68,13 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 					Vers: u.Version,
 				},
 			}
-			if u.Flag&nmdc.FlagTLS != 0 {
+			if u.Flag&nmdcp.FlagTLS != 0 {
 				user.Client.Ext = append(user.Client.Ext, "TLS")
 			}
-			if u.Flag&nmdc.FlagIPv4 != 0 {
+			if u.Flag&nmdcp.FlagIPv4 != 0 {
 				user.Client.Ext = append(user.Client.Ext, adc.FeaTCP4.String())
 			}
-			if u.Flag&nmdc.FlagIPv6 != 0 {
+			if u.Flag&nmdcp.FlagIPv6 != 0 {
 				user.Client.Ext = append(user.Client.Ext, adc.FeaTCP6.String())
 			}
 			info.UserList = append(info.UserList, user)
