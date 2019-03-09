@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-irc/irc"
 
+	dc "github.com/direct-connect/go-dc"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -181,7 +182,7 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 	if err != nil {
 		return err
 	}
-	vers := h.conf.Soft.Name + "-" + h.conf.Soft.Vers
+	vers := h.conf.Soft.Name + "-" + h.conf.Soft.Version
 
 	host, port, _ := net.SplitHostPort(peer.conn.LocalAddr().String())
 	err = peer.writeMessage(&irc.Message{
@@ -339,10 +340,10 @@ func (p *ircPeer) User() User {
 	p.mu.RUnlock()
 	return User{
 		Name: name,
-		App: Software{
+		App: dc.Software{
 			// TODO: propagate the real IRC client version
-			Name: "DC-IRC bridge",
-			Vers: version.Vers,
+			Name:    "DC-IRC bridge",
+			Version: version.Vers,
 		},
 	}
 }

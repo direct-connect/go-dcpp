@@ -35,9 +35,9 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			Addr: []string{addr},
 			Enc:  hub.Encoding,
 			Server: &Software{
-				Name: hub.Server.Name,
-				Vers: hub.Server.Vers,
-				Ext:  hub.Ext,
+				Name:    hub.Server.Name,
+				Version: hub.Server.Version,
+				Ext:     hub.Ext,
 			},
 			Users:    len(hub.Users),
 			UserList: make([]HubUser, 0, len(hub.Users)),
@@ -64,8 +64,8 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 				Share: u.ShareSize,
 				Email: u.Email,
 				Client: &Software{
-					Name: u.Client,
-					Vers: u.Version,
+					Name:    u.Client.Name,
+					Version: u.Client.Version,
 				},
 			}
 			if u.Flag&nmdcp.FlagTLS != 0 {
@@ -94,9 +94,9 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 			Owner:   hub.Owner,
 			Uptime:  uint64(hub.Uptime),
 			Server: &Software{
-				Name: hub.Application,
-				Vers: hub.Version,
-				Ext:  hub.Ext,
+				Name:    hub.Application,
+				Version: hub.Version,
+				Ext:     hub.Ext,
 			},
 			Users:    len(hub.Users),
 			UserList: make([]HubUser, 0, len(hub.Users)),
@@ -111,8 +111,8 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 				Share: uint64(u.ShareSize),
 				Email: u.Email,
 				Client: &Software{
-					Name: u.Application,
-					Vers: u.Version,
+					Name:    u.Application,
+					Version: u.Version,
 				},
 			}
 			for _, f := range u.Features {
@@ -153,7 +153,7 @@ type HubUser struct {
 
 // Software version.
 type Software struct {
-	Name string   `json:"name" xml:"Name,attr"`
-	Vers string   `json:"vers" xml:"Version,attr"`
-	Ext  []string `json:"ext,omitempty" xml:"Ext,attr,omitempty"`
+	Name    string   `json:"name" xml:"Name,attr"`
+	Version string   `json:"vers" xml:"Version,attr"`
+	Ext     []string `json:"ext,omitempty" xml:"Ext,attr,omitempty"`
 }

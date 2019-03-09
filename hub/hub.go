@@ -18,6 +18,7 @@ import (
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
 
+	dc "github.com/direct-connect/go-dc"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/adc/types"
 	"github.com/direct-connect/go-dcpp/version"
@@ -31,7 +32,7 @@ type Config struct {
 	Website          string
 	Email            string
 	Keyprint         string
-	Soft             Software
+	Soft             dc.Software
 	MOTD             string
 	ChatLog          int
 	ChatLogJoin      int
@@ -43,8 +44,8 @@ func NewHub(conf Config) (*Hub, error) {
 	if conf.Soft.Name == "" {
 		conf.Soft.Name = version.Name
 	}
-	if conf.Soft.Vers == "" {
-		conf.Soft.Vers = version.Vers
+	if conf.Soft.Version == "" {
+		conf.Soft.Version = version.Vers
 	}
 	if conf.ChatLog < 0 {
 		conf.ChatLog = 0
@@ -140,21 +141,21 @@ type Command struct {
 }
 
 type Stats struct {
-	Name     string   `json:"name"`
-	Desc     string   `json:"desc,omitempty"`
-	Addr     []string `json:"addr,omitempty"`
-	Icon     string   `json:"icon,omitempty"`
-	Owner    string   `json:"owner,omitempty"`
-	Website  string   `json:"website,omitempty"`
-	Email    string   `json:"email,omitempty"`
-	Users    int      `json:"users"`
-	MaxUsers int      `json:"max-users,omitempty"`
-	Share    uint64   `json:"share,omitempty"`     // MB
-	MaxShare uint64   `json:"max-share,omitempty"` // MB
-	Enc      string   `json:"encoding,omitempty"`
-	Soft     Software `json:"soft"`
-	Uptime   uint64   `json:"uptime,omitempty"`
-	Keyprint string   `json:"-"`
+	Name     string      `json:"name"`
+	Desc     string      `json:"desc,omitempty"`
+	Addr     []string    `json:"addr,omitempty"`
+	Icon     string      `json:"icon,omitempty"`
+	Owner    string      `json:"owner,omitempty"`
+	Website  string      `json:"website,omitempty"`
+	Email    string      `json:"email,omitempty"`
+	Users    int         `json:"users"`
+	MaxUsers int         `json:"max-users,omitempty"`
+	Share    uint64      `json:"share,omitempty"`     // MB
+	MaxShare uint64      `json:"max-share,omitempty"` // MB
+	Enc      string      `json:"encoding,omitempty"`
+	Soft     dc.Software `json:"soft"`
+	Uptime   uint64      `json:"uptime,omitempty"`
+	Keyprint string      `json:"-"`
 }
 
 func (st *Stats) DefaultAddr() string {
@@ -473,14 +474,9 @@ func (h *Hub) revConnectReq(from, to Peer, token string, secure bool) {
 	_ = to.RevConnectTo(from, token, secure)
 }
 
-type Software struct {
-	Name string `json:"name"`
-	Vers string `json:"vers"`
-}
-
 type User struct {
 	Name           string
-	App            Software
+	App            dc.Software
 	HubsNormal     int
 	HubsRegistered int
 	HubsOperator   int

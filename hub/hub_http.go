@@ -41,7 +41,7 @@ func (h *Hub) initHTTP() error {
 		)
 		st := h.Stats()
 		hd := w.Header()
-		hd.Set("Server", st.Soft.Name+"/"+st.Soft.Vers)
+		hd.Set("Server", st.Soft.Name+"/"+st.Soft.Version)
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 			h.serveIndex(w, r)
 			return

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	dc "github.com/direct-connect/go-dc"
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
@@ -125,10 +126,12 @@ handshake:
 	}
 
 	err = conn.SendClientInfo(deadline, &nmdcp.MyINFO{
-		Name:    conf.Name,
-		Client:  version.Name,
-		Version: version.Vers,
-		Flag:    nmdcp.FlagStatusNormal | nmdcp.FlagIPv4 | nmdcp.FlagTLSDownload,
+		Name: conf.Name,
+		Client: dc.Software{
+			Name:    version.Name,
+			Version: version.Vers,
+		},
+		Flag: nmdcp.FlagStatusNormal | nmdcp.FlagIPv4 | nmdcp.FlagTLSDownload,
 
 		// TODO
 		Mode:       nmdcp.UserModePassive,

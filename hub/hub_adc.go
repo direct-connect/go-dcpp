@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	dc "github.com/direct-connect/go-dc"
 	"github.com/direct-connect/go-dc/tiger"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/adc/types"
@@ -266,7 +267,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		Name:        st.Name,
 		Desc:        st.Desc,
 		Application: st.Soft.Name,
-		Version:     st.Soft.Vers,
+		Version:     st.Soft.Version,
 		Address:     st.DefaultAddr(),
 		Users:       st.Users,
 	})
@@ -622,9 +623,9 @@ func (p *adcPeer) User() User {
 		Name:  u.Name,
 		Share: uint64(u.ShareSize),
 		Email: u.Email,
-		App: Software{
-			Name: u.Application,
-			Vers: u.Version,
+		App: dc.Software{
+			Name:    u.Application,
+			Version: u.Version,
 		},
 		HubsNormal:     u.HubsNormal,
 		HubsRegistered: u.HubsRegistered,
@@ -687,7 +688,7 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 				Name:           info.Name,
 				Id:             cid,
 				Application:    info.App.Name,
-				Version:        info.App.Vers,
+				Version:        info.App.Version,
 				HubsNormal:     info.HubsNormal,
 				HubsRegistered: info.HubsRegistered,
 				HubsOperator:   info.HubsOperator,
@@ -750,7 +751,7 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 		Name:        rname,
 		HubsNormal:  room.Users(), // TODO: update
 		Application: p.hub.conf.Soft.Name,
-		Version:     p.hub.conf.Soft.Vers,
+		Version:     p.hub.conf.Soft.Version,
 		Type:        adc.UserTypeOperator,
 		Slots:       1,
 	})

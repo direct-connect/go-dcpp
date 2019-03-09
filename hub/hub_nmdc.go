@@ -43,7 +43,7 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, string, error) {
 	lock := &nmdcp.Lock{
 		Lock: "_godcpp", // TODO: randomize
-		PK:   h.conf.Soft.Name + " " + h.conf.Soft.Vers,
+		PK:   h.conf.Soft.Name + " " + h.conf.Soft.Version,
 	}
 	err := c.WriteMsg(lock)
 	if err != nil {
@@ -157,7 +157,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 			Name:     st.Name,
 			Desc:     st.Desc,
 			Host:     st.DefaultAddr(),
-			Soft:     st.Soft.Name + " " + st.Soft.Vers,
+			Soft:     st.Soft,
 			Encoding: "UTF8",
 		})
 		if err == nil {
@@ -535,10 +535,11 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 		return
 	}
 	var res SearchResult
-	if msg.DirName != "" {
-		res = Dir{Peer: peer, Path: msg.DirName}
+	path := strings.Join(msg.Path, "/")
+	if msg.IsDir {
+		res = Dir{Peer: peer, Path: path}
 	} else {
-		res = File{Peer: peer, Path: msg.FileName, Size: msg.FileSize, TTH: msg.TTH}
+		res = File{Peer: peer, Path: path, Size: msg.Size, TTH: msg.TTH}
 	}
 	if !cur.req.Match(res) {
 		return
@@ -615,11 +616,8 @@ func (p *nmdcPeer) setUser(u *nmdcp.MyINFO) {
 func (p *nmdcPeer) User() User {
 	u := p.Info()
 	return User{
-		Name: string(u.Name),
-		App: Software{
-			Name: u.Client,
-			Vers: u.Version,
-		},
+		Name:           string(u.Name),
+		App:            u.Client,
 		HubsNormal:     u.HubsNormal,
 		HubsRegistered: u.HubsRegistered,
 		HubsOperator:   u.HubsOperator,
@@ -750,8 +748,7 @@ func (u User) toNMDC() nmdcp.MyINFO {
 	}
 	return nmdcp.MyINFO{
 		Name:           u.Name,
-		Client:         u.App.Name,
-		Version:        u.App.Vers,
+		Client:         u.App,
 		HubsNormal:     u.HubsNormal,
 		HubsRegistered: u.HubsRegistered,
 		HubsOperator:   u.HubsOperator,
@@ -833,8 +830,7 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 	err := p.writeOne(&nmdcp.MyINFO{
 		Name:       rname,
 		HubsNormal: room.Users(), // TODO: update
-		Client:     p.hub.conf.Soft.Name,
-		Version:    p.hub.conf.Soft.Vers,
+		Client:     p.hub.conf.Soft,
 		Mode:       nmdcp.UserModeActive,
 		Flag:       nmdcp.FlagStatusServer,
 		Slots:      1,
@@ -947,14 +943,15 @@ func (s *nmdcSearch) SendResult(r SearchResult) error {
 	}
 	switch r := r.(type) {
 	case File:
-		sr.FileName = r.Path
-		sr.FileSize = r.Size
+		sr.Path = strings.Split(r.Path, "/")
+		sr.Size = r.Size
 		if r.TTH != nil {
 			sr.HubName = ""
 			sr.TTH = r.TTH
 		}
 	case Dir:
-		sr.DirName = r.Path
+		sr.Path = strings.Split(r.Path, "/")
+		sr.IsDir = true
 	default:
 		return nil // ignore
 	}

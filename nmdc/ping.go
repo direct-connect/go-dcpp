@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/direct-connect/go-dc/nmdc"
-
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
 
+	dc "github.com/direct-connect/go-dc"
+	"github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -21,11 +21,6 @@ const (
 	fakeSlots = 5
 	fakeShare = 321 * 1023 * 1023 * 1023
 )
-
-type Software struct {
-	Name string
-	Vers string
-}
 
 type HubInfo struct {
 	Name     string
@@ -35,7 +30,7 @@ type HubInfo struct {
 	Failover []string
 	Encoding string
 	Owner    string
-	Server   Software
+	Server   dc.Software
 	Ext      []string
 	Users    []nmdc.MyINFO
 	Ops      []string
@@ -171,12 +166,12 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 	pk := strings.SplitN(lock.PK, " ", 2)
 	hub.Server.Name = pk[0]
 	if len(pk) > 1 {
-		hub.Server.Vers = pk[1]
+		hub.Server.Version = pk[1]
 	} else if strings.HasPrefix(pk[0], "version") {
 		// old versions of Verlihub
 		if i := strings.LastIndex(lock.Lock, "_"); i >= 0 {
 			hub.Server.Name = lock.Lock[i+1:]
-			hub.Server.Vers = strings.TrimPrefix(pk[0], "version")
+			hub.Server.Version = strings.TrimPrefix(pk[0], "version")
 		}
 	}
 
@@ -225,7 +220,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 						if i = strings.Index(vers, " "); i >= 0 {
 							vers = vers[:i]
 						}
-						hub.Server.Vers = vers
+						hub.Server.Version = vers
 						break
 					}
 				}
@@ -245,9 +240,11 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				return &hub, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
 			err = c.SendPingerInfo(time.Time{}, &nmdc.MyINFO{
-				Name:           name,
-				Client:         version.Name,
-				Version:        version.Vers,
+				Name: name,
+				Client: dc.Software{
+					Name:    version.Name,
+					Version: version.Vers,
+				},
 				Mode:           nmdc.UserModeActive,
 				HubsNormal:     1,
 				HubsRegistered: 1,
@@ -287,12 +284,21 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			if msg.Host != "" {
 				hub.Addr = msg.Host
 			}
-			if msg.Soft != "" {
-				hub.Server.Name = msg.Soft
-				if i := strings.LastIndex(msg.Soft, " "); i > 0 {
-					hub.Server.Name, hub.Server.Vers = msg.Soft[:i], msg.Soft[i+1:]
-				} else if i = strings.LastIndex(msg.Soft, "_"); i > 0 {
-					hub.Server.Name, hub.Server.Vers = msg.Soft[:i], msg.Soft[i+1:]
+			if msg.Soft.Name != "" {
+				hub.Server = msg.Soft
+				if msg.Soft.Version == "" {
+					soft := msg.Soft.Name
+					if i := strings.LastIndex(soft, " "); i > 0 {
+						hub.Server = dc.Software{
+							Name:    soft[:i],
+							Version: soft[i+1:],
+						}
+					} else if i = strings.LastIndex(soft, "_"); i > 0 {
+						hub.Server = dc.Software{
+							Name:    soft[:i],
+							Version: soft[i+1:],
+						}
+					}
 				}
 			}
 			// will be decoded later, see defer
