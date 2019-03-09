@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
@@ -84,8 +85,8 @@ func registerOn(c io.ReadWriteCloser, info Info, host string) error {
 	if !bytes.HasPrefix(b, []byte(cmdLock)) {
 		return fmt.Errorf("expected $Lock, got: %q", string(b))
 	}
-	var lock nmdc.Lock
-	if err := lock.UnmarshalNMDC(b[6:]); err != nil {
+	var lock nmdcp.Lock
+	if err := lock.UnmarshalNMDC(nil, b[6:]); err != nil {
 		return err
 	}
 	key := lock.Key()
@@ -93,11 +94,10 @@ func registerOn(c io.ReadWriteCloser, info Info, host string) error {
 	buf := bytes.NewBuffer(b[:0])
 	buf.Reset()
 	buf.WriteString(cmdKey)
-	data, err := key.MarshalNMDC()
+	err = key.MarshalNMDC(nil, buf)
 	if err != nil {
 		return err
 	}
-	buf.Write(data)
 	buf.WriteByte(sep)
 
 	buf.WriteString(escaper.Replace(info.Name))
@@ -190,23 +190,22 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 	defer c.Close()
 
 	if port == 0 {
-		port = nmdc.DefaultKeyMagic
+		port = nmdcp.DefaultKeyMagic
 	}
 
-	lock := &nmdc.Lock{
+	lock := &nmdcp.Lock{
 		Lock: "hubAutoReg", // TODO: randomize
 		PK:   version.Name + " " + version.Vers,
 	}
-	data, err := lock.MarshalNMDC()
+	b := make([]byte, 2048)
+	buf := bytes.NewBuffer(b[:0])
+	buf.WriteString(cmdLock)
+	err := lock.MarshalNMDC(nil, buf)
 	if err != nil {
 		return err
 	}
-	b := make([]byte, 2048)
-	i := copy(b, cmdLock)
-	i += copy(b[i:], data)
-	b[i] = sep
-	i++
-	_, err = c.Write(b[:i])
+	buf.WriteByte(sep)
+	_, err = c.Write(buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -225,12 +224,12 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 	if !r.Scan() {
 		return r.Err()
 	}
-	data = r.Bytes()
+	data := r.Bytes()
 	if !bytes.HasPrefix(data, []byte(cmdKey)) {
 		return errors.New("expected $Key")
 	}
-	var key nmdc.Key
-	if err := key.UnmarshalNMDC(data[5:]); err != nil {
+	var key nmdcp.Key
+	if err := key.UnmarshalNMDC(nil, data[5:]); err != nil {
 		return err
 	} else if s.keyCheck && key.Key != lock.Key().Key && key.Key != legacyKey(lock, port) {
 		return fmt.Errorf("wrong key: %q", key.Key)
@@ -248,7 +247,7 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 		if err != nil {
 			return "", err
 		}
-		return nmdc.Unescape(s), nil
+		return nmdcp.Unescape(s), nil
 	}
 
 	info.Name, err = readString()
@@ -308,7 +307,7 @@ func (f RegistryFunc) RegisterHub(info Info) error {
 	return f(info)
 }
 
-func legacyKey(lock *nmdc.Lock, port int) string {
+func legacyKey(lock *nmdcp.Lock, port int) string {
 	magic := byte((port & 0xFF) + ((port >> 8) & 0xFF))
 	return lock.CustomKey(magic, true).Key
 }
