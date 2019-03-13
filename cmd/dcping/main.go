@@ -194,6 +194,10 @@ func init() {
 					}
 				}
 			}
+			var errCode int
+			if e, ok := err.(adc.Error); ok {
+				errCode = int(e.Sev)*100 + e.Code
+			}
 			switch *pingOut {
 			case "json", "":
 				status := ""
@@ -207,25 +211,33 @@ func init() {
 				}
 				if info == nil {
 					_ = enc(struct {
-						Addr   []string `json:"addr"`
-						Status string   `json:"status,omitempty"`
+						Addr    []string `json:"addr"`
+						Status  string   `json:"status,omitempty"`
+						ErrCode int      `json:"errcode,omitempty"`
 					}{
-						Addr:   []string{addr},
-						Status: status,
+						Addr:    []string{addr},
+						Status:  status,
+						ErrCode: errCode,
 					})
 					return
 				}
 				if err = enc(struct {
 					dc.HubInfo
-					Status string `json:"status,omitempty"`
+					Status  string `json:"status,omitempty"`
+					ErrCode int    `json:"errcode,omitempty"`
 				}{
 					HubInfo: *info,
 					Status:  status,
+					ErrCode: errCode,
 				}); err != nil {
 					panic(err)
 				}
 			case "xml":
-				var out hublist.Hub
+				type Hub struct {
+					hublist.Hub
+					ErrCode int `xml:"ErrCode,attr"`
+				}
+				var out Hub
 				status := "Online"
 				if err != nil {
 					status = "Error"
@@ -236,7 +248,7 @@ func init() {
 					}
 				}
 				if info != nil {
-					out = hublist.Hub{
+					out.Hub = hublist.Hub{
 						Name:        info.Name,
 						Address:     info.Addr[0],
 						Description: info.Desc,
@@ -266,6 +278,7 @@ func init() {
 					out.Address = addr
 				}
 				out.Status = status
+				out.ErrCode = errCode
 				if err = enc(out); err != nil {
 					panic(err)
 				}
