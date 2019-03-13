@@ -17,7 +17,11 @@ import (
 	"github.com/direct-connect/go-dc/nmdc"
 )
 
-var Debug bool
+var (
+	Debug bool
+
+	DefaultFallbackEncoding encoding.Encoding
+)
 
 var dialer = net.Dialer{}
 
@@ -78,6 +82,9 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	c.w = nmdc.NewWriter(conn)
 	c.r = nmdc.NewReader(conn)
 	c.r.OnUnknownEncoding = c.onUnknownEncoding
+	if DefaultFallbackEncoding != nil {
+		c.SetFallbackEncoding(DefaultFallbackEncoding)
+	}
 	if Debug {
 		c.w.OnLine = func(line []byte) (bool, error) {
 			log.Println("->", string(line))

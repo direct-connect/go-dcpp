@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/text/encoding/htmlindex"
 
 	dc "github.com/direct-connect/go-dcpp"
 	"github.com/direct-connect/go-dcpp/adc"
@@ -121,10 +122,18 @@ func init() {
 	pingPretty := pingCmd.Flags().Bool("pretty", false, "pretty-print an output")
 	pingNum := pingCmd.Flags().IntP("num", "n", runtime.NumCPU()*2, "number of parallel pings")
 	pingTimeout := pingCmd.Flags().DurationP("timeout", "t", time.Second*5, "ping timeout")
+	pingFallbackEnc := pingCmd.Flags().StringP("encoding", "e", "", "fallback encoding")
 	Root.AddCommand(pingCmd)
 	pingCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return errors.New("expected at least one address")
+		}
+		if name := *pingFallbackEnc; name != "" {
+			enc, err := htmlindex.Get(name)
+			if err != nil {
+				return err
+			}
+			nmdc.DefaultFallbackEncoding = enc
 		}
 		var (
 			mu  sync.Mutex
