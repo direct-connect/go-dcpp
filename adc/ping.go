@@ -4,16 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"time"
 
 	"github.com/direct-connect/go-dcpp/adc/types"
-)
-
-const (
-	fakeSlots = 5
-	fakeFiles = 113
-	fakeShare = 321 * 1023 * 1023 * 1023
 )
 
 type PingHubInfo struct {
@@ -22,7 +15,15 @@ type PingHubInfo struct {
 	Users []User
 }
 
-func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
+type PingConfig struct {
+	Name       string
+	ShareSize  uint64
+	ShareFiles int
+	Slots      int
+	Hubs       int
+}
+
+func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, error) {
 	c, err := DialContext(ctx, addr)
 	if err != nil {
 		return nil, err
@@ -101,16 +102,16 @@ func Ping(ctx context.Context, addr string) (*PingHubInfo, error) {
 	}
 
 	pid := types.NewPID()
-	num := int64(time.Now().Nanosecond())
 	user := User{
 		Id:         pid.Hash(),
 		Pid:        &pid,
-		Name:       "pinger_" + strconv.FormatInt(num, 16),
+		Name:       conf.Name,
 		Features:   ext,
-		Slots:      fakeSlots,
-		SlotsFree:  fakeSlots,
-		ShareSize:  fakeShare,
-		ShareFiles: fakeFiles,
+		Slots:      conf.Slots,
+		SlotsFree:  conf.Slots,
+		ShareSize:  int64(conf.ShareSize),
+		ShareFiles: conf.ShareFiles,
+		HubsNormal: conf.Hubs,
 	}
 
 	err = c.WriteBroadcast(sid.SID, user)

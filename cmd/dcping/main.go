@@ -123,6 +123,11 @@ func init() {
 	pingNum := pingCmd.Flags().IntP("num", "n", runtime.NumCPU()*2, "number of parallel pings")
 	pingTimeout := pingCmd.Flags().DurationP("timeout", "t", time.Second*5, "ping timeout")
 	pingFallbackEnc := pingCmd.Flags().StringP("encoding", "e", "", "fallback encoding")
+	pingName := pingCmd.Flags().String("name", "", "name of the pinger")
+	pingShare := pingCmd.Flags().Uint64("share", 0, "declared share size (in bytes)")
+	pingShareFiles := pingCmd.Flags().Int("files", 0, "declared share files")
+	pingSlots := pingCmd.Flags().Int("slots", 0, "declared slots")
+	pingHubs := pingCmd.Flags().Int("hubs", 0, "declared hub count")
 	Root.AddCommand(pingCmd)
 	pingCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
@@ -167,11 +172,19 @@ func init() {
 
 		rctx := context.Background()
 
+		conf := &dc.PingConfig{
+			Name:       *pingName,
+			ShareSize:  *pingShare,
+			ShareFiles: *pingShareFiles,
+			Slots:      *pingSlots,
+			Hubs:       *pingHubs,
+		}
+
 		pingOne := func(addr string) {
 			ctx, cancel := context.WithTimeout(rctx, *pingTimeout)
 			defer cancel()
 
-			info, err := dc.Ping(ctx, addr)
+			info, err := dc.Ping(ctx, addr, conf)
 			if info != nil && !*pingUsers {
 				info.UserList = nil
 			}

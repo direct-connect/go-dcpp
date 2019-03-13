@@ -17,11 +17,6 @@ import (
 	"github.com/direct-connect/go-dcpp/version"
 )
 
-const (
-	fakeSlots = 5
-	fakeShare = 321 * 1023 * 1023 * 1023
-)
-
 type HubInfo struct {
 	Name     string
 	Addr     string
@@ -106,7 +101,17 @@ type timeoutErr interface {
 	Timeout() bool
 }
 
-func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
+type PingConfig struct {
+	Name  string
+	Share uint64
+	Slots int
+	Hubs  int
+}
+
+func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr error) {
+	if conf.Name == "" {
+		return nil, errors.New("pinger name should be set")
+	}
 	addr, err := nmdc.NormalizeAddr(addr)
 	if err != nil {
 		return nil, err
@@ -127,8 +132,6 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 		return nil, err
 	}
 
-	num := int64(time.Now().Nanosecond())
-	name := "pinger_" + strconv.FormatInt(num, 16)
 	lock, err := c.SendClientHandshake(time.Time{},
 		// dump most extensions we know to probe the for support of them
 		nmdc.ExtNoHello, nmdc.ExtNoGetINFO, nmdc.ExtTLS, nmdc.ExtUserIP2,
@@ -227,7 +230,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			}
 		case *nmdc.Supports:
 			hub.Ext = msg.Ext
-			err = c.WriteMsg(&nmdc.ValidateNick{Name: nmdc.Name(name)})
+			err = c.WriteMsg(&nmdc.ValidateNick{Name: nmdc.Name(conf.Name)})
 			if err != nil {
 				return nil, err
 			}
@@ -244,21 +247,21 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 			hub.Topic = msg.Text
 		case *nmdc.Hello:
 			// TODO: assumes NoHello
-			if string(msg.Name) != name {
+			if string(msg.Name) != conf.Name {
 				return &hub, fmt.Errorf("unexpected name in hello: %q", msg.Name)
 			}
 			err = c.SendPingerInfo(time.Time{}, &nmdc.MyINFO{
-				Name: name,
+				Name: conf.Name,
 				Client: dc.Software{
 					Name:    version.Name,
 					Version: version.Vers,
 				},
 				Mode:           nmdc.UserModeActive,
-				HubsNormal:     1,
+				HubsNormal:     conf.Hubs,
 				HubsRegistered: 1,
 				HubsOperator:   0,
-				Slots:          fakeSlots,
-				ShareSize:      fakeShare,
+				Slots:          conf.Slots,
+				ShareSize:      conf.Share,
 				Conn:           "Cable",
 				Flag:           nmdc.FlagStatusServer,
 			})
@@ -274,7 +277,7 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				// an update, not a part of the list, so we can safely exit
 				return &hub, nil
 			}
-			if string(msg.Name) != name {
+			if string(msg.Name) != conf.Name {
 				listStarted = true
 				hub.Users = append(hub.Users, *msg)
 			}

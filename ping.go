@@ -3,15 +3,40 @@ package dc
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"strconv"
 	"strings"
+	"time"
 
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
+type PingConfig = adc.PingConfig
+
 // Ping fetches the information about the specified hub.
-func Ping(ctx context.Context, addr string) (*HubInfo, error) {
+func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) {
+	if conf == nil {
+		conf = &PingConfig{}
+	}
+	if conf.Name == "" {
+		num := int64(time.Now().Nanosecond())
+		conf.Name = "pinger_" + strconv.FormatInt(num, 16)
+	}
+	if conf.Hubs == 0 {
+		conf.Hubs = 1 + rand.Intn(10)
+	}
+	if conf.Slots == 0 {
+		conf.Slots = 5
+	}
+	if conf.ShareFiles == 0 {
+		conf.ShareFiles = 100 + rand.Intn(1000)
+	}
+	if conf.ShareSize == 0 {
+		conf.ShareSize = uint64(100+rand.Intn(200)) * 1023 * 1023 * 1023
+	}
+
 	// probe first, if protocol is not specified
 	i := strings.Index(addr, "://")
 	if i < 0 {
@@ -25,7 +50,10 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 
 	switch addr[:i] {
 	case nmdcSchema, nmdcsSchema:
-		hub, err := nmdc.Ping(ctx, addr)
+		hub, err := nmdc.Ping(ctx, addr, nmdc.PingConfig{
+			Name: conf.Name, Share: conf.ShareSize,
+			Slots: conf.Slots, Hubs: conf.Hubs,
+		})
 		if err != nil && hub == nil {
 			return nil, err
 		}
@@ -81,7 +109,7 @@ func Ping(ctx context.Context, addr string) (*HubInfo, error) {
 		}
 		return info, err
 	case adcSchema, adcsSchema:
-		hub, err := adc.Ping(ctx, addr)
+		hub, err := adc.Ping(ctx, addr, *conf)
 		if err != nil && hub == nil {
 			return nil, err
 		}
