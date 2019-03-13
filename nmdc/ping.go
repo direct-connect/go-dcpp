@@ -293,8 +293,10 @@ func Ping(ctx context.Context, addr string) (_ *HubInfo, gerr error) {
 				hub.Addr = msg.Host
 			}
 			if msg.Soft.Name != "" {
-				hub.Server = msg.Soft
-				if msg.Soft.Version == "" {
+				hub.Server.Name = msg.Soft.Name
+				if msg.Soft.Version != "" {
+					hub.Server.Version = msg.Soft.Version
+				} else {
 					soft := msg.Soft.Name
 					if i := strings.LastIndex(soft, " "); i > 0 {
 						hub.Server = dc.Software{
