@@ -130,19 +130,23 @@ func (c *Conn) TextEncoder() *encoding.Encoder {
 	return c.w.Encoder()
 }
 
-func (c *Conn) setEncoding(enc encoding.Encoding) {
+func (c *Conn) setEncoding(enc encoding.Encoding, event bool) {
 	c.encoding.Store(enc)
 	if enc != nil {
 		c.w.SetEncoder(enc.NewEncoder())
-		c.r.SetDecoder(enc.NewDecoder())
+		if !event {
+			c.r.SetDecoder(enc.NewDecoder())
+		}
 	} else {
 		c.w.SetEncoder(nil)
-		c.r.SetDecoder(nil)
+		if !event {
+			c.r.SetDecoder(nil)
+		}
 	}
 }
 
 func (c *Conn) SetEncoding(enc encoding.Encoding) {
-	c.setEncoding(enc)
+	c.setEncoding(enc, false)
 }
 
 func (c *Conn) SetFallbackEncoding(enc encoding.Encoding) {
@@ -232,7 +236,10 @@ func (c *Conn) onUnknownEncoding(text []byte) (*encoding.Decoder, error) {
 		return nil, nil // use current decoder
 	}
 	// fallback is valid - switch encoding
-	c.setEncoding(fallback)
+	if Debug {
+		log.Println(c.RemoteAddr(), "switched to a fallback encoding")
+	}
+	c.setEncoding(fallback, true)
 	return dec, nil
 }
 
