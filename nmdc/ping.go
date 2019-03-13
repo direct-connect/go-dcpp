@@ -1,6 +1,7 @@
 package nmdc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -62,41 +63,6 @@ func (h *HubInfo) decodeWith(enc encoding.Encoding) error {
 	return nil
 }
 
-func (h *HubInfo) decode() error {
-	if strings.Contains(h.Encoding, "@") {
-		// YnHub may send an email in the encoding field
-		if h.Owner == "" {
-			h.Owner = h.Encoding
-		}
-		h.Encoding = ""
-		return nil
-	}
-	code := strings.ToLower(h.Encoding)
-	// some hubs are misconfigured and send garbage in the encoding field
-	code = strings.Trim(code, "= ")
-	if h.Encoding == "" {
-		return nil
-	}
-	if len(code) == 4 {
-		// some hubs forget the "cp" prefix and just use "1250" as an encoding
-		if _, err := strconv.Atoi(code); err == nil {
-			code = "cp" + code
-		}
-	}
-	enc, err := htmlindex.Get(code)
-	if err != nil {
-		return nil
-	}
-	err = h.decodeWith(enc)
-	if err != nil {
-		return nil
-	}
-	if code, _ = htmlindex.Name(enc); code != "" {
-		h.Encoding = code
-	}
-	return nil
-}
-
 type timeoutErr interface {
 	Timeout() bool
 }
@@ -117,11 +83,19 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 		return nil, err
 	}
 
+	var hubInfo []byte
 	c, err := DialContext(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
 	defer c.Close()
+
+	c.r.OnRawMessage = func(cmd, args []byte) (bool, error) {
+		if bytes.Equal(cmd, []byte("HubINFO")) {
+			hubInfo = append([]byte{}, args...)
+		}
+		return true, nil
+	}
 
 	// set deadline once
 	deadline, ok := ctx.Deadline()
@@ -158,12 +132,6 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	}
 
 	var hub HubInfo
-	defer func() {
-		// make sure to decode the info at the end
-		if gerr == nil {
-			gerr = hub.decode()
-		}
-	}()
 
 	// TODO: check if it's always the case
 	pk := strings.SplitN(lock.PK, " ", 2)
@@ -176,6 +144,86 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 			hub.Server.Name = lock.Lock[i+1:]
 			hub.Server.Version = strings.TrimPrefix(pk[0], "version")
 		}
+	}
+
+	setInfo := func(msg *nmdc.HubINFO, enc string) {
+		if msg.Name != "" {
+			hub.Name = msg.Name
+		}
+		if msg.Desc != "" {
+			hub.Desc = msg.Desc
+		}
+		if msg.Host != "" {
+			hub.Addr = msg.Host
+		}
+		if msg.Soft.Name != "" {
+			hub.Server.Name = msg.Soft.Name
+			if msg.Soft.Version != "" {
+				hub.Server.Version = msg.Soft.Version
+			} else {
+				soft := msg.Soft.Name
+				if i := strings.LastIndex(soft, " "); i > 0 {
+					hub.Server = dc.Software{
+						Name:    soft[:i],
+						Version: soft[i+1:],
+					}
+				} else if i = strings.LastIndex(soft, "_"); i > 0 {
+					hub.Server = dc.Software{
+						Name:    soft[:i],
+						Version: soft[i+1:],
+					}
+				}
+			}
+		}
+		if enc != "" {
+			hub.Encoding = enc
+		} else {
+			hub.Encoding = msg.Encoding
+		}
+		hub.Owner = msg.Owner
+	}
+
+	switchEncoding := func(msg *nmdc.HubINFO) {
+		if strings.Contains(hub.Encoding, "@") {
+			// YnHub may send an email in the encoding field
+			if msg.Owner == "" {
+				msg.Owner = msg.Encoding
+			}
+			msg.Encoding = ""
+			setInfo(msg, "")
+			return
+		}
+		code := strings.ToLower(msg.Encoding)
+		// some hubs are misconfigured and send garbage in the encoding field
+		code = strings.Trim(code, "= ")
+		if code == "" {
+			msg.Encoding = ""
+			setInfo(msg, "")
+			return
+		}
+		if len(code) == 4 {
+			// some hubs forget the "cp" prefix and just use "1250" as an encoding
+			if _, err := strconv.Atoi(code); err == nil {
+				code = "cp" + code
+			}
+		}
+		enc, err := htmlindex.Get(code)
+		if err != nil {
+			setInfo(msg, "")
+			return
+		}
+
+		var msg2 nmdc.HubINFO
+		err = msg2.UnmarshalNMDC(enc.NewDecoder(), hubInfo)
+		if err != nil {
+			setInfo(msg, "")
+			return
+		}
+		if c, _ := htmlindex.Name(enc); c != "" {
+			code = c
+		}
+		setInfo(&msg2, code)
+		c.SetEncoding(enc)
 	}
 
 	var (
@@ -286,37 +334,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 		case *nmdc.BotList:
 			hub.Bots = msg.Names
 		case *nmdc.HubINFO:
-			if msg.Name != "" {
-				hub.Name = msg.Name
-			}
-			if msg.Desc != "" {
-				hub.Desc = msg.Desc
-			}
-			if msg.Host != "" {
-				hub.Addr = msg.Host
-			}
-			if msg.Soft.Name != "" {
-				hub.Server.Name = msg.Soft.Name
-				if msg.Soft.Version != "" {
-					hub.Server.Version = msg.Soft.Version
-				} else {
-					soft := msg.Soft.Name
-					if i := strings.LastIndex(soft, " "); i > 0 {
-						hub.Server = dc.Software{
-							Name:    soft[:i],
-							Version: soft[i+1:],
-						}
-					} else if i = strings.LastIndex(soft, "_"); i > 0 {
-						hub.Server = dc.Software{
-							Name:    soft[:i],
-							Version: soft[i+1:],
-						}
-					}
-				}
-			}
-			// will be decoded later, see defer
-			hub.Encoding = msg.Encoding
-			hub.Owner = msg.Owner
+			switchEncoding(msg)
 		case *nmdc.FailOver:
 			hub.Failover = append(hub.Failover, msg.Host...)
 		case *nmdc.UserCommand:

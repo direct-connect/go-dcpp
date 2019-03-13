@@ -182,6 +182,6 @@ type HubUser struct {
 // Software version.
 type Software struct {
 	Name    string   `json:"name" xml:"Name,attr"`
-	Version string   `json:"vers" xml:"Version,attr"`
+	Version string   `json:"vers,omitempty" xml:"Version,attr,omitempty"`
 	Ext     []string `json:"ext,omitempty" xml:"Ext,attr,omitempty"`
 }
