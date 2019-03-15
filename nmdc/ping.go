@@ -139,10 +139,12 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	if len(pk) > 1 {
 		hub.Server.Version = pk[1]
 	} else if strings.HasPrefix(pk[0], "version") {
-		// old versions of Verlihub
-		if i := strings.LastIndex(lock.Lock, "_"); i >= 0 {
+		hub.Server.Version = "v" + strings.TrimPrefix(pk[0], "version")
+		if strings.Contains(lock.Lock, "FLEXHUB_MULTIPROTOCOL") {
+			hub.Server.Name = "FlexHub"
+		} else if i := strings.LastIndex(lock.Lock, "_"); i >= 0 {
+			// old versions of Verlihub
 			hub.Server.Name = lock.Lock[i+1:]
-			hub.Server.Version = strings.TrimPrefix(pk[0], "version")
 		}
 	}
 
