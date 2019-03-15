@@ -85,12 +85,14 @@ func init() {
 		Use:   "probe host[:port] [...]",
 		Short: "detects DC protocol used by the host",
 	}
-	probeTimeout := probeCmd.Flags().DurationP("timeout", "t", time.Second*5, "probe timeout")
+	probeDebug := probeCmd.Flags().Bool("debug", false, "print protocol messages to stderr")
+	probeTimeout := probeCmd.Flags().DurationP("timeout", "t", time.Second*3, "probe timeout")
 	probeCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return errors.New("expected at least one address")
 		}
 		rctx := context.Background()
+		dc.Debug = *probeDebug
 
 		probeOne := func(addr string) {
 			ctx, cancel := context.WithTimeout(rctx, *probeTimeout)
@@ -169,6 +171,7 @@ func init() {
 		}
 		nmdc.Debug = *pingDebug
 		adc.Debug = *pingDebug
+		dc.Debug = *pingDebug
 
 		rctx := context.Background()
 

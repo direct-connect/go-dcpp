@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/url"
 	"sync"
@@ -14,6 +15,8 @@ import (
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/adc"
 )
+
+var Debug bool
 
 var (
 	ErrUnsupportedProtocol = errors.New("unsupported protocol")
@@ -173,6 +176,9 @@ func probeTLS(ctx context.Context, addr string) (string, error) {
 
 	// first, check if ALPN handshake was successful
 	state := tc.ConnectionState()
+	if Debug && state.NegotiatedProtocol != "" {
+		log.Println("ALPN negotiated:", state.NegotiatedProtocol)
+	}
 	switch state.NegotiatedProtocol {
 	case "adc":
 		return adcsSchema, nil
