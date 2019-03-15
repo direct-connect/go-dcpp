@@ -265,6 +265,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 					"YnHub version: ",
 					"PtokaX DC Hub ",
 					"Archos DC Hub ",
+					"SunGateDCH by Meloun ",
 				} {
 					if i := strings.Index(lastMsg, pref); i >= 0 {
 						vers := lastMsg[i+len(pref):]
