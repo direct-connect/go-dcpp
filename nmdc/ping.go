@@ -18,6 +18,10 @@ import (
 	"github.com/direct-connect/go-dcpp/version"
 )
 
+var (
+	ErrRegisteredOnly = errors.New("registered users only")
+)
+
 type HubInfo struct {
 	Name     string
 	Addr     string
@@ -241,7 +245,11 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 				return &hub, nil
 			}
 			if lastMsg != "" {
-				return &hub, fmt.Errorf("connection closed: %s", lastMsg)
+				err = fmt.Errorf("connection closed: %s", lastMsg)
+				if strings.Contains(lastMsg, "registered users only") {
+					err = ErrRegisteredOnly
+				}
+				return &hub, err
 			}
 			return &hub, errors.New("connection closed")
 		} else if e, ok := err.(timeoutErr); ok && e.Timeout() && listStarted {

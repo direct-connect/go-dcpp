@@ -54,6 +54,13 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 			Name: conf.Name, Share: conf.ShareSize,
 			Slots: conf.Slots, Hubs: conf.Hubs,
 		})
+		if err == nmdc.ErrRegisteredOnly {
+			// TODO: should support error code in NMDC
+			err = adc.Error{Status: adc.Status{
+				Sev: adc.Fatal, Code: 26,
+				Msg: err.Error(),
+			}}
+		}
 		if err != nil && hub == nil {
 			return nil, err
 		}
