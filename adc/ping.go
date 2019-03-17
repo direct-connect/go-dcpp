@@ -214,6 +214,18 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 				if err := Unmarshal(cmd.Data, &u); err != nil {
 					return &hub, err
 				}
+				if hub.Version == "" && hub.Application == "" {
+					if strings.HasPrefix(u.Version, "FlexHub") {
+						hub.Version = u.Version
+						hub.Application = u.Application
+						if hub.Application == "" {
+							if i := strings.LastIndex(hub.Version, " "); i > 0 {
+								hub.Application, hub.Version = hub.Version[:i], hub.Version[i+1:]
+							}
+						}
+						continue
+					}
+				}
 				hub.Users = append(hub.Users, u)
 				// continue until we see ourselves in the list
 			default:
