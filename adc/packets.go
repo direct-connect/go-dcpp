@@ -57,7 +57,7 @@ func (p BasePacket) Decode() (Message, error) {
 }
 
 func DecodePacket(p []byte) (Packet, error) {
-	if len(p) < 4 {
+	if len(p) < 5 {
 		return nil, fmt.Errorf("too short for command: '%s'", string(p))
 	}
 	if bytes.ContainsAny(p, "\x00") {
@@ -90,10 +90,11 @@ func DecodePacket(p []byte) (Packet, error) {
 	p = p[4:]
 	var raw []byte
 	if len(p) > 0 {
-		if p[0] != ' ' {
+		if p[0] == ' ' {
+			raw = p[1:]
+		} else if p[0] != lineDelim {
 			return nil, fmt.Errorf("name separator expected")
 		}
-		raw = p[1:]
 	}
 	if err := m.UnmarshalPacket(cname, raw); err != nil {
 		return nil, err
@@ -111,13 +112,19 @@ func (*InfoPacket) kind() byte {
 	return kindInfo
 }
 func (p *InfoPacket) UnmarshalPacket(name MsgType, data []byte) error {
+	if len(data) != 0 && data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
+	}
 	p.Name = name
+	if len(data) != 0 {
+		data = data[:len(data)-1]
+	}
 	p.Data = data
 	return nil
 }
 func (p *InfoPacket) MarshalPacket() ([]byte, error) {
-	// IINF <data>
-	n := 4
+	// IINF <data>0x0a
+	n := 5
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -128,6 +135,7 @@ func (p *InfoPacket) MarshalPacket() ([]byte, error) {
 		buf[4] = ' '
 		copy(buf[5:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -141,13 +149,19 @@ func (*HubPacket) kind() byte {
 	return kindHub
 }
 func (p *HubPacket) UnmarshalPacket(name MsgType, data []byte) error {
+	if len(data) < 1 {
+		return errors.New("short hub command")
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
+	}
+	data = data[:len(data)-1]
 	p.Name = name
 	p.Data = data
 	return nil
 }
 func (p *HubPacket) MarshalPacket() ([]byte, error) {
-	// HINF <data>
-	n := 4
+	// HINF <data>0x0a
+	n := 5
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -158,6 +172,7 @@ func (p *HubPacket) MarshalPacket() ([]byte, error) {
 		buf[4] = ' '
 		copy(buf[5:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -179,10 +194,13 @@ func (p *BroadcastPacket) Source() SID {
 }
 func (p *BroadcastPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 4 {
-		return fmt.Errorf("short broadcast")
-	} else if len(data) > 4 && data[4] != ' ' {
+		return errors.New("short broadcast command")
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
+	} else if len(data) > 4 && data[4] != ' ' && data[4] != lineDelim {
 		return fmt.Errorf("separator expected: '%s'", string(data[:5]))
 	}
+	data = data[:len(data)-1]
 	p.Name = name
 	if err := p.ID.UnmarshalAdc(data[0:4]); err != nil {
 		return err
@@ -193,8 +211,8 @@ func (p *BroadcastPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	return nil
 }
 func (p *BroadcastPacket) MarshalPacket() ([]byte, error) {
-	// BINF AAAA <data>
-	n := 9
+	// BINF AAAA <data>0x0a
+	n := 10
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -208,6 +226,7 @@ func (p *BroadcastPacket) MarshalPacket() ([]byte, error) {
 		buf[9] = ' '
 		copy(buf[10:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -235,11 +254,14 @@ func (p *DirectPacket) Target() SID {
 func (p *DirectPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 9 {
 		return fmt.Errorf("short direct command")
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
 	} else if data[4] != ' ' {
 		return fmt.Errorf("separator expected: '%s'", string(data[:9]))
-	} else if len(data) > 9 && data[9] != ' ' {
+	} else if len(data) > 9 && data[9] != ' ' && data[9] != lineDelim {
 		return fmt.Errorf("separator expected: '%s'", string(data[:10]))
 	}
+	data = data[:len(data)-1]
 	p.Name = name
 	if err := p.ID.UnmarshalAdc(data[0:4]); err != nil {
 		return err
@@ -253,8 +275,8 @@ func (p *DirectPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	return nil
 }
 func (p DirectPacket) MarshalPacket() ([]byte, error) {
-	// DCTM AAAA BBBB <data>
-	n := 14
+	// DCTM AAAA BBBB <data>0x0a
+	n := 15
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -271,6 +293,7 @@ func (p DirectPacket) MarshalPacket() ([]byte, error) {
 		buf[14] = ' '
 		copy(buf[15:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -294,11 +317,14 @@ func (p *EchoPacket) Target() SID {
 func (p *EchoPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 9 {
 		return fmt.Errorf("short echo command")
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
 	} else if data[4] != ' ' {
 		return fmt.Errorf("separator expected: '%s'", string(data[:9]))
-	} else if len(data) > 9 && data[9] != ' ' {
+	} else if len(data) > 9 && data[9] != ' ' && data[9] != lineDelim {
 		return fmt.Errorf("separator expected: '%s'", string(data[:10]))
 	}
+	data = data[:len(data)-1]
 	p.Name = name
 	if err := p.ID.UnmarshalAdc(data[0:4]); err != nil {
 		return err
@@ -312,8 +338,8 @@ func (p *EchoPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	return nil
 }
 func (p *EchoPacket) MarshalPacket() ([]byte, error) {
-	// EMSG AAAA BBBB <data>
-	n := 14
+	// EMSG AAAA BBBB <data>0x0a
+	n := 15
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -330,6 +356,7 @@ func (p *EchoPacket) MarshalPacket() ([]byte, error) {
 		buf[14] = ' '
 		copy(buf[15:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -343,13 +370,19 @@ func (*ClientPacket) kind() byte {
 	return kindClient
 }
 func (p *ClientPacket) UnmarshalPacket(name MsgType, data []byte) error {
+	if len(data) < 1 {
+		return errors.New("short client command")
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
+	}
+	data = data[:len(data)-1]
 	p.Name = name
 	p.Data = data
 	return nil
 }
 func (p *ClientPacket) MarshalPacket() ([]byte, error) {
-	// CINF <data>
-	n := 4
+	// CINF <data>0x0a
+	n := 5
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -360,6 +393,7 @@ func (p *ClientPacket) MarshalPacket() ([]byte, error) {
 		buf[4] = ' '
 		copy(buf[5:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -383,9 +417,12 @@ func (p *FeaturePacket) Source() SID {
 func (p *FeaturePacket) UnmarshalPacket(name MsgType, data []byte) error {
 	if len(data) < 4 {
 		return fmt.Errorf("short feature command")
-	} else if len(data) > 4 && data[4] != ' ' {
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
+	} else if len(data) > 4 && data[4] != ' ' && data[4] != lineDelim {
 		return fmt.Errorf("separator expected: '%s'", string(data[:5]))
 	}
+	data = data[:len(data)-1]
 	p.Name = name
 	p.Features = make(map[Feature]bool)
 	if err := p.ID.UnmarshalAdc(data[0:4]); err != nil {
@@ -433,8 +470,8 @@ func (p *FeaturePacket) UnmarshalPacket(name MsgType, data []byte) error {
 	return nil
 }
 func (p *FeaturePacket) MarshalPacket() ([]byte, error) {
-	// FSCH AAAA +SEGA -NAT0 <data>
-	n := 9
+	// FSCH AAAA +SEGA -NAT0 <data>0x0a
+	n := 10
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -462,6 +499,7 @@ func (p *FeaturePacket) MarshalPacket() ([]byte, error) {
 		buf[off] = ' '
 		copy(buf[off+1:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }
 
@@ -478,10 +516,13 @@ func (*UDPPacket) kind() byte {
 func (p *UDPPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	const l = 39 // len of CID in base32
 	if len(data) < l {
-		return fmt.Errorf("short upd command")
-	} else if len(data) > l && data[l] != ' ' {
+		return errors.New("short upd command")
+	} else if data[len(data)-1] != lineDelim {
+		return errors.New("invalid packet delimiter")
+	} else if len(data) > l && data[l] != ' ' && data[l] != lineDelim {
 		return fmt.Errorf("separator expected: '%s'", string(data[:l+1]))
 	}
+	data = data[:len(data)-1]
 	p.Name = name
 	if err := p.ID.FromBase32(string(data[0:l])); err != nil {
 		return fmt.Errorf("wrong CID in upd command: %v", err)
@@ -492,8 +533,8 @@ func (p *UDPPacket) UnmarshalPacket(name MsgType, data []byte) error {
 	return nil
 }
 func (p *UDPPacket) MarshalPacket() ([]byte, error) {
-	// UINF <CID> <data>
-	n := 39 + 5
+	// UINF <CID> <data>0x0a
+	n := 39 + 5 + 1
 	if len(p.Data) > 0 {
 		n += 1 + len(p.Data)
 	}
@@ -506,5 +547,6 @@ func (p *UDPPacket) MarshalPacket() ([]byte, error) {
 		buf[5+39] = ' '
 		copy(buf[5+39+1:], p.Data)
 	}
+	buf[len(buf)-1] = lineDelim
 	return buf, nil
 }

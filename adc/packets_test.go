@@ -9,6 +9,8 @@ import (
 	"github.com/direct-connect/go-dcpp/adc/types"
 )
 
+const delim = "\x0a"
+
 var casesPackets = []struct {
 	data   string
 	packet Packet
@@ -201,7 +203,7 @@ var casesPackets = []struct {
 func TestDecodePacket(t *testing.T) {
 	for _, c := range casesPackets {
 		t.Run("", func(t *testing.T) {
-			cmd, err := DecodePacket([]byte(c.data))
+			cmd, err := DecodePacket([]byte(c.data + delim))
 			if err != nil {
 				t.Fatal(err)
 			} else if !reflect.DeepEqual(cmd, c.packet) {
@@ -217,8 +219,8 @@ func TestEncodePacket(t *testing.T) {
 			data, err := c.packet.MarshalPacket()
 			if err != nil {
 				t.Fatal(err)
-			} else if !bytes.Equal(data, []byte(c.data)) {
-				t.Fatalf("\n%#v\nvs\n%#v", string(data), string(c.data))
+			} else if !bytes.Equal(data, []byte(c.data+delim)) {
+				t.Fatalf("\n%#v\nvs\n%#v", string(data), string(c.data+delim))
 			}
 		})
 	}
