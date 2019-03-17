@@ -18,6 +18,8 @@ var (
 
 func init() {
 	RegisterMessage(Supported{})
+	RegisterMessage(ZOn{})
+	RegisterMessage(ZOff{})
 	RegisterMessage(Status{})
 	RegisterMessage(SIDAssign{})
 	RegisterMessage(User{})
@@ -106,6 +108,43 @@ func (m Supported) MarshalAdc() ([]byte, error) {
 
 func (m *Supported) UnmarshalAdc(data []byte) error {
 	return m.Features.UnmarshalAdc(data)
+}
+
+var (
+	_ Marshaler   = NoArgs{}
+	_ Unmarshaler = (*NoArgs)(nil)
+)
+
+type NoArgs struct{}
+
+func (m NoArgs) MarshalAdc() ([]byte, error) {
+	return nil, nil
+}
+
+func (m *NoArgs) UnmarshalAdc(data []byte) error {
+	return nil
+}
+
+var (
+	_ Message     = ZOn{}
+	_ Marshaler   = ZOn{}
+	_ Unmarshaler = (*ZOn)(nil)
+)
+
+type ZOn struct {
+	NoArgs
+}
+
+func (ZOn) Cmd() MsgType {
+	return MsgType{'Z', 'O', 'N'}
+}
+
+type ZOff struct {
+	NoArgs
+}
+
+func (ZOff) Cmd() MsgType {
+	return MsgType{'Z', 'O', 'F'}
 }
 
 type Severity int

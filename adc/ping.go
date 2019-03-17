@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/direct-connect/go-dcpp/adc/types"
@@ -77,6 +78,16 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 	msg, err := c.ReadInfoMsg(deadline)
 	if err != nil {
 		return nil, err
+	}
+	if _, ok := msg.(ZOn); ok {
+		err = c.read.ActivateZlib()
+		if err != nil {
+			return nil, err
+		}
+		msg, err = c.ReadInfoMsg(deadline)
+		if err != nil {
+			return nil, err
+		}
 	}
 	sup, ok := msg.(Supported)
 	if !ok {
