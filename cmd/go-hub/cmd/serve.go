@@ -80,7 +80,7 @@ func initConfig(path string) error {
 func readConfig() (*Config, error) {
 	err := viper.ReadInConfig()
 	if err == nil {
-		fmt.Println("loaded config:", viper.ConfigFileUsed())
+		fmt.Printf("loaded config: %s\n\n", viper.ConfigFileUsed())
 	}
 	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 		if err = initConfig(defaultConfig); err != nil {
@@ -137,6 +137,8 @@ func init() {
 	viper.BindPFlag("serve.host", flags.Lookup("host"))
 	flags.Int("port", 1411, "port to listen on")
 	viper.BindPFlag("serve.port", flags.Lookup("port"))
+	flags.String("plugins", "plugins", "directory for hub plugins")
+	viper.BindPFlag("plugins.path", flags.Lookup("plugins"))
 	Root.AddCommand(serveCmd)
 
 	serveCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -189,8 +191,6 @@ func init() {
 			adc.Debug = true
 		}
 
-		fmt.Println("listening on", host)
-
 		if *fPProf {
 			const pprofPort = ":6060"
 			fmt.Println("enabling profiler on", pprofPort)
@@ -218,13 +218,16 @@ func init() {
 			}
 		}
 
+		fmt.Println()
 		if err := h.Start(); err != nil {
 			return err
 		}
 		defer h.Close()
+		fmt.Println()
+
+		fmt.Println("listening on", host)
 
 		fmt.Printf(`
-
 [ Hub URIs ]
 adcs://%s?kp=%s
 adcs://%s
