@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/direct-connect/go-dc/lineproto"
 )
 
 var (
@@ -74,7 +76,14 @@ func NewConn(conn net.Conn) (*Conn, error) {
 		conn: conn,
 	}
 	c.write.w = bufio.NewWriter(conn)
-	c.read.r = bufio.NewReader(conn)
+	c.read = lineproto.NewReader(conn, 0x0a)
+	if Debug {
+		c.read.OnLine = func(line []byte) (bool, error) {
+			line = bytes.TrimSuffix(line, []byte{0x0a})
+			log.Println("<-", string(line))
+			return true, nil
+		}
+	}
 	return c, nil
 }
 
@@ -93,11 +102,7 @@ type Conn struct {
 		err error
 		w   *bufio.Writer
 	}
-	read struct {
-		sync.Mutex
-		err error
-		r   *bufio.Reader
-	}
+	read *lineproto.Reader
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -164,36 +169,18 @@ func (c *Conn) readPacket(deadline time.Time) ([]byte, error) {
 	c.bin.RLock()
 	defer c.bin.RUnlock()
 
-	c.read.Lock()
-	defer c.read.Unlock()
-
-	if err := c.read.err; err != nil {
-		return nil, err
-	}
-
 	if !deadline.IsZero() {
 		c.conn.SetReadDeadline(deadline)
 		defer c.conn.SetReadDeadline(time.Time{})
 	}
 	for {
-		s, err := c.read.r.ReadBytes(byte(0x0a))
-		if err == io.EOF {
-			if len(s) == 0 {
-				c.read.err = err
-				return nil, err
-			}
-			// no delimiter
-		} else if err != nil {
-			c.read.err = err
+		s, err := c.read.ReadLine()
+		if err != nil {
 			return nil, err
-		} else {
-			// trim delimiter
-			s = s[:len(s)-1]
 		}
+		// trim delimiter
+		s = s[:len(s)-1]
 		if len(s) != 0 {
-			if Debug {
-				log.Println("<-", string(s))
-			}
 			return s, nil
 		}
 		// clients may send message containing only 0x0a byte
@@ -494,19 +481,20 @@ func (c *Conn) ClientHandshake(toHub bool, f ModFeatures) error { // TODO: ctx
 	}
 }
 */
+
 // ReadBinary acquires an exclusive reader lock on the connection and switches it to binary mode.
 // Reader will be limited to exactly n bytes. Unread content will be discarded on close.
-func (c *Conn) ReadBinary(n int64) io.ReadCloser {
-	if n <= 0 {
-		return ioutil.NopCloser(bytes.NewReader(nil))
-	}
-	// acquire exclusive connection lock
-	c.bin.Lock()
-	if Debug {
-		log.Printf("<- [binary data: %d bytes]", n)
-	}
-	return &rawReader{c: c, r: io.LimitReader(c.read.r, n)}
-}
+//func (c *Conn) ReadBinary(n int64) io.ReadCloser {
+//	if n <= 0 {
+//		return ioutil.NopCloser(bytes.NewReader(nil))
+//	}
+//	// acquire exclusive connection lock
+//	c.bin.Lock()
+//	if Debug {
+//		log.Printf("<- [binary data: %d bytes]", n)
+//	}
+//	return &rawReader{c: c, r: io.LimitReader(c.read.r, n)}
+//}
 
 type rawReader struct {
 	c   *Conn
