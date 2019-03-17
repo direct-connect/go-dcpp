@@ -129,6 +129,10 @@ type Hub struct {
 		byName map[string]*Room
 		bySID  map[SID]*Room
 	}
+
+	plugins struct {
+		loaded []Plugin
+	}
 }
 
 func (h *Hub) SetDatabase(db Database) {
@@ -136,12 +140,12 @@ func (h *Hub) SetDatabase(db Database) {
 }
 
 type Command struct {
-	Path    []string
+	Menu    []string
 	Name    string
 	Aliases []string
 	Short   string
 	Long    string
-	Func    func(h *Hub, p Peer, args string) error
+	Func    func(p Peer, args string) error
 	run     func(p Peer, args string)
 }
 
@@ -215,6 +219,15 @@ func (h *Hub) ListenAndServe(addr string) error {
 			}
 		}()
 	}
+}
+
+func (h *Hub) Start() error {
+	return h.initPlugins()
+}
+
+func (h *Hub) Close() error {
+	h.stopPlugins()
+	return nil
 }
 
 type timeoutErr interface {
@@ -384,9 +397,9 @@ func (h *Hub) cmdOutputJSON(peer Peer, out interface{}) {
 	h.cmdOutput(peer, string(data))
 }
 
-func (h *Hub) registerCommand(cmd Command) {
+func (h *Hub) RegisterCommand(cmd Command) {
 	cmd.run = func(p Peer, args string) {
-		err := cmd.Func(h, p, args)
+		err := cmd.Func(p, args)
 		if err != nil {
 			h.cmdOutput(p, "error: "+err.Error())
 		}
@@ -435,22 +448,22 @@ func (h *Hub) ListCommands() []*Command {
 	}
 	command := make([]*Command, 0, len(names))
 	for _, name := range names {
-		if c := h.cmds.byName[name]; len(c.Path) != 0 {
+		if c := h.cmds.byName[name]; len(c.Menu) != 0 {
 			command = append(command, c)
 		}
 	}
 	sort.Slice(command, func(i, j int) bool {
 		a, b := command[i], command[j]
-		l := len(a.Path)
-		if len(a.Path) > len(b.Path) {
-			l = len(b.Path)
+		l := len(a.Menu)
+		if len(a.Menu) > len(b.Menu) {
+			l = len(b.Menu)
 		}
 		for n := 0; n <= l; n++ {
-			if a.Path[n] != b.Path[n] {
-				return a.Path[n] < b.Path[n]
+			if a.Menu[n] != b.Menu[n] {
+				return a.Menu[n] < b.Menu[n]
 			}
 		}
-		return len(a.Path) <= len(b.Path)
+		return len(a.Menu) <= len(b.Menu)
 	})
 	return command
 }

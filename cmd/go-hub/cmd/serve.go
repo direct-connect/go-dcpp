@@ -6,11 +6,14 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"runtime"
 	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	_ "github.com/direct-connect/go-dcpp/hub/plugins/all"
 
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/hub"
@@ -63,6 +66,9 @@ type Config struct {
 		Type string `yaml:"type"`
 		Path string `yaml:"path"`
 	} `yaml:"database"`
+	Plugins struct {
+		Path string `yaml:"path"`
+	} `yaml:"plugins"`
 }
 
 const defaultConfig = "hub.yml"
@@ -107,6 +113,7 @@ func init() {
 	viper.SetDefault("chat.log.join", 10)
 	viper.SetDefault("database.type", "bolt")
 	viper.SetDefault("database.path", "hub.db")
+	viper.SetDefault("plugins.path", "plugins")
 
 	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := initConfig(defaultConfig); err != nil {
@@ -204,6 +211,17 @@ func init() {
 		} else {
 			fmt.Println("WARNING: using in-memory database")
 		}
+
+		if _, err := os.Stat(conf.Plugins.Path); err == nil {
+			if err := h.LoadPluginsInDir(conf.Plugins.Path); err != nil {
+				return err
+			}
+		}
+
+		if err := h.Start(); err != nil {
+			return err
+		}
+		defer h.Close()
 
 		fmt.Printf(`
 

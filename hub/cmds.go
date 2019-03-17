@@ -3,7 +3,6 @@ package hub
 import (
 	"bytes"
 	"errors"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,47 +11,35 @@ import (
 func (h *Hub) initCommands() {
 	h.cmds.byName = make(map[string]*Command)
 	h.cmds.names = make(map[string]struct{})
-	h.registerCommand(Command{
-		Path: []string{"Help"},
+	h.RegisterCommand(Command{
+		Menu: []string{"Help"},
 		Name: "help", Aliases: []string{"h"},
 		Short: "show the list of commands or a help for a specific command",
-		Func:  cmdHelp,
+		Func:  h.cmdHelp,
 	})
-	h.registerCommand(Command{
-		Path:  []string{"Stats"},
-		Name:  "stats",
-		Short: "show hub stats",
-		Func:  cmdStats,
-	})
-	h.registerCommand(Command{
+	h.RegisterCommand(Command{
 		Name:  "log",
 		Short: "replay chat log",
-		Func:  cmdChatLog,
+		Func:  h.cmdChatLog,
 	})
-	h.registerCommand(Command{
+	h.RegisterCommand(Command{
 		Name: "reg", Aliases: []string{"register", "passwd"},
 		Short: "registers a user or change a password",
-		Func:  cmdRegister,
+		Func:  h.cmdRegister,
 	})
-	h.registerCommand(Command{
-		Path: []string{"My IP"},
-		Name: "myip", Aliases: []string{"ip"},
-		Short: "shows your current ip",
-		Func:  cmdIP,
-	})
-	h.registerCommand(Command{
+	h.RegisterCommand(Command{
 		Name:  "join",
 		Short: "join a room",
-		Func:  cmdJoin,
+		Func:  h.cmdJoin,
 	})
-	h.registerCommand(Command{
+	h.RegisterCommand(Command{
 		Name: "leave", Aliases: []string{"part"},
 		Short: "leave a room",
-		Func:  cmdLeave,
+		Func:  h.cmdLeave,
 	})
 }
 
-func cmdHelp(h *Hub, p Peer, args string) error {
+func (h *Hub) cmdHelp(p Peer, args string) error {
 	if args != "" {
 		name := args
 		cmd := h.cmds.byName[name]
@@ -88,13 +75,7 @@ func cmdHelp(h *Hub, p Peer, args string) error {
 	return nil
 }
 
-func cmdStats(h *Hub, p Peer, args string) error {
-	st := h.Stats()
-	h.cmdOutputJSON(p, st)
-	return nil
-}
-
-func cmdChatLog(h *Hub, p Peer, args string) error {
+func (h *Hub) cmdChatLog(p Peer, args string) error {
 	if h.conf.ChatLog == 0 {
 		h.cmdOutput(p, "chat log is disabled on this hub")
 		return nil
@@ -112,13 +93,7 @@ func cmdChatLog(h *Hub, p Peer, args string) error {
 	return nil
 }
 
-func cmdIP(h *Hub, p Peer, args string) error {
-	host, _, _ := net.SplitHostPort(p.RemoteAddr().String())
-	h.cmdOutput(p, "IP: "+host)
-	return nil
-}
-
-func cmdRegister(h *Hub, p Peer, args string) error {
+func (h *Hub) cmdRegister(p Peer, args string) error {
 	if len(args) < 6 {
 		h.cmdOutput(p, "password should be at least 6 characters")
 		return nil
@@ -132,7 +107,7 @@ func cmdRegister(h *Hub, p Peer, args string) error {
 	return nil
 }
 
-func cmdJoin(h *Hub, p Peer, args string) error {
+func (h *Hub) cmdJoin(p Peer, args string) error {
 	name := args
 	if !strings.HasPrefix(name, "#") {
 		return errors.New("room name should start with '#'")
@@ -149,7 +124,7 @@ func cmdJoin(h *Hub, p Peer, args string) error {
 	return nil
 }
 
-func cmdLeave(h *Hub, p Peer, args string) error {
+func (h *Hub) cmdLeave(p Peer, args string) error {
 	name := args
 	if !strings.HasPrefix(name, "#") {
 		return errors.New("room name should start with '#'")

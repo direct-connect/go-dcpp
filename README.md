@@ -18,11 +18,12 @@ Requires Go 1.11+.
 - User registration.
 - Chat rooms.
 - User commands.
+- Go plugins.
 
 **TODO:**
 
 - Operators.
-- Extensions and scripts.
+- Scripts.
 - Spam filters.
 - Get certificates from LetsEncrypt.
 

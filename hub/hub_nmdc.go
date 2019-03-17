@@ -573,7 +573,7 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 		err := peer.conn.WriteMsg(&nmdcp.UserCommand{
 			Typ:     nmdcp.TypeRaw,
 			Context: nmdcp.ContextUser,
-			Path:    c.Path,
+			Path:    c.Menu,
 			Command: "<%[mynick]> !" + c.Name + "|",
 		})
 		if err != nil {
