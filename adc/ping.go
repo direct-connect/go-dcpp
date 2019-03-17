@@ -174,6 +174,22 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 					return &hub, st.Err()
 				}
 				stage = userList
+			case userList:
+				if cmd.Name != (Disconnect{}).Cmd() {
+					return &hub, fmt.Errorf("expected disconnect, received: %#v", cmd)
+				}
+				var st Disconnect
+				if err := Unmarshal(cmd.Data, &st); err != nil {
+					return &hub, err
+				}
+				e := Error{Status{Sev: Fatal, Msg: st.Message}}
+				if strings.Contains(st.Message, "registered users only") {
+					e.Code = 26
+				}
+				if e.Msg == "" {
+					e.Msg = "hub closed the connection"
+				}
+				return &hub, e
 			default:
 				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
 			}

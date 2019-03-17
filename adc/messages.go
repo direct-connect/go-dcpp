@@ -555,25 +555,20 @@ func (ChatMessage) Cmd() MsgType {
 }
 
 var (
-	_ Message     = Disconnect{}
-	_ Marshaler   = Disconnect{}
-	_ Unmarshaler = (*Disconnect)(nil)
+	_ Message = Disconnect{}
 )
 
 type Disconnect struct {
-	ID SID
+	ID       SID    `adc:"#"`
+	Message  string `adc:"MS"`
+	By       SID    `adc:"ID"`
+	Duration int    `adc:"TL"`
+	Redirect string `adc:"RD"`
+	// TODO: "DI"
 }
 
 func (Disconnect) Cmd() MsgType {
 	return MsgType{'Q', 'U', 'I'}
-}
-
-func (m Disconnect) MarshalAdc() ([]byte, error) {
-	return m.ID.MarshalAdc()
-}
-
-func (m *Disconnect) UnmarshalAdc(data []byte) error {
-	return m.ID.UnmarshalAdc(data)
 }
 
 var _ Message = HubInfo{}
