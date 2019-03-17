@@ -117,3 +117,132 @@ func GetAll(ctx context.Context) ([]Hub, error) {
 	}
 	return list, last
 }
+
+type XMLListWriter struct {
+	w   io.Writer
+	enc *xml.Encoder
+
+	name string
+	addr string
+
+	started []string
+}
+
+func NewXMLWriter(w io.Writer) *XMLListWriter {
+	return &XMLListWriter{w: w}
+}
+
+func (w *XMLListWriter) SetHublistName(name string) {
+	w.name = name
+}
+
+func (w *XMLListWriter) SetHublistURL(url string) {
+	w.addr = url
+}
+
+func (w *XMLListWriter) startToken(name string, attrs []xml.Attr) error {
+	w.started = append(w.started, name)
+	return w.enc.EncodeToken(xml.StartElement{
+		Name: xml.Name{Local: name},
+		Attr: attrs,
+	})
+}
+
+func (w *XMLListWriter) writeHeader() error {
+	_, err := w.w.Write([]byte(xml.Header))
+	if err != nil {
+		return err
+	}
+	w.enc = xml.NewEncoder(w.w)
+	w.enc.Indent("", "\t")
+	var attr []xml.Attr
+	if w.name != "" {
+		attr = append(attr, xml.Attr{
+			Name:  xml.Name{Local: "Name"},
+			Value: w.name,
+		})
+	}
+	if w.addr != "" {
+		attr = append(attr, xml.Attr{
+			Name:  xml.Name{Local: "Address"},
+			Value: w.addr,
+		})
+	}
+	err = w.startToken("Hublist", attr)
+	if err != nil {
+		return err
+	}
+	err = w.startToken("Hubs", attr)
+	if err != nil {
+		return err
+	}
+	err = w.enc.Flush()
+	if err != nil {
+		return err
+	}
+	// TODO: use reflection
+	_, err = w.w.Write([]byte(`
+		<Columns>
+			<Column Name="Name" Type="string" />
+			<Column Name="Address" Type="string" />
+			<Column Name="Description" Type="string" />
+			<Column Name="Country" Type="string" />
+			<Column Name="Encoding" Type="string" />
+			<Column Name="Users" Type="int" />
+			<Column Name="Operators" Type="int" />
+			<Column Name="Bots" Type="int" />
+			<Column Name="Infected" Type="int" />
+			<Column Name="Shared" Type="bytes" />
+			<Column Name="Minshare" Type="bytes" />
+			<Column Name="Minslots" Type="int" />
+			<Column Name="Maxhubs" Type="int" />
+			<Column Name="Maxusers" Type="int" />
+			<Column Name="Status" Type="string" />
+			<Column Name="Reliability" Type="string" />
+			<Column Name="Rating" Type="string" />
+			<Column Name="Software" Type="string" />
+			<Column Name="Website" Type="string" />
+			<Column Name="Email" Type="string" />
+			<Column Name="ASN" Type="string" />
+			<Column Name="Network" Type="string" />
+			<Column Name="Failover" Type="string" />
+			<Column Name="Logo" Type="string" />
+			<Column Name="Icon" Type="string" />
+			<Column Name="ErrCode" Type="int" />
+		</Columns>`))
+	return err
+}
+
+func (w *XMLListWriter) WriteHub(h Hub) error {
+	if w.enc == nil {
+		if err := w.writeHeader(); err != nil {
+			return err
+		}
+	}
+	return w.enc.Encode(h)
+}
+
+func (w *XMLListWriter) Close() error {
+	if w.w == nil {
+		return nil
+	}
+	if w.enc == nil {
+		if err := w.writeHeader(); err != nil {
+			return err
+		}
+	}
+	for i := len(w.started) - 1; i >= 0; i-- {
+		err := w.enc.EncodeToken(xml.EndElement{
+			Name: xml.Name{Local: w.started[i]},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if err := w.enc.Flush(); err != nil {
+		return err
+	}
+	_, err := w.w.Write([]byte("\n"))
+	w.w = nil
+	return err
+}

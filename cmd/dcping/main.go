@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -143,9 +142,10 @@ func init() {
 			nmdc.DefaultFallbackEncoding = enc
 		}
 		var (
-			mu  sync.Mutex
-			w   io.Writer = os.Stdout
-			enc func(interface{}) error
+			mu    sync.Mutex
+			w     io.Writer = os.Stdout
+			enc   func(interface{}) error
+			flush func() error
 		)
 		switch *pingOut {
 		case "json", "":
@@ -155,11 +155,14 @@ func init() {
 			}
 			enc = e.Encode
 		case "xml":
-			e := xml.NewEncoder(w)
-			if *pingPretty {
-				e.Indent("", "\t")
+			e := hublist.NewXMLWriter(w)
+			if *pingName != "" {
+				e.SetHublistName(*pingName)
 			}
-			enc = e.Encode
+			enc = func(o interface{}) error {
+				return e.WriteHub(o.(hublist.Hub))
+			}
+			flush = e.Close
 		default:
 			return fmt.Errorf("unsupported format: %q", *pingOut)
 		}
@@ -249,11 +252,7 @@ func init() {
 					panic(err)
 				}
 			case "xml":
-				type Hub struct {
-					hublist.Hub
-					ErrCode int `xml:"ErrCode,attr"`
-				}
-				var out Hub
+				var out hublist.Hub
 				status := "Online"
 				if err != nil {
 					status = "Error"
@@ -264,7 +263,7 @@ func init() {
 					}
 				}
 				if info != nil {
-					out.Hub = hublist.Hub{
+					out = hublist.Hub{
 						Name:        info.Name,
 						Address:     info.Addr[0],
 						Description: info.Desc,
@@ -274,6 +273,7 @@ func init() {
 						Website:     info.Website,
 						Users:       info.Users,
 						Shared:      hublist.Size(info.Share),
+						ErrCode:     errCode,
 					}
 					// output encoding in the legacy format
 					if strings.HasPrefix(out.Encoding, "windows-") {
@@ -294,7 +294,6 @@ func init() {
 					out.Address = addr
 				}
 				out.Status = status
-				out.ErrCode = errCode
 				if err = enc(out); err != nil {
 					panic(err)
 				}
@@ -320,6 +319,9 @@ func init() {
 		}
 		close(jobs)
 		wg.Wait()
+		if flush != nil {
+			return flush()
+		}
 		return nil
 	}
 }
