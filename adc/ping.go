@@ -149,6 +149,13 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		}
 		switch cmd := cmd.(type) {
 		case *InfoPacket:
+			if cmd.Name == (ZOn{}).Cmd() {
+				err = c.read.ActivateZlib()
+				if err != nil {
+					return &hub, err
+				}
+				continue
+			}
 			switch stage {
 			case hubInfo:
 				// waiting for hub info
