@@ -94,7 +94,13 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	}
 	defer c.Close()
 
+	prevOnRaw := c.r.OnRawMessage
 	c.r.OnRawMessage = func(cmd, args []byte) (bool, error) {
+		if prevOnRaw != nil {
+			if ok, err := prevOnRaw(cmd, args); err != nil || !ok {
+				return ok, err
+			}
+		}
 		if bytes.Equal(cmd, []byte("HubINFO")) {
 			hubInfo = append([]byte{}, args...)
 		}
@@ -111,9 +117,9 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	}
 
 	lock, err := c.SendClientHandshake(time.Time{},
-		// dump most extensions we know to probe the for support of them
+		// dump most extensions we know to probe the hub for support of them
 		nmdc.ExtNoHello, nmdc.ExtNoGetINFO, nmdc.ExtTLS, nmdc.ExtUserIP2,
-		nmdc.ExtUserCommand, nmdc.ExtTTHSearch, nmdc.ExtADCGet,
+		nmdc.ExtUserCommand, nmdc.ExtTTHSearch, nmdc.ExtZPipe0, nmdc.ExtADCGet,
 		nmdc.ExtBotINFO, nmdc.ExtHubINFO, nmdc.ExtBotList,
 		nmdc.ExtMCTo, nmdc.ExtNickChange, nmdc.ExtClientNick,
 		nmdc.ExtIN, nmdc.ExtFeaturedNetworks, nmdc.ExtGetZBlock, nmdc.ExtClientID,

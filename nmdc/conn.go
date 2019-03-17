@@ -1,6 +1,7 @@
 package nmdc
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -85,13 +86,20 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	if DefaultFallbackEncoding != nil {
 		c.SetFallbackEncoding(DefaultFallbackEncoding)
 	}
+	c.r.OnRawMessage = func(cmd, args []byte) (bool, error) {
+		if bytes.Equal(cmd, []byte("ZOn")) {
+			err := c.r.ActivateZlib()
+			return false, err
+		}
+		return true, nil
+	}
 	if Debug {
 		c.w.OnLine = func(line []byte) (bool, error) {
-			log.Println("->", string(line))
+			log.Printf("-> %q", string(line))
 			return true, nil
 		}
 		c.r.OnLine = func(line []byte) (bool, error) {
-			log.Println("<-", string(line))
+			log.Printf("<- %q", string(line))
 			return true, nil
 		}
 	}

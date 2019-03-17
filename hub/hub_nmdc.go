@@ -109,6 +109,7 @@ var nmdcFeatures = nmdcp.Extensions{
 	nmdcp.ExtTTHSearch:   {},
 	nmdcp.ExtUserIP2:     {},
 	nmdcp.ExtUserCommand: {},
+	nmdcp.ExtZPipe0:      {}, // see nmdc.Conn
 }
 
 func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
