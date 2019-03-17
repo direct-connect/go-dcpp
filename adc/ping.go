@@ -133,6 +133,23 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		return nil, err
 	}
 
+	fixVersion := func() {
+		if hub.Application != "" {
+			return
+		}
+		if strings.HasPrefix(hub.Version, "FlexHub") {
+			i := strings.LastIndex(hub.Version, "Beta ")
+			if i > 0 {
+				i += 4
+			} else {
+				i = strings.LastIndex(hub.Version, " ")
+			}
+			if i > 0 {
+				hub.Application, hub.Version = hub.Version[:i], hub.Version[i+1:]
+			}
+		}
+	}
+
 	// next, we expect a INF from the hub
 	const (
 		hubInfo = iota
@@ -165,6 +182,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 				if err := Unmarshal(cmd.Data, &hub.HubInfo); err != nil {
 					return &hub, err
 				}
+				fixVersion()
 				stage = optStatus
 			case optStatus:
 				// optionally wait for status command
@@ -225,11 +243,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 					if strings.HasPrefix(u.Version, "FlexHub") {
 						hub.Version = u.Version
 						hub.Application = u.Application
-						if hub.Application == "" {
-							if i := strings.LastIndex(hub.Version, " "); i > 0 {
-								hub.Application, hub.Version = hub.Version[:i], hub.Version[i+1:]
-							}
-						}
+						fixVersion()
 						continue
 					}
 				}
