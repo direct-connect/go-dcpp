@@ -29,6 +29,10 @@ func (h *Hub) ServeIRC(conn net.Conn) error {
 	}
 	defer peer.Close()
 
+	if !h.callOnJoined(peer) {
+		return nil // TODO: eny errors?
+	}
+
 	for {
 		m, err := peer.readMessage()
 		if err == io.EOF {
@@ -50,7 +54,7 @@ func (h *Hub) ServeIRC(conn net.Conn) error {
 			dst, msg := m.Params[0], m.Params[1]
 			if dst == ircHubChan {
 				h.globalChat.SendChat(peer, msg)
-			} else if dst := h.byName(dst); dst != nil {
+			} else if dst := h.PeerByName(dst); dst != nil {
 				h.privateChat(peer, dst, Message{
 					Name: peer.Name(),
 					Text: msg,

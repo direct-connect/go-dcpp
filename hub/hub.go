@@ -133,6 +133,7 @@ type Hub struct {
 	plugins struct {
 		loaded []Plugin
 	}
+	events events
 }
 
 func (h *Hub) SetDatabase(db Database) {
@@ -301,6 +302,11 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 
 // Serve automatically detects the protocol and start the hub-client handshake.
 func (h *Hub) Serve(conn net.Conn) error {
+	if !h.callOnConnected(conn) {
+		_ = conn.Close()
+		return nil
+	}
+	defer h.callOnDisconnected(conn)
 	return h.serve(conn, true)
 }
 
@@ -338,7 +344,7 @@ func (h *Hub) listPeers() []Peer {
 	return list
 }
 
-func (h *Hub) byName(name string) Peer {
+func (h *Hub) PeerByName(name string) Peer {
 	h.peers.RLock()
 	p := h.peers.byName[name]
 	h.peers.RUnlock()
@@ -512,6 +518,12 @@ func (h *Hub) connectReq(from, to Peer, addr, token string, secure bool) {
 
 func (h *Hub) revConnectReq(from, to Peer, token string, secure bool) {
 	_ = to.RevConnectTo(from, token, secure)
+}
+
+func (h *Hub) SendGlobalChat(text string) {
+	for _, p := range h.Peers() {
+		_ = p.HubChatMsg(text)
+	}
 }
 
 type User struct {

@@ -55,6 +55,9 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 
 func (h *Hub) adcServePeer(peer *adcPeer) error {
 	peer.conn.KeepAlive(time.Minute / 2)
+	if !h.callOnJoined(peer) {
+		return nil // TODO: eny errors?
+	}
 	for {
 		p, err := peer.conn.ReadPacket(time.Time{})
 		if err == io.EOF {

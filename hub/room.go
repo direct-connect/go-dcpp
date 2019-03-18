@@ -145,6 +145,12 @@ func (r *Room) SendChat(from Peer, text string) {
 		Text: text,
 	}
 
+	if r.h.globalChat == r {
+		if !r.h.callOnChat(from, m) {
+			return
+		}
+	}
+
 	if r.h.conf.ChatLog > 0 {
 		r.lmu.Lock()
 		r.log.Append(m)

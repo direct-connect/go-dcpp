@@ -2,6 +2,7 @@ module github.com/direct-connect/go-dcpp
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20180913140656-343706a395b7 // indirect
+	github.com/Shopify/go-lua v0.0.0-20181106184032-48449c60c0a9
 	github.com/dgraph-io/badger v1.5.4 // indirect
 	github.com/dgryski/go-farm v0.0.0-20190104051053-3adb47b1fb0f // indirect
 	github.com/direct-connect/go-dc v0.4.1

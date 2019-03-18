@@ -18,8 +18,12 @@ type Version struct {
 	Rev   string
 }
 
+func (v Version) Vers3() string {
+	return strconv.Itoa(v.Major) + "." + strconv.Itoa(v.Minor) + "." + strconv.Itoa(v.Patch)
+}
+
 func (v Version) String() string {
-	s := "v" + strconv.Itoa(v.Major) + "." + strconv.Itoa(v.Minor) + "." + strconv.Itoa(v.Patch)
+	s := "v" + v.Vers3()
 	if v.Rev != "" {
 		s += "-" + v.Rev
 	}
@@ -28,6 +32,7 @@ func (v Version) String() string {
 
 var (
 	pluginsByName = make(map[string]Plugin)
+	pluginsOrder  []string
 )
 
 type Plugin interface {
@@ -54,21 +59,23 @@ func RegisterPlugin(p Plugin) {
 	if name != strings.TrimSpace(name) {
 		panic("plugin name should not start or end with space")
 	}
-	m2, ok := pluginsByName[name]
+	p2, ok := pluginsByName[name]
 	if ok {
-		panic(fmt.Errorf("plugin %q is already registered: %v vs %v", name, p.Version(), m2.Version()))
+		panic(fmt.Errorf("plugin %q is already registered: %v vs %v", name, p.Version(), p2.Version()))
 	}
 	pluginsByName[name] = p
+	pluginsOrder = append(pluginsOrder, name)
 }
 
 func (h *Hub) initPlugins() error {
-	for _, p := range pluginsByName {
+	for _, name := range pluginsOrder {
+		p := pluginsByName[name]
+		fmt.Printf("loading plugin: %s (%v)\n", p.Name(), p.Version())
 		err := p.Init(h)
 		if err != nil {
 			h.stopPlugins()
 			return err
 		}
-		fmt.Printf("plugin loaded: %s (%v)\n", p.Name(), p.Version())
 		h.plugins.loaded = append(h.plugins.loaded, p)
 	}
 	return nil

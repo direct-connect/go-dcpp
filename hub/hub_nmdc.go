@@ -398,6 +398,9 @@ func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	peer.conn.KeepAlive(time.Minute / 2)
+	if !h.callOnJoined(peer) {
+		return nil // TODO: eny errors?
+	}
 	verifyAddr := func(addr string) error {
 		ip, port, err := net.SplitHostPort(addr)
 		if err != nil {
@@ -432,7 +435,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			list := h.Peers()
 			_ = peer.PeersJoin(list)
 		case *nmdcp.ConnectToMe:
-			targ := h.byName(string(msg.Targ))
+			targ := h.PeerByName(string(msg.Targ))
 			if targ == nil {
 				continue
 			}
@@ -445,7 +448,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if string(msg.From) != peer.Name() {
 				return errors.New("invalid name in RevConnectToMe")
 			}
-			targ := h.byName(string(msg.To))
+			targ := h.PeerByName(string(msg.To))
 			if targ == nil {
 				continue
 			}
@@ -464,7 +467,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				r.SendChat(peer, string(msg.Text))
 			} else {
 				// private message
-				targ := h.byName(to)
+				targ := h.PeerByName(to)
 				if targ == nil {
 					continue
 				}
@@ -488,7 +491,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if string(msg.From) != peer.Name() {
 				return fmt.Errorf("search: invalid nick: %q", msg.From)
 			}
-			to := h.byName(string(msg.To))
+			to := h.PeerByName(string(msg.To))
 			if to == nil {
 				continue
 			}
@@ -961,7 +964,7 @@ func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
-	return p.writeAsync(&nmdcp.ChatMessage{Text: text})
+	return p.writeAsync(&nmdcp.ChatMessage{Name: p.hub.conf.Name, Text: text})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
