@@ -250,9 +250,17 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 
 	if u.Ip4 == "0.0.0.0" {
-		ip, _, _ := net.SplitHostPort(peer.peerAddr.String())
-		if ip != "" {
-			u.Ip4 = ip
+		if t, ok := peer.peerAddr.(*net.TCPAddr); ok {
+			if ip4 := t.IP.To4(); ip4 != nil {
+				u.Ip4 = ip4.String()
+			}
+		}
+	}
+	if u.Ip6 == "::" {
+		if t, ok := peer.peerAddr.(*net.TCPAddr); ok {
+			if ip6 := t.IP.To16(); ip6 != nil {
+				u.Ip6 = ip6.String()
+			}
 		}
 	}
 	u.Normalize()
@@ -709,10 +717,12 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 			if info.IPv6 {
 				u.Features = append(u.Features, adc.FeaTCP6)
 			}
-			if strings.HasPrefix(addr, "[") {
-				u.Ip6 = addr
-			} else {
-				u.Ip4 = addr
+			if t, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
+				if ip4 := t.IP.To4(); ip4 != nil {
+					u.Ip4 = ip4.String()
+				} else {
+					u.Ip6 = t.IP.String()
+				}
 			}
 		}
 		if u.Application != "" && p.user.Application == "" {
@@ -844,9 +854,16 @@ func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 		return err
 	}
 
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("invalid ip address: %q", host)
+	}
+
+	var field [2]byte
 	// make sure we are on the same page - fake an update of an address for that peer
-	field := [2]byte{'I', '4'} // IPv4
-	if strings.HasPrefix(host, "[") {
+	if ip4 := ip.To4(); ip4 != nil {
+		field = [2]byte{'I', '4'} // IPv4
+	} else {
 		field = [2]byte{'I', '6'} // IPv6
 	}
 	err = p.conn.WriteInfoMsg(adc.UserMod{
