@@ -23,27 +23,30 @@ type UserDatabase interface {
 	Close() error
 }
 
+var (
+	errNameEmpty         = errors.New("name should not be empty")
+	errNameTooLong       = errors.New("name is too long")
+	errNameInvalidPrefix = errors.New("name start with an invalid character")
+	errNamePadding       = errors.New("name should not start or end with spaces")
+	errNameInvalidChars  = errors.New("name contains invalid characters (' ', '<', '>', etc)")
+)
+
 func (h *Hub) validateUserName(name string) error {
 	if name == "" {
-		return errors.New("name should not be empty")
+		return errNameEmpty
 	}
 	if len(name) > userNameMax {
-		return errors.New("name is too long")
+		return errNameTooLong
 	}
-	if strings.HasPrefix(name, "#") {
-		return errors.New("name should not start with '#'")
-	}
-	if strings.HasPrefix(name, "!") {
-		return errors.New("name should not start with '!'")
+	switch name[0] {
+	case ' ', '#', '!', '+', '/':
+		return errNameInvalidPrefix
 	}
 	if name != strings.TrimSpace(name) {
-		return errors.New("name should not start or end with spaces")
+		return errNamePadding
 	}
-	if strings.ContainsAny(name, "\x00") {
-		return errors.New("name should not contain null characters")
-	}
-	if strings.ContainsAny(name, "<>") {
-		return errors.New("name contains one of the invalid characters")
+	if strings.ContainsAny(name, "\x00 <>") {
+		return errNameInvalidChars
 	}
 	return nil
 }
