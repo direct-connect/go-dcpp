@@ -77,19 +77,19 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	c := &Conn{
 		conn: conn,
 	}
-	c.write = lineproto.NewWriter(conn)
-	c.read = lineproto.NewReader(conn, lineDelim)
+	c.w = lineproto.NewWriter(conn)
+	c.r = lineproto.NewReader(conn, lineDelim)
 	if Debug {
-		c.write.OnLine = func(line []byte) (bool, error) {
+		c.w.OnLine(func(line []byte) (bool, error) {
 			line = bytes.TrimSuffix(line, []byte{lineDelim})
 			log.Println("->", string(line))
 			return true, nil
-		}
-		c.read.OnLine = func(line []byte) (bool, error) {
+		})
+		c.r.OnLine(func(line []byte) (bool, error) {
 			line = bytes.TrimSuffix(line, []byte{lineDelim})
 			log.Println("<-", string(line))
 			return true, nil
-		}
+		})
 	}
 	return c, nil
 }
@@ -104,8 +104,16 @@ type Conn struct {
 
 	conn net.Conn
 
-	write *lineproto.Writer
-	read  *lineproto.Reader
+	w *lineproto.Writer
+	r *lineproto.Reader
+}
+
+func (c *Conn) OnLineR(fnc func(line []byte) (bool, error)) {
+	c.r.OnLine(fnc)
+}
+
+func (c *Conn) OnLineW(fnc func(line []byte) (bool, error)) {
+	c.w.OnLine(fnc)
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -177,7 +185,7 @@ func (c *Conn) readPacket(deadline time.Time) ([]byte, error) {
 		defer c.conn.SetReadDeadline(time.Time{})
 	}
 	for {
-		s, err := c.read.ReadLine()
+		s, err := c.r.ReadLine()
 		if err != nil {
 			return nil, err
 		} else if len(s) == 0 || s[len(s)-1] != lineDelim {
@@ -326,7 +334,7 @@ func (c *Conn) writeRawPacket(s []byte) error {
 	c.bin.RLock()
 	defer c.bin.RUnlock()
 
-	return c.write.WriteLine(s)
+	return c.w.WriteLine(s)
 }
 
 // Flush the underlying buffer. Should be called after each WritePacket batch.
@@ -335,7 +343,7 @@ func (c *Conn) Flush() error {
 	c.bin.RLock()
 	defer c.bin.RUnlock()
 
-	return c.write.Flush()
+	return c.w.Flush()
 }
 
 /*
@@ -464,7 +472,7 @@ func (c *Conn) ClientHandshake(toHub bool, f ModFeatures) error { // TODO: ctx
 //	if Debug {
 //		log.Printf("<- [binary data: %d bytes]", n)
 //	}
-//	return &rawReader{c: c, r: io.LimitReader(c.read.r, n)}
+//	return &rawReader{c: c, r: io.LimitReader(c.r.r, n)}
 //}
 
 type rawReader struct {

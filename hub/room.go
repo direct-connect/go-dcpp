@@ -20,6 +20,7 @@ type Message struct {
 }
 
 func (h *Hub) newRoom(name string) *Room {
+	cntChatRooms.Add(1)
 	r := &Room{
 		h: h, name: name, sid: h.nextSID(),
 		peers: make(map[Peer]struct{}),
@@ -147,9 +148,12 @@ func (r *Room) SendChat(from Peer, text string) {
 
 	if r.h.globalChat == r {
 		if !r.h.callOnChat(from, m) {
+			cntChatMsgDropped.Add(1)
 			return
 		}
 	}
+
+	cntChatMsg.Add(1)
 
 	if r.h.conf.ChatLog > 0 {
 		r.lmu.Lock()

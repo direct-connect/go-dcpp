@@ -22,6 +22,10 @@ const (
 )
 
 func (h *Hub) ServeIRC(conn net.Conn) error {
+	cntConnIRC.Add(1)
+	cntConnIRCOpen.Add(1)
+	defer cntConnIRCOpen.Add(-1)
+
 	log.Printf("%s: using IRC", conn.RemoteAddr())
 	peer, err := h.ircHandshake(conn)
 	if err != nil {
@@ -296,6 +300,7 @@ waitJoin:
 	h.invalidateList()
 	notify := h.listPeers()
 	h.globalChat.Join(peer)
+	cntPeers.Add(1)
 	h.peers.Unlock()
 
 	h.broadcastUserJoin(peer, notify)

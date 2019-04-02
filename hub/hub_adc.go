@@ -25,32 +25,54 @@ func (h *Hub) initADC() {
 }
 
 func (h *Hub) ServeADC(conn net.Conn) error {
+	cntConnADC.Add(1)
+	cntConnADCOpen.Add(1)
+	defer cntConnADCOpen.Add(-1)
+
 	log.Printf("%s: using ADC", conn.RemoteAddr())
 	c, err := adc.NewConn(conn)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
+	c.OnLineR(func(line []byte) (bool, error) {
+		sizeADCLinesR.Observe(float64(len(line)))
+		return true, nil
+	})
+	c.OnLineW(func(line []byte) (bool, error) {
+		sizeADCLinesW.Observe(float64(len(line)))
+		return true, nil
+	})
 
-	peer, err := h.adcStageProtocol(c)
+	peer, err := h.adcHandshake(c)
 	if err != nil {
 		return err
 	}
+	defer peer.Close()
+	return h.adcServePeer(peer)
+}
+
+func (h *Hub) adcHandshake(c *adc.Conn) (*adcPeer, error) {
+	defer measure(durADCHandshake)()
+
+	peer, err := h.adcStageProtocol(c)
+	if err != nil {
+		return nil, err
+	}
 	// connection is not yet valid and we haven't added the client to the hub yet
 	if err := h.adcStageIdentity(peer); err != nil {
-		return err
+		return nil, err
 	}
+	// TODO: identify pingers
 	// peer registered, now we can start serving things
-	defer peer.Close()
-
 	if err = h.sendMOTD(peer); err != nil {
-		return err
+		_ = peer.Close()
+		return nil, err
 	}
 	if h.conf.ChatLogJoin != 0 {
 		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
 	}
-
-	return h.adcServePeer(peer)
+	return peer, nil
 }
 
 func (h *Hub) adcServePeer(peer *adcPeer) error {
@@ -65,6 +87,7 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 		} else if err != nil {
 			return err
 		}
+		cntADCPackets.WithLabelValues(string(p.Kind())).Add(1)
 		switch p := p.(type) {
 		case *adc.BroadcastPacket:
 			if peer.sid != p.ID {
@@ -330,6 +353,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	h.peers.byName[u.Name] = peer
 	h.invalidateList()
 	h.globalChat.Join(peer)
+	cntPeers.Add(1)
 	h.peers.Unlock()
 
 	// notify other users about the new one

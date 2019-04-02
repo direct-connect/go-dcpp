@@ -22,7 +22,7 @@ type MsgType [3]byte
 func (s MsgType) String() string { return string(s[:]) }
 
 type Packet interface {
-	kind() byte
+	Kind() byte
 	Message() RawMessage
 	SetMessage(m RawMessage)
 	Decode() (Message, error)
@@ -108,7 +108,7 @@ type InfoPacket struct {
 	BasePacket
 }
 
-func (*InfoPacket) kind() byte {
+func (*InfoPacket) Kind() byte {
 	return kindInfo
 }
 func (p *InfoPacket) UnmarshalPacket(name MsgType, data []byte) error {
@@ -129,7 +129,7 @@ func (p *InfoPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	if len(p.Data) > 0 {
 		buf[4] = ' '
@@ -145,7 +145,7 @@ type HubPacket struct {
 	BasePacket
 }
 
-func (*HubPacket) kind() byte {
+func (*HubPacket) Kind() byte {
 	return kindHub
 }
 func (p *HubPacket) UnmarshalPacket(name MsgType, data []byte) error {
@@ -166,7 +166,7 @@ func (p *HubPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	if len(p.Data) > 0 {
 		buf[4] = ' '
@@ -186,7 +186,7 @@ type BroadcastPacket struct {
 	ID SID
 }
 
-func (*BroadcastPacket) kind() byte {
+func (*BroadcastPacket) Kind() byte {
 	return kindBroadcast
 }
 func (p *BroadcastPacket) Source() SID {
@@ -217,7 +217,7 @@ func (p *BroadcastPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	buf[4] = ' '
 	id, _ := p.ID.MarshalAdc()
@@ -242,7 +242,7 @@ type DirectPacket struct {
 	Targ SID
 }
 
-func (DirectPacket) kind() byte {
+func (DirectPacket) Kind() byte {
 	return kindDirect
 }
 func (p *DirectPacket) Source() SID {
@@ -281,7 +281,7 @@ func (p DirectPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	buf[4] = ' '
 	id, _ := p.ID.MarshalAdc()
@@ -305,7 +305,7 @@ var (
 
 type EchoPacket DirectPacket
 
-func (*EchoPacket) kind() byte {
+func (*EchoPacket) Kind() byte {
 	return kindEcho
 }
 func (p *EchoPacket) Source() SID {
@@ -344,7 +344,7 @@ func (p *EchoPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	buf[4] = ' '
 	id, _ := p.ID.MarshalAdc()
@@ -366,7 +366,7 @@ type ClientPacket struct {
 	BasePacket
 }
 
-func (*ClientPacket) kind() byte {
+func (*ClientPacket) Kind() byte {
 	return kindClient
 }
 func (p *ClientPacket) UnmarshalPacket(name MsgType, data []byte) error {
@@ -387,7 +387,7 @@ func (p *ClientPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	if len(p.Data) > 0 {
 		buf[4] = ' '
@@ -408,7 +408,7 @@ type FeaturePacket struct {
 	Features map[Feature]bool
 }
 
-func (*FeaturePacket) kind() byte {
+func (*FeaturePacket) Kind() byte {
 	return kindFeature
 }
 func (p *FeaturePacket) Source() SID {
@@ -479,7 +479,7 @@ func (p *FeaturePacket) MarshalPacket() ([]byte, error) {
 		n += 2 + len(k)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	buf[4] = ' '
 	id, _ := p.ID.MarshalAdc()
@@ -510,7 +510,7 @@ type UDPPacket struct {
 	ID CID
 }
 
-func (*UDPPacket) kind() byte {
+func (*UDPPacket) Kind() byte {
 	return kindUDP
 }
 func (p *UDPPacket) UnmarshalPacket(name MsgType, data []byte) error {
@@ -539,7 +539,7 @@ func (p *UDPPacket) MarshalPacket() ([]byte, error) {
 		n += 1 + len(p.Data)
 	}
 	buf := make([]byte, n)
-	buf[0] = p.kind()
+	buf[0] = p.Kind()
 	copy(buf[1:], p.Name[:])
 	buf[4] = ' '
 	copy(buf[5:], p.ID.ToBase32())

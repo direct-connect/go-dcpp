@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strconv"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -197,6 +199,15 @@ func init() {
 			go func() {
 				if err := http.ListenAndServe(pprofPort, nil); err != nil {
 					log.Println("cannot enable profiler:", err)
+				}
+			}()
+		}
+		if true {
+			const promAddr = ":2112"
+			fmt.Println("serving metrics on", promAddr)
+			go func() {
+				if err := http.ListenAndServe(promAddr, promhttp.Handler()); err != nil {
+					log.Println("cannot serve metrics:", err)
 				}
 			}()
 		}

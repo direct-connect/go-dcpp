@@ -63,6 +63,10 @@ func (h *Hub) initHTTP() error {
 }
 
 func (h *Hub) ServeHTTP1(conn net.Conn) error {
+	cntConnHTTP1.Add(1)
+	cntConnHTTPOpen.Add(1)
+	defer cntConnHTTPOpen.Add(-1)
+
 	log.Printf("%s: using HTTP1", conn.RemoteAddr())
 	// make a fake listener with only one connection
 	closed := make(chan struct{})
@@ -79,6 +83,10 @@ func (h *Hub) ServeHTTP1(conn net.Conn) error {
 }
 
 func (h *Hub) ServeHTTP2(conn net.Conn) error {
+	cntConnHTTP2.Add(1)
+	cntConnHTTPOpen.Add(1)
+	defer cntConnHTTPOpen.Add(-1)
+
 	log.Printf("%s: using HTTP2", conn.RemoteAddr())
 	h.h2.ServeConn(conn, h.h2conf)
 	return nil
@@ -101,6 +109,8 @@ type userStats struct {
 }
 
 func (h *Hub) serveV0Stats(w http.ResponseWriter, r *http.Request) {
+	cntPings.Add(1)
+	cntPingsHTTP.Add(1)
 	st := h.Stats()
 	hd := w.Header()
 	hd.Set("Content-Type", "application/json")

@@ -130,6 +130,9 @@ type Search interface {
 }
 
 func (h *Hub) Search(req SearchRequest, s Search, peers []Peer) {
+	cntSearch.Add(1)
+	defer measure(durSearch)()
+
 	peer := s.Peer()
 	if peers == nil {
 		peers = h.Peers()

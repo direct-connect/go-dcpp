@@ -94,18 +94,12 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	}
 	defer c.Close()
 
-	prevOnRaw := c.r.OnRawMessage
-	c.r.OnRawMessage = func(cmd, args []byte) (bool, error) {
-		if prevOnRaw != nil {
-			if ok, err := prevOnRaw(cmd, args); err != nil || !ok {
-				return ok, err
-			}
-		}
+	c.r.OnRawMessage(func(cmd, args []byte) (bool, error) {
 		if bytes.Equal(cmd, []byte("HubINFO")) {
 			hubInfo = append([]byte{}, args...)
 		}
 		return true, nil
-	}
+	})
 
 	// set deadline once
 	deadline, ok := ctx.Deadline()

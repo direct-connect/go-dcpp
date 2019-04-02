@@ -26,6 +26,9 @@ var (
 const nmdcFakeToken = "nmdc"
 
 func (h *Hub) serveNMDC(conn net.Conn) error {
+	cntConnNMDC.Add(1)
+	cntConnNMDCOpen.Add(1)
+	defer cntConnNMDCOpen.Add(-1)
 	log.Printf("%s: using NMDC", conn.RemoteAddr())
 	return h.ServeNMDC(conn)
 }
@@ -37,6 +40,30 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 	}
 	defer c.Close()
 	c.SetFallbackEncoding(h.fallback)
+	c.OnLineR(func(line []byte) (bool, error) {
+		sizeNMDCLinesR.Observe(float64(len(line)))
+		return true, nil
+	})
+	c.OnLineW(func(line []byte) (bool, error) {
+		sizeNMDCLinesW.Observe(float64(len(line)))
+		return true, nil
+	})
+	c.OnMessageR(func(m nmdcp.Message) (bool, error) {
+		if _, ok := m.(*nmdcp.RawMessage); !ok {
+			cntNMDCCommandsR.WithLabelValues(m.Type()).Add(1)
+		} else {
+			cntNMDCCommandsR.WithLabelValues("unknown").Add(1)
+		}
+		return true, nil
+	})
+	c.OnMessageW(func(m nmdcp.Message) (bool, error) {
+		if _, ok := m.(*nmdcp.RawMessage); !ok {
+			cntNMDCCommandsW.WithLabelValues(m.Type()).Add(1)
+		} else {
+			cntNMDCCommandsW.WithLabelValues("unknown").Add(1)
+		}
+		return true, nil
+	})
 
 	peer, err := h.nmdcHandshake(c)
 	if err != nil {
@@ -113,6 +140,7 @@ var nmdcFeatures = nmdcp.Extensions{
 }
 
 func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
+	defer measure(durNMDCHandshake)()
 	deadline := time.Now().Add(time.Second * 5)
 
 	fea, nick, err := h.nmdcLock(deadline, c)
@@ -149,6 +177,8 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	peer.user.Name = nick
 
 	if peer.fea.Has(nmdcp.ExtBotINFO) {
+		cntPings.Add(1)
+		cntPingsNMDC.Add(1)
 		// it's a pinger - don't bother binding the nickname
 		delete(peer.fea, nmdcp.ExtBotINFO)
 		peer.fea.Set(nmdcp.ExtHubINFO)
@@ -228,6 +258,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	atomic.StoreUint32(&peer.state, nmdcPeerJoining)
 	h.invalidateList()
 	h.globalChat.Join(peer)
+	cntPeers.Add(1)
 	h.peers.Unlock()
 
 	// notify other users about the new one

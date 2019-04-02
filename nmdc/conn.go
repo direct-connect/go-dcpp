@@ -86,22 +86,22 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	if DefaultFallbackEncoding != nil {
 		c.SetFallbackEncoding(DefaultFallbackEncoding)
 	}
-	c.r.OnRawMessage = func(cmd, args []byte) (bool, error) {
+	c.r.OnRawMessage(func(cmd, args []byte) (bool, error) {
 		if bytes.Equal(cmd, []byte("ZOn")) {
 			err := c.r.ActivateZlib()
 			return false, err
 		}
 		return true, nil
-	}
+	})
 	if Debug {
-		c.w.OnLine = func(line []byte) (bool, error) {
+		c.w.OnLine(func(line []byte) (bool, error) {
 			log.Printf("-> %q", string(line))
 			return true, nil
-		}
-		c.r.OnLine = func(line []byte) (bool, error) {
+		})
+		c.r.OnLine(func(line []byte) (bool, error) {
 			log.Printf("<- %q", string(line))
 			return true, nil
-		}
+		})
 	}
 	return c, nil
 }
@@ -118,6 +118,22 @@ type Conn struct {
 
 	w *nmdc.Writer
 	r *nmdc.Reader
+}
+
+func (c *Conn) OnLineR(fnc func(line []byte) (bool, error)) {
+	c.r.OnLine(fnc)
+}
+
+func (c *Conn) OnLineW(fnc func(line []byte) (bool, error)) {
+	c.w.OnLine(fnc)
+}
+
+func (c *Conn) OnMessageR(fnc func(m nmdc.Message) (bool, error)) {
+	c.r.OnMessage(fnc)
+}
+
+func (c *Conn) OnMessageW(fnc func(m nmdc.Message) (bool, error)) {
+	c.w.OnMessage(fnc)
 }
 
 func (c *Conn) SafeRead(v bool) {

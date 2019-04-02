@@ -214,8 +214,15 @@ func (h *Hub) ListenAndServe(addr string) error {
 		if err != nil {
 			return err
 		}
+		cntConnAccepted.Add(1)
+		cntConnOpen.Add(1)
 		go func() {
+			defer func() {
+				cntConnOpen.Add(-1)
+				_ = conn.Close()
+			}()
 			if err := h.Serve(conn); err != nil && err != io.EOF {
+				cntConnError.Add(1)
 				log.Printf("%s: %v", conn.RemoteAddr(), err)
 			}
 		}()
@@ -239,21 +246,30 @@ const peekTimeout = 650 * time.Millisecond
 
 // serve automatically detects the protocol and start the hub-client handshake.
 func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
-	defer conn.Close()
-
 	timeout := peekTimeout
 	if !allowTLS {
 		timeout = 2 * peekTimeout
 	}
 
+	start := time.Now()
 	// peek few bytes to detect the protocol
 	conn, buf, err := peekCoon(conn, 4, timeout)
 	if err != nil {
 		if te, ok := err.(timeoutErr); ok && te.Timeout() {
+			cntConnAuto.Add(1)
+			if !allowTLS {
+				cntConnNMDCS.Add(1)
+			}
 			// only NMDC protocol expects the server to speak first
 			return h.serveNMDC(conn)
 		}
 		return err
+	}
+
+	if pt := time.Since(start).Seconds(); allowTLS {
+		durConnPeek.Observe(pt)
+	} else {
+		durConnPeekTLS.Observe(pt)
 	}
 
 	if allowTLS && h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
@@ -265,19 +281,30 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 		}
 		defer tconn.Close()
 
+		cntConnTLS.Add(1)
+
 		// protocol negotiated by ALPN
 		proto := tconn.ConnectionState().NegotiatedProtocol
 		if proto != "" {
+			cntConnALPN.Add(1)
 			log.Printf("%s: ALPN negotiated %q", tconn.RemoteAddr(), proto)
 		}
 		switch proto {
 		case "nmdc":
+			cntConnNMDCS.Add(1)
+			cntConnAlpnNMDC.Add(1)
 			return h.serveNMDC(tconn)
 		case "adc":
+			cntConnADCS.Add(1)
+			cntConnAlpnADC.Add(1)
 			return h.ServeADC(tconn)
 		case "http/0.9", "http/1.0", "http/1.1":
+			cntConnHTTPS.Add(1)
+			cntConnAlpnHTTP.Add(1)
 			return h.ServeHTTP1(tconn)
 		case "h2", "h2c":
+			cntConnHTTPS.Add(1)
+			cntConnAlpnHTTP.Add(1)
 			return h.ServeHTTP2(tconn)
 		case "":
 			log.Printf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
@@ -286,15 +313,25 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 			return fmt.Errorf("unsupported protocol: %q", proto)
 		}
 	}
+	cntConnAuto.Add(1)
 	switch string(buf) {
 	case "HSUP":
 		// ADC client-hub handshake
+		if !allowTLS {
+			cntConnADCS.Add(1)
+		}
 		return h.ServeADC(conn)
 	case "NICK":
 		// IRC handshake
+		if !allowTLS {
+			cntConnIRCS.Add(1)
+		}
 		return h.ServeIRC(conn)
 	case "HEAD", "GET ", "POST", "PUT ", "DELE", "OPTI":
 		// HTTP1 request
+		if !allowTLS {
+			cntConnHTTPS.Add(1)
+		}
 		return h.ServeHTTP1(conn)
 	}
 	return fmt.Errorf("unknown protocol magic: %q", string(buf))
@@ -375,6 +412,7 @@ func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
 }
 
 func (h *Hub) privateChat(from, to Peer, m Message) {
+	cntChatMsgPM.Add(1)
 	m.Time = time.Now().UTC()
 	_ = to.PrivateMsg(from, m)
 }
@@ -484,6 +522,7 @@ func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	}
 	h.leaveRooms(peer)
 	h.peers.Unlock()
+	cntPeers.Add(-1)
 
 	h.broadcastUserLeave(peer, notify)
 }
@@ -497,6 +536,7 @@ func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
 	notify := h.listPeers()
 	h.leaveRooms(peer)
 	h.peers.Unlock()
+	cntPeers.Add(-1)
 
 	h.broadcastUserLeave(peer, notify)
 }
