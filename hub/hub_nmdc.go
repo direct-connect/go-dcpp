@@ -344,19 +344,21 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	var vers nmdcp.Version
 	err = c.ReadMsgTo(deadline, &vers)
 	if err != nil {
-		return fmt.Errorf("expected version: %v", err)
+		return err
 	} else if vers.Vers != "1,0091" && vers.Vers != "1.0091" && vers.Vers != "1,0098" {
 		return fmt.Errorf("unexpected version: %q", vers)
 	}
+
 	var nicks nmdcp.GetNickList
 	err = c.ReadMsgTo(deadline, &nicks)
 	if err != nil {
-		return fmt.Errorf("expected version: %v", err)
+		return err
 	}
 	curName := peer.user.Name
-	err = c.ReadMyInfoTo(deadline, &peer.user)
+
+	err = c.ReadMsgTo(deadline, &peer.user)
 	if err != nil {
-		return err
+		return fmt.Errorf("expected user info: %v", err)
 	} else if curName != peer.user.Name {
 		return errors.New("nick mismatch")
 	}

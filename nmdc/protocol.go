@@ -68,11 +68,3 @@ func (c *Conn) ReadValidateNick(deadline time.Time) (*nmdc.ValidateNick, error) 
 	}
 	return &nick, nil
 }
-
-func (c *Conn) ReadMyInfoTo(deadline time.Time, info *nmdc.MyINFO) error {
-	err := c.ReadMsgTo(deadline, info)
-	if err != nil {
-		return fmt.Errorf("expected user info: %v", err)
-	}
-	return nil
-}
