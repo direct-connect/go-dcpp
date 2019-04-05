@@ -136,6 +136,7 @@ var nmdcFeatures = nmdcp.Extensions{
 	nmdcp.ExtTTHSearch:   {},
 	nmdcp.ExtUserIP2:     {},
 	nmdcp.ExtUserCommand: {},
+	nmdcp.ExtTTHS:        {},
 	nmdcp.ExtZPipe0:      {}, // see nmdc.Conn
 }
 
@@ -520,6 +521,16 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				}
 			}
 			h.nmdcHandleSearch(peer, msg)
+		case *nmdcp.TTHSearchActive:
+			if err := verifyAddr(msg.Address); err != nil {
+				return fmt.Errorf("search: %v", err)
+			}
+			h.nmdcHandleSearchTTH(peer, msg.TTH)
+		case *nmdcp.TTHSearchPassive:
+			if string(msg.User) != peer.Name() {
+				return fmt.Errorf("search: invalid nick: %q", msg.User)
+			}
+			h.nmdcHandleSearchTTH(peer, msg.TTH)
 		case *nmdcp.SR:
 			if string(msg.From) != peer.Name() {
 				return fmt.Errorf("search: invalid nick: %q", msg.From)
@@ -537,11 +548,16 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	}
 }
 
+func (h *Hub) nmdcHandleSearchTTH(peer *nmdcPeer, hash TTH) {
+	s := peer.newSearch()
+	h.Search(TTHSearch(hash), s, nil)
+}
+
 func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdcp.Search) {
-	s := peer.newSearch(msg)
+	s := peer.newSearch()
 	if msg.DataType == nmdcp.DataTypeTTH {
 		// ignore other parameters
-		h.Search(TTHSearch(*msg.TTH), s, nil)
+		h.nmdcHandleSearchTTH(peer, *msg.TTH)
 		return
 	}
 	var name NameSearch
@@ -1017,13 +1033,12 @@ func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	})
 }
 
-func (p *nmdcPeer) newSearch(req *nmdcp.Search) Search {
-	return &nmdcSearch{p: p, req: req}
+func (p *nmdcPeer) newSearch() Search {
+	return &nmdcSearch{p: p}
 }
 
 type nmdcSearch struct {
-	p   *nmdcPeer
-	req *nmdcp.Search
+	p *nmdcPeer
 }
 
 func (s *nmdcSearch) Peer() Peer {
@@ -1077,6 +1092,12 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
 	p.setActiveSearch(out, req)
 	if req, ok := req.(TTHSearch); ok {
+		if p.fea.Has(nmdcp.ExtTTHS) {
+			return p.writeAsync(&nmdcp.TTHSearchPassive{
+				User: out.Peer().Name(),
+				TTH:  TTH(req),
+			})
+		}
 		return p.writeAsync(&nmdcp.Search{
 			User:     out.Peer().Name(),
 			DataType: nmdcp.DataTypeTTH, TTH: (*TTH)(&req),
