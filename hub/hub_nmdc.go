@@ -476,8 +476,20 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			if err := verifyAddr(msg.Address); err != nil {
 				return fmt.Errorf("ctm: %v", err)
 			}
-			// TODO: token?
-			h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
+			if msg.Kind == nmdcp.CTMActive {
+				// TODO: token?
+				h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
+				continue
+			}
+			// NAT traversal
+			if msg.Src != "" && msg.Src != peer.Name() {
+				return errors.New("invalid name in the connect request")
+			}
+			p2, ok := targ.(*nmdcPeer)
+			if !ok {
+				continue
+			}
+			_ = p2.writeAsync(msg)
 		case *nmdcp.RevConnectToMe:
 			if string(msg.From) != peer.Name() {
 				return errors.New("invalid name in RevConnectToMe")
