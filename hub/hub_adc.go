@@ -88,41 +88,62 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 		} else if err != nil {
 			return err
 		}
-		cntADCPackets.WithLabelValues(string(p.Kind())).Add(1)
-		switch p := p.(type) {
-		case *adc.BroadcastPacket:
-			if peer.sid != p.ID {
-				return fmt.Errorf("malformed broadcast")
-			}
-			h.adcBroadcast(p, peer)
-		case *adc.FeaturePacket:
-			if peer.sid != p.ID {
-				return fmt.Errorf("malformed features broadcast")
-			}
-			// TODO: we ignore feature selectors for now
-			h.adcBroadcast(&adc.BroadcastPacket{BasePacket: p.BasePacket, ID: p.ID}, peer)
-		case *adc.EchoPacket:
-			if peer.sid != p.ID {
-				return fmt.Errorf("malformed echo packet")
-			}
-			if err := peer.conn.WritePacket(p); err != nil {
-				return err
-			}
-			if err = peer.conn.Flush(); err != nil {
-				return err
-			}
-			h.adcDirect((*adc.DirectPacket)(p), peer)
-		case *adc.DirectPacket:
-			if peer.sid != p.ID {
-				return fmt.Errorf("malformed direct packet")
-			}
-			h.adcDirect(p, peer)
-		case *adc.HubPacket:
-			h.adcHub(p, peer)
-		default:
-			data, _ := p.MarshalPacket()
-			log.Printf("%s: adc: %s", peer.RemoteAddr(), string(data))
+		if err = h.adcHandlePacket(peer, p); err != nil {
+			return err
 		}
+	}
+}
+
+func (h *Hub) adcHandlePacket(peer *adcPeer, p adc.Packet) error {
+	skind := string(p.Kind())
+	cntADCPackets.WithLabelValues(skind).Add(1)
+	defer measure(durADCHandlePacket.WithLabelValues(skind))()
+
+	cmd := p.Message().Type.String()
+	cntADCCommands.WithLabelValues(cmd).Add(1)
+	defer measure(durADCHandleCommand.WithLabelValues(cmd))()
+
+	switch p := p.(type) {
+	case *adc.BroadcastPacket:
+		if peer.sid != p.ID {
+			return errors.New("malformed broadcast")
+		}
+		h.adcBroadcast(p, peer)
+		return nil
+	case *adc.FeaturePacket:
+		if peer.sid != p.ID {
+			return errors.New("malformed features broadcast")
+		}
+		// TODO: we ignore feature selectors for now
+		h.adcBroadcast(&adc.BroadcastPacket{BasePacket: p.BasePacket, ID: p.ID}, peer)
+		return nil
+	case *adc.EchoPacket:
+		if peer.sid != p.ID {
+			return errors.New("malformed echo packet")
+		}
+		if err := peer.conn.WritePacket(p); err != nil {
+			return err
+		}
+		if err := peer.conn.Flush(); err != nil {
+			return err
+		}
+		h.adcDirect((*adc.DirectPacket)(p), peer)
+		return nil
+	case *adc.DirectPacket:
+		if peer.sid != p.ID {
+			return errors.New("malformed direct packet")
+		}
+		h.adcDirect(p, peer)
+		return nil
+	case *adc.HubPacket:
+		h.adcHub(p, peer)
+		return nil
+	case *adc.ClientPacket, *adc.UDPPacket:
+		return errors.New("invalid packet kind")
+	default:
+		data, _ := p.MarshalPacket()
+		log.Printf("%s: adc: %s", peer.RemoteAddr(), string(data))
+		return nil
 	}
 }
 

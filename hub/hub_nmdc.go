@@ -452,20 +452,6 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	if !h.callOnJoined(peer) {
 		return nil // TODO: eny errors?
 	}
-	verifyAddr := func(addr string) error {
-		ip, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return fmt.Errorf("invalid address: %q", addr)
-		}
-		_, err = strconv.ParseUint(port, 10, 16)
-		if err != nil {
-			return fmt.Errorf("invalid port: %q", addr)
-		}
-		if ip != peer.ip.String() {
-			return fmt.Errorf("invalid ip: %q vs %q", ip, peer.ip.String())
-		}
-		return nil
-	}
 	for {
 		msg, err := peer.conn.ReadMsg(time.Time{})
 		if err == io.EOF {
@@ -473,107 +459,125 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		} else if err != nil {
 			return err
 		}
-		switch msg := msg.(type) {
-		case *nmdcp.ChatMessage:
-			if string(msg.Name) != peer.Name() {
-				return errors.New("invalid name in the chat message")
+		if err = h.nmdcHandle(peer, msg); err != nil {
+			return err
+		}
+	}
+}
+
+func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
+	defer measure(durNMDCHandle.WithLabelValues(msg.Type()))()
+
+	switch msg := msg.(type) {
+	case *nmdcp.ChatMessage:
+		if string(msg.Name) != peer.Name() {
+			return errors.New("invalid name in the chat message")
+		}
+		if h.isCommand(peer, msg.Text) {
+			return nil
+		}
+		h.globalChat.SendChat(peer, string(msg.Text))
+		return nil
+	case *nmdcp.GetNickList:
+		list := h.Peers()
+		_ = peer.PeersJoin(list)
+		return nil
+	case *nmdcp.ConnectToMe:
+		targ := h.PeerByName(string(msg.Targ))
+		if targ == nil {
+			return nil
+		}
+		if err := peer.verifyAddr(msg.Address); err != nil {
+			return fmt.Errorf("ctm: %v", err)
+		}
+		if msg.Kind == nmdcp.CTMActive {
+			// TODO: token?
+			h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
+			return nil
+		}
+		// NAT traversal
+		if msg.Src != "" && msg.Src != peer.Name() {
+			return errors.New("invalid name in the connect request")
+		}
+		p2, ok := targ.(*nmdcPeer)
+		if !ok {
+			return nil
+		}
+		_ = p2.writeAsync(msg)
+		return nil
+	case *nmdcp.RevConnectToMe:
+		if string(msg.From) != peer.Name() {
+			return errors.New("invalid name in RevConnectToMe")
+		}
+		targ := h.PeerByName(string(msg.To))
+		if targ == nil {
+			return nil
+		}
+		h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
+		return nil
+	case *nmdcp.PrivateMessage:
+		if name := peer.Name(); string(msg.From) != name || string(msg.Name) != name {
+			return errors.New("invalid name in PrivateMessage")
+		}
+		to := string(msg.To)
+		if strings.HasPrefix(to, "#") {
+			// message in a chat room
+			r := h.Room(to)
+			if r == nil {
+				return nil
 			}
-			if h.isCommand(peer, msg.Text) {
-				continue
-			}
-			h.globalChat.SendChat(peer, string(msg.Text))
-		case *nmdcp.GetNickList:
-			list := h.Peers()
-			_ = peer.PeersJoin(list)
-		case *nmdcp.ConnectToMe:
-			targ := h.PeerByName(string(msg.Targ))
+			r.SendChat(peer, string(msg.Text))
+		} else {
+			// private message
+			targ := h.PeerByName(to)
 			if targ == nil {
-				continue
+				return nil
 			}
-			if err := verifyAddr(msg.Address); err != nil {
-				return fmt.Errorf("ctm: %v", err)
-			}
-			if msg.Kind == nmdcp.CTMActive {
-				// TODO: token?
-				h.connectReq(peer, targ, msg.Address, nmdcFakeToken, msg.Secure)
-				continue
-			}
-			// NAT traversal
-			if msg.Src != "" && msg.Src != peer.Name() {
-				return errors.New("invalid name in the connect request")
-			}
-			p2, ok := targ.(*nmdcPeer)
-			if !ok {
-				continue
-			}
-			_ = p2.writeAsync(msg)
-		case *nmdcp.RevConnectToMe:
-			if string(msg.From) != peer.Name() {
-				return errors.New("invalid name in RevConnectToMe")
-			}
-			targ := h.PeerByName(string(msg.To))
-			if targ == nil {
-				continue
-			}
-			h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
-		case *nmdcp.PrivateMessage:
-			if name := peer.Name(); string(msg.From) != name || string(msg.Name) != name {
-				return errors.New("invalid name in PrivateMessage")
-			}
-			to := string(msg.To)
-			if strings.HasPrefix(to, "#") {
-				// message in a chat room
-				r := h.Room(to)
-				if r == nil {
-					continue
-				}
-				r.SendChat(peer, string(msg.Text))
-			} else {
-				// private message
-				targ := h.PeerByName(to)
-				if targ == nil {
-					continue
-				}
-				h.privateChat(peer, targ, Message{
-					Name: string(msg.From),
-					Text: string(msg.Text),
-				})
-			}
-		case *nmdcp.Search:
-			if msg.Address != "" {
-				if err := verifyAddr(msg.Address); err != nil {
-					return fmt.Errorf("search: %v", err)
-				}
-			} else if msg.User != "" {
-				if string(msg.User) != peer.Name() {
-					return fmt.Errorf("search: invalid nick: %q", msg.User)
-				}
-			}
-			h.nmdcHandleSearch(peer, msg)
-		case *nmdcp.TTHSearchActive:
-			if err := verifyAddr(msg.Address); err != nil {
+			h.privateChat(peer, targ, Message{
+				Name: string(msg.From),
+				Text: string(msg.Text),
+			})
+		}
+		return nil
+	case *nmdcp.Search:
+		if msg.Address != "" {
+			if err := peer.verifyAddr(msg.Address); err != nil {
 				return fmt.Errorf("search: %v", err)
 			}
-			h.nmdcHandleSearchTTH(peer, msg.TTH)
-		case *nmdcp.TTHSearchPassive:
+		} else if msg.User != "" {
 			if string(msg.User) != peer.Name() {
 				return fmt.Errorf("search: invalid nick: %q", msg.User)
 			}
-			h.nmdcHandleSearchTTH(peer, msg.TTH)
-		case *nmdcp.SR:
-			if string(msg.From) != peer.Name() {
-				return fmt.Errorf("search: invalid nick: %q", msg.From)
-			}
-			to := h.PeerByName(string(msg.To))
-			if to == nil {
-				continue
-			}
-			h.nmdcHandleResult(peer, to, msg)
-		default:
-			// TODO
-			data, _ := nmdcp.Marshal(nil, msg)
-			log.Printf("%s: nmdc: %s", peer.RemoteAddr(), string(data))
 		}
+		h.nmdcHandleSearch(peer, msg)
+		return nil
+	case *nmdcp.TTHSearchActive:
+		if err := peer.verifyAddr(msg.Address); err != nil {
+			return fmt.Errorf("search: %v", err)
+		}
+		h.nmdcHandleSearchTTH(peer, msg.TTH)
+		return nil
+	case *nmdcp.TTHSearchPassive:
+		if string(msg.User) != peer.Name() {
+			return fmt.Errorf("search: invalid nick: %q", msg.User)
+		}
+		h.nmdcHandleSearchTTH(peer, msg.TTH)
+		return nil
+	case *nmdcp.SR:
+		if string(msg.From) != peer.Name() {
+			return fmt.Errorf("search: invalid nick: %q", msg.From)
+		}
+		to := h.PeerByName(string(msg.To))
+		if to == nil {
+			return nil
+		}
+		h.nmdcHandleResult(peer, to, msg)
+		return nil
+	default:
+		// TODO
+		data, _ := nmdcp.Marshal(nil, msg)
+		log.Printf("%s: nmdc: %s", peer.RemoteAddr(), string(data))
+		return nil
 	}
 }
 
@@ -843,6 +847,21 @@ func (p *nmdcPeer) failed(e error) error {
 
 func (p *nmdcPeer) error(e error) error {
 	return p.writeOneNow(&nmdcp.Error{Err: e})
+}
+
+func (p *nmdcPeer) verifyAddr(addr string) error {
+	ip, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address: %q", addr)
+	}
+	_, err = strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		return fmt.Errorf("invalid port: %q", addr)
+	}
+	if ip != p.ip.String() {
+		return fmt.Errorf("invalid ip: %q vs %q", ip, p.ip.String())
+	}
+	return nil
 }
 
 func (p *nmdcPeer) BroadcastJoin(peers []Peer) {

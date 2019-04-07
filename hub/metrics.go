@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-func measure(m prometheus.Histogram) func() {
+func measure(m prometheus.Observer) func() {
 	start := time.Now()
 	return func() {
 		dt := time.Since(start)
@@ -185,6 +185,10 @@ var (
 		Name: "dc_nmdc_extension",
 		Help: "The total number of NMDC connections with a given extension",
 	}, []string{"ext"})
+	durNMDCHandle = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "dc_nmdc_handle",
+		Help: "The time to to handle a specific command",
+	}, []string{"cmd"})
 
 	sizeADCLinesR = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "dc_adc_lines_read",
@@ -200,12 +204,24 @@ var (
 	})
 	cntADCPackets = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "dc_adc_packets",
-		Help: "The total number of ADC packets",
+		Help: "The total number of specific ADC packets",
+	}, []string{"kind"})
+	cntADCCommands = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_adc_commands",
+		Help: "The total number of specific ADC commands",
 	}, []string{"kind"})
 	cntADCExtensions = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "dc_adc_extension",
 		Help: "The total number of ADC connections with a given extension",
 	}, []string{"ext"})
+	durADCHandlePacket = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "dc_adc_packet_handle",
+		Help: "The time to to handle a specific packet kind",
+	}, []string{"kind"})
+	durADCHandleCommand = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "dc_adc_command_handle",
+		Help: "The time to to handle a specific command",
+	}, []string{"cmd"})
 
 	cntPeers = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "dc_peers",
