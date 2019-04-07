@@ -143,6 +143,12 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 	if err := adc.Unmarshal(hp.Data, &sup); err != nil {
 		return nil, err
 	}
+	for ext, on := range sup.Features {
+		if !on {
+			continue
+		}
+		cntADCExtensions.WithLabelValues(ext.String()).Add(1)
+	}
 	hubFeatures := adc.ModFeatures{
 		// should always be set for ADC
 		adc.FeaBASE: true,
@@ -208,6 +214,9 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	var u adc.User
 	if err := adc.Unmarshal(b.Data, &u); err != nil {
 		return err
+	}
+	for _, ext := range u.Features {
+		cntADCExtensions.WithLabelValues(ext.String()).Add(1)
 	}
 	if u.Id != u.Pid.Hash() {
 		err = errors.New("invalid pid supplied")

@@ -181,6 +181,10 @@ var (
 		Name: "dc_nmdc_commands_write",
 		Help: "The total number of NMDC commands sent",
 	}, []string{"cmd"})
+	cntNMDCExtensions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_nmdc_extension",
+		Help: "The total number of NMDC connections with a given extension",
+	}, []string{"ext"})
 
 	sizeADCLinesR = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "dc_adc_lines_read",
@@ -198,6 +202,10 @@ var (
 		Name: "dc_adc_packets",
 		Help: "The total number of ADC packets",
 	}, []string{"kind"})
+	cntADCExtensions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_adc_extension",
+		Help: "The total number of ADC connections with a given extension",
+	}, []string{"ext"})
 
 	cntPeers = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "dc_peers",

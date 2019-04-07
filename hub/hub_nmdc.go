@@ -99,6 +99,9 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, stri
 	if err != nil {
 		return nil, "", fmt.Errorf("expected supports: %v", err)
 	}
+	for _, ext := range sup.Ext {
+		cntNMDCExtensions.WithLabelValues(ext).Add(1)
+	}
 	var key nmdcp.Key
 	err = c.ReadMsgTo(deadline, &key)
 	if err != nil {
