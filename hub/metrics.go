@@ -135,6 +135,11 @@ var (
 		Help: "The total number of HTTP pings",
 	})
 
+	cntClients = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_clients",
+		Help: "The total number of clients with a specific app version",
+	}, []string{"app", "vers"})
+
 	cntChatRooms = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "dc_chat_rooms",
 		Help: "The number of active chat rooms",

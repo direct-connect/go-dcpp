@@ -236,6 +236,8 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	if err := adc.Unmarshal(b.Data, &u); err != nil {
 		return err
 	}
+	u.Normalize()
+	cntClients.WithLabelValues(u.Application, u.Version).Add(1)
 	for _, ext := range u.Features {
 		cntADCExtensions.WithLabelValues(ext.String()).Add(1)
 	}

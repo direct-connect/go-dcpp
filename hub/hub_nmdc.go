@@ -376,6 +376,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	default:
 		return fmt.Errorf("expected user info, got: %T", m)
 	}
+	cntClients.WithLabelValues(peer.user.Client.Name, peer.user.Client.Version).Add(1)
 	if curName != peer.user.Name {
 		return errors.New("nick mismatch")
 	}
