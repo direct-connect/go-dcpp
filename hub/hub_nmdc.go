@@ -576,9 +576,13 @@ func (h *Hub) nmdcHandleSearchTTH(peer *nmdcPeer, hash TTH) {
 }
 
 func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdcp.Search) {
+	// ignore some parameters - all searches will be delivered as passive
 	s := peer.newSearch()
 	if msg.DataType == nmdcp.DataTypeTTH {
-		// ignore other parameters
+		if peer.fea.Has(nmdcp.ExtTTHS) {
+			// ignore duplicate Search requests from peers that support SP
+			return
+		}
 		h.nmdcHandleSearchTTH(peer, *msg.TTH)
 		return
 	}
