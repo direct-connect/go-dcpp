@@ -294,6 +294,17 @@ func (c *Conn) ReadMsgTo(deadline time.Time, m nmdc.Message) error {
 	return c.r.ReadMsgTo(m)
 }
 
+func (c *Conn) ReadMsgToAny(deadline time.Time, m ...nmdc.Message) (nmdc.Message, error) {
+	if len(m) == 0 {
+		panic("no messages to decode")
+	}
+	if !deadline.IsZero() {
+		c.conn.SetReadDeadline(deadline)
+		defer c.conn.SetReadDeadline(time.Time{})
+	}
+	return c.r.ReadMsgToAny(m...)
+}
+
 func (c *Conn) ReadMsg(deadline time.Time) (nmdc.Message, error) {
 	if !deadline.IsZero() {
 		c.conn.SetReadDeadline(deadline)

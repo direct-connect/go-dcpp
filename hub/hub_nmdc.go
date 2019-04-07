@@ -350,20 +350,29 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	} else if vers.Vers != "1,0091" && vers.Vers != "1.0091" && vers.Vers != "1,0098" {
 		return fmt.Errorf("unexpected version: %q", vers)
 	}
+	curName := peer.user.Name
 
-	var nicks nmdcp.GetNickList
-	err = c.ReadMsgTo(deadline, &nicks)
+	// according to spec, we should only wait for GetNickList, but some clients
+	// skip it and send MyINFO directly when reconnecting
+	m, err := c.ReadMsgToAny(deadline, &nmdcp.GetNickList{}, &peer.user)
 	if err != nil {
 		return err
 	}
-	curName := peer.user.Name
-
-	err = c.ReadMsgTo(deadline, &peer.user)
-	if err != nil {
-		return fmt.Errorf("expected user info: %v", err)
-	} else if curName != peer.user.Name {
+	switch m.(type) {
+	case *nmdcp.GetNickList:
+		err = c.ReadMsgTo(deadline, &peer.user)
+		if err != nil {
+			return fmt.Errorf("expected user info: %v", err)
+		}
+	case *nmdcp.MyINFO:
+		// already read to peer.user
+	default:
+		return fmt.Errorf("expected user info, got: %T", m)
+	}
+	if curName != peer.user.Name {
 		return errors.New("nick mismatch")
 	}
+
 	peer.setUser(&peer.user)
 
 	err = c.StartBatch()
