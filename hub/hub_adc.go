@@ -35,6 +35,7 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 		return err
 	}
 	defer c.Close()
+	c.SetWriteTimeout(writeTimeout)
 	c.OnLineR(func(line []byte) (bool, error) {
 		sizeADCLinesR.Observe(float64(len(line)))
 		return true, nil

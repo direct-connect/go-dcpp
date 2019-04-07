@@ -242,7 +242,10 @@ type timeoutErr interface {
 	Timeout() bool
 }
 
-const peekTimeout = 650 * time.Millisecond
+const (
+	peekTimeout  = 650 * time.Millisecond
+	writeTimeout = 10 * time.Second
+)
 
 // serve automatically detects the protocol and start the hub-client handshake.
 func (h *Hub) serve(conn net.Conn, allowTLS bool) error {

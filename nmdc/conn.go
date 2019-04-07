@@ -88,7 +88,7 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	}
 	c.r.OnRawMessage(func(cmd, args []byte) (bool, error) {
 		if bytes.Equal(cmd, []byte("ZOn")) {
-			err := c.r.ActivateZlib()
+			err := c.r.EnableZlib()
 			return false, err
 		}
 		return true, nil
@@ -146,6 +146,15 @@ func (c *Conn) LocalAddr() net.Addr {
 
 func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
+}
+
+func (c *Conn) SetWriteTimeout(dt time.Duration) {
+	c.w.Timeout = func(enable bool) error {
+		if enable {
+			return c.conn.SetWriteDeadline(time.Now().Add(dt))
+		}
+		return c.conn.SetWriteDeadline(time.Time{})
+	}
 }
 
 func (c *Conn) Encoding() encoding.Encoding {

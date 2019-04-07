@@ -39,6 +39,7 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 		return err
 	}
 	defer c.Close()
+	c.SetWriteTimeout(writeTimeout)
 	c.SetFallbackEncoding(h.fallback)
 	c.OnLineR(func(line []byte) (bool, error) {
 		sizeNMDCLinesR.Observe(float64(len(line)))

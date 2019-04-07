@@ -124,6 +124,15 @@ func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
+func (c *Conn) SetWriteTimeout(dt time.Duration) {
+	c.w.Timeout = func(enable bool) error {
+		if enable {
+			return c.conn.SetWriteDeadline(time.Now().Add(dt))
+		}
+		return c.conn.SetWriteDeadline(time.Time{})
+	}
+}
+
 // Close closes the connection.
 func (c *Conn) Close() error {
 	if c.closed != nil {
