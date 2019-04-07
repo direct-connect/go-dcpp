@@ -49,6 +49,10 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 		sizeNMDCLinesW.Observe(float64(len(line)))
 		return true, nil
 	})
+	c.OnUnmarshalError(func(line []byte, err error) (bool, error) {
+		log.Printf("nmdc: failed to unmarshal:\n%q\n", string(line))
+		return true, err
+	})
 	c.OnMessageR(func(m nmdcp.Message) (bool, error) {
 		if _, ok := m.(*nmdcp.RawMessage); !ok {
 			cntNMDCCommandsR.WithLabelValues(m.Type()).Add(1)

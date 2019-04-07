@@ -120,6 +120,10 @@ type Conn struct {
 	r *nmdc.Reader
 }
 
+func (c *Conn) OnUnmarshalError(fnc func(line []byte, err error) (bool, error)) {
+	c.r.OnUnmarshalError = fnc
+}
+
 func (c *Conn) OnLineR(fnc func(line []byte) (bool, error)) {
 	c.r.OnLine(fnc)
 }

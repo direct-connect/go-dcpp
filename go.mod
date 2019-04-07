@@ -5,7 +5,7 @@ require (
 	github.com/Shopify/go-lua v0.0.0-20181106184032-48449c60c0a9
 	github.com/dgraph-io/badger v1.5.4 // indirect
 	github.com/dgryski/go-farm v0.0.0-20190104051053-3adb47b1fb0f // indirect
-	github.com/direct-connect/go-dc v0.5.4
+	github.com/direct-connect/go-dc v0.5.5
 	github.com/go-irc/irc v2.1.0+incompatible
 	github.com/go-logfmt/logfmt v0.4.0 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
