@@ -18,6 +18,12 @@ import (
 
 const HTTPInfoPathV0 = "/api/v0/hubinfo.json"
 
+type httpData struct {
+	h1     *http.Server
+	h2     *http2.Server
+	h2conf *http2.ServeConnOpts
+}
+
 func (h *Hub) initHTTP() error {
 	if h.tls == nil {
 		return nil

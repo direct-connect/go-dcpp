@@ -19,6 +19,19 @@ import (
 	"github.com/direct-connect/go-dcpp/adc/types"
 )
 
+type SID = adc.SID
+
+type CID = adc.CID
+
+func sidFromInt(v uint32) SID {
+	return types.SIDFromInt(v)
+}
+
+type adcPeers struct {
+	loggingCID map[adc.CID]struct{}
+	byCID      map[adc.CID]*adcPeer
+}
+
 func (h *Hub) initADC() {
 	h.peers.loggingCID = make(map[adc.CID]struct{})
 	h.peers.byCID = make(map[adc.CID]*adcPeer)

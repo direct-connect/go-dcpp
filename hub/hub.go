@@ -7,20 +7,16 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/http2"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
 
 	dc "github.com/direct-connect/go-dc"
-	"github.com/direct-connect/go-dcpp/adc"
-	"github.com/direct-connect/go-dcpp/adc/types"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -83,15 +79,11 @@ func NewHub(conf Config) (*Hub, error) {
 	return h, nil
 }
 
-type SID = adc.SID
-
 type Hub struct {
 	created time.Time
 	conf    Config
 	tls     *tls.Config
-	h1      *http.Server
-	h2      *http2.Server
-	h2conf  *http2.ServeConnOpts
+	httpData
 
 	userDB UserDatabase
 
@@ -111,10 +103,7 @@ type Hub struct {
 		byName map[string]Peer
 		bySID  map[SID]Peer
 
-		// ADC-specific
-
-		loggingCID map[adc.CID]struct{}
-		byCID      map[adc.CID]*adcPeer
+		adcPeers // ADC specific
 	}
 
 	cmds struct {
@@ -197,10 +186,10 @@ func (h *Hub) Stats() Stats {
 	return st
 }
 
-func (h *Hub) nextSID() adc.SID {
+func (h *Hub) nextSID() SID {
 	// TODO: reuse SIDs
 	v := atomic.AddUint32(&h.lastSID, 1)
-	return types.SIDFromInt(v)
+	return sidFromInt(v)
 }
 
 func (h *Hub) ListenAndServe(addr string) error {
@@ -391,7 +380,7 @@ func (h *Hub) PeerByName(name string) Peer {
 	return p
 }
 
-func (h *Hub) bySID(sid adc.SID) Peer {
+func (h *Hub) bySID(sid SID) Peer {
 	h.peers.RLock()
 	p := h.peers.bySID[sid]
 	h.peers.RUnlock()
@@ -515,7 +504,7 @@ func (h *Hub) ListCommands() []*Command {
 	return command
 }
 
-func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
+func (h *Hub) leave(peer Peer, sid SID, name string, notify []Peer) {
 	h.peers.Lock()
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)
@@ -530,7 +519,7 @@ func (h *Hub) leave(peer Peer, sid adc.SID, name string, notify []Peer) {
 	h.broadcastUserLeave(peer, notify)
 }
 
-func (h *Hub) leaveCID(peer Peer, sid adc.SID, cid adc.CID, name string) {
+func (h *Hub) leaveCID(peer Peer, sid SID, cid CID, name string) {
 	h.peers.Lock()
 	delete(h.peers.byName, name)
 	delete(h.peers.bySID, sid)
