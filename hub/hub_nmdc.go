@@ -215,20 +215,15 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	}
 
 	// do not lock for writes first
-	h.peers.RLock()
-	_, sameName1 := h.peers.reserved[name]
-	_, sameName2 := h.peers.byName[name]
-	h.peers.RUnlock()
-
-	if sameName1 || sameName2 {
+	if !h.nameAvailable(name, nil) {
 		_ = peer.writeOneNow(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
 		return nil, errNickTaken
 	}
 
 	// ok, now lock for writes and try to bind nick
 	h.peers.Lock()
-	_, sameName1 = h.peers.reserved[name]
-	_, sameName2 = h.peers.byName[name]
+	_, sameName1 := h.peers.reserved[name]
+	_, sameName2 := h.peers.byName[name]
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 

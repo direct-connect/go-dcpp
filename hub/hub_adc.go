@@ -268,19 +268,19 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 
 	// do not lock for writes first
-	h.peers.RLock()
-	_, sameName1 := h.peers.reserved[u.Name]
-	_, sameName2 := h.peers.byName[u.Name]
-	_, sameCID1 := h.peers.loggingCID[u.Id]
-	_, sameCID2 := h.peers.byCID[u.Id]
-	h.peers.RUnlock()
+	sameCID := false
+	sameName := !h.nameAvailable(u.Name, func() {
+		_, sameCID1 := h.peers.loggingCID[u.Id]
+		_, sameCID2 := h.peers.byCID[u.Id]
+		sameCID = sameCID1 || sameCID2
+	})
 
-	if sameName1 || sameName2 {
+	if sameName {
 		err = errNickTaken
 		_ = peer.sendError(adc.Fatal, 22, err)
 		return err
 	}
-	if sameCID1 || sameCID2 {
+	if sameCID {
 		err = errors.New("CID taken")
 		_ = peer.sendError(adc.Fatal, 24, err)
 		return err
@@ -288,8 +288,8 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	// ok, now lock for writes and try to bind nick and CID
 	h.peers.Lock()
-	_, sameName1 = h.peers.reserved[u.Name]
-	_, sameName2 = h.peers.byName[u.Name]
+	_, sameName1 := h.peers.reserved[u.Name]
+	_, sameName2 := h.peers.byName[u.Name]
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 
@@ -297,8 +297,8 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		_ = peer.sendError(adc.Fatal, 22, err)
 		return err
 	}
-	_, sameCID1 = h.peers.loggingCID[u.Id]
-	_, sameCID2 = h.peers.byCID[u.Id]
+	_, sameCID1 := h.peers.loggingCID[u.Id]
+	_, sameCID2 := h.peers.byCID[u.Id]
 	if sameCID1 || sameCID2 {
 		h.peers.Unlock()
 

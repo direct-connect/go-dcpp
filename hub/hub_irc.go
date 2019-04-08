@@ -117,11 +117,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			return nil, err
 		}
 
-		h.peers.RLock()
-		_, sameName1 := h.peers.reserved[name]
-		_, sameName2 := h.peers.byName[name]
-		h.peers.RUnlock()
-		if sameName1 || sameName2 {
+		if !h.nameAvailable(name, nil) {
 			_ = c.WriteMessage(&irc.Message{
 				Prefix:  pref,
 				Command: "433",
@@ -130,8 +126,8 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			continue
 		}
 		h.peers.Lock()
-		_, sameName1 = h.peers.reserved[name]
-		_, sameName2 = h.peers.byName[name]
+		_, sameName1 := h.peers.reserved[name]
+		_, sameName2 := h.peers.byName[name]
 		if sameName1 || sameName2 {
 			h.peers.Unlock()
 

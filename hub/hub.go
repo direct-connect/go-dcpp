@@ -401,6 +401,19 @@ func (h *Hub) bySID(sid SID) Peer {
 	return p
 }
 
+// nameAvailable checks if a name can be bound. Returns false if a name is already in use.
+// The callback can be passed to be executed under peers read lock.
+func (h *Hub) nameAvailable(name string, fnc func()) bool {
+	h.peers.RLock()
+	_, sameName1 := h.peers.reserved[name]
+	_, sameName2 := h.peers.byName[name]
+	if fnc != nil {
+		fnc()
+	}
+	h.peers.RUnlock()
+	return !sameName1 && !sameName2
+}
+
 func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	log.Printf("%s: connected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {
