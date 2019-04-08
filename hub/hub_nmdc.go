@@ -268,6 +268,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.invalidateList()
 	h.globalChat.Join(peer)
 	cntPeers.Add(1)
+	h.incShare(peer.User().Share)
 	h.peers.Unlock()
 
 	// notify other users about the new one

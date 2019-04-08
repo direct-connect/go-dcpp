@@ -79,6 +79,8 @@ func NewHub(conf Config) (*Hub, error) {
 	return h, nil
 }
 
+const shareDiv = 1024 * 1024
+
 type Hub struct {
 	created time.Time
 	conf    Config
@@ -93,6 +95,7 @@ type Hub struct {
 
 	peers struct {
 		curList atomic.Value // []Peer
+		share   int64        // atomic, MB
 
 		sync.RWMutex
 		// reserved map is used to temporary bind a username.
@@ -129,6 +132,16 @@ func (h *Hub) SetDatabase(db Database) {
 	h.userDB = db
 }
 
+func (h *Hub) incShare(v uint64) {
+	atomic.AddInt64(&h.peers.share, int64(v/shareDiv))
+	cntShare.Add(float64(v))
+}
+
+func (h *Hub) decShare(v uint64) {
+	atomic.AddInt64(&h.peers.share, -int64(v/shareDiv))
+	cntShare.Add(-float64(v))
+}
+
 type Command struct {
 	Menu    []string
 	Name    string
@@ -149,7 +162,7 @@ type Stats struct {
 	Email    string      `json:"email,omitempty"`
 	Users    int         `json:"users"`
 	MaxUsers int         `json:"max-users,omitempty"`
-	Share    uint64      `json:"share,omitempty"`     // MB
+	Share    uint64      `json:"share"`               // MB
 	MaxShare uint64      `json:"max-share,omitempty"` // MB
 	Enc      string      `json:"encoding,omitempty"`
 	Soft     dc.Software `json:"soft"`
@@ -176,6 +189,7 @@ func (h *Hub) Stats() Stats {
 		Email:    h.conf.Email,
 		Icon:     "icon.png",
 		Users:    users,
+		Share:    uint64(atomic.LoadInt64(&h.peers.share)),
 		Enc:      "utf-8",
 		Soft:     h.conf.Soft,
 		Keyprint: h.conf.Keyprint,
@@ -515,6 +529,7 @@ func (h *Hub) leave(peer Peer, sid SID, name string, notify []Peer) {
 	h.leaveRooms(peer)
 	h.peers.Unlock()
 	cntPeers.Add(-1)
+	h.decShare(peer.User().Share)
 
 	h.broadcastUserLeave(peer, notify)
 }
@@ -529,6 +544,7 @@ func (h *Hub) leaveCID(peer Peer, sid SID, cid CID, name string) {
 	h.leaveRooms(peer)
 	h.peers.Unlock()
 	cntPeers.Add(-1)
+	h.decShare(peer.User().Share)
 
 	h.broadcastUserLeave(peer, notify)
 }

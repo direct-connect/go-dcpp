@@ -232,4 +232,8 @@ var (
 		Name: "dc_peers",
 		Help: "The number of active peers",
 	})
+	cntShare = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "dc_share",
+		Help: "Total share size",
+	})
 )
