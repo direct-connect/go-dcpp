@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	dc "github.com/direct-connect/go-dc"
@@ -18,6 +19,8 @@ import (
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/adc/types"
 )
+
+const searchTimeout = 15 * time.Minute
 
 type SID = adc.SID
 
@@ -640,11 +643,13 @@ func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
 	} else {
 		sr = Dir{Peer: peer, Path: res.Path}
 	}
-	if err := s.SendResult(sr); err != nil {
-		_ = s.Close()
+	if err := s.s.SendResult(sr); err != nil {
+		_ = s.s.Close()
 		peer.search.Lock()
 		delete(peer.search.tokens, res.Token)
 		peer.search.Unlock()
+	} else {
+		s.result()
 	}
 }
 
@@ -664,8 +669,21 @@ type adcPeer struct {
 
 	search struct {
 		sync.RWMutex
-		tokens map[string]Search
+		tokens map[string]*adcSearchToken
 	}
+}
+
+type adcSearchToken struct {
+	last int64 // atomic
+	s    Search
+}
+
+func (s *adcSearchToken) result() {
+	atomic.StoreInt64(&s.last, time.Now().UnixNano())
+}
+func (s *adcSearchToken) getLast() time.Time {
+	ns := atomic.LoadInt64(&s.last)
+	return time.Unix(0, ns)
 }
 
 func (p *adcPeer) Name() string {
@@ -1004,13 +1022,29 @@ func (s *adcSearch) Close() error {
 	return nil // TODO: block new results
 }
 
+// gcTokens removes unused search tokens.
+// Should be called under the search write lock.
+func (p *adcPeer) gcTokens() {
+	now := time.Now()
+	for token, s := range p.search.tokens {
+		if now.Sub(s.getLast()) > searchTimeout {
+			delete(p.search.tokens, token)
+			_ = s.s.Close()
+		}
+	}
+}
+
 func (p *adcPeer) searchToken(out Search) string {
 	token := strconv.FormatUint(rand.Uint64(), 16)
 	p.search.Lock()
 	if p.search.tokens == nil {
-		p.search.tokens = make(map[string]Search)
+		p.search.tokens = make(map[string]*adcSearchToken)
+	} else {
+		p.gcTokens()
 	}
-	p.search.tokens[token] = out
+	s := &adcSearchToken{s: out}
+	s.result()
+	p.search.tokens[token] = s
 	p.search.Unlock()
 	return token
 }
