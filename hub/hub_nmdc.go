@@ -240,23 +240,13 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		return nil, err
 	}
 
+	var list []Peer
 	// finally accept the user on the hub
-	h.peers.Lock()
-	// cleanup temporary bindings
-	delete(h.peers.reserved, name)
-
-	// make a snapshot of peers to send info to
-	list := h.listPeers()
-
-	// add user to the hub
-	h.peers.bySID[peer.sid] = peer
-	h.peers.byName[name] = peer
-	atomic.StoreUint32(&peer.state, nmdcPeerJoining)
-	h.invalidateList()
-	h.globalChat.Join(peer)
-	cntPeers.Add(1)
-	h.incShare(peer.User().Share)
-	h.peers.Unlock()
+	h.acceptPeer(peer, func() {
+		// make a snapshot of peers to send info to
+		list = h.listPeers()
+		atomic.StoreUint32(&peer.state, nmdcPeerJoining)
+	}, nil)
 
 	// notify other users about the new one
 	h.broadcastUserJoin(peer, list)

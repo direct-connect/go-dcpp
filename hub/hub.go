@@ -447,6 +447,36 @@ func (h *Hub) reserveName(name string, bind func() bool, unbind func()) (func(),
 	}, true
 }
 
+// acceptPeer removes the temporary name binding and accepts the peer on the hub.
+// reserveName must be called before calling this method.
+// Callbacks will be executed under peers write lock. The first callback is called before
+// adding the user to the list and the second is executed after it was added to the list.
+func (h *Hub) acceptPeer(peer Peer, pre, post func()) {
+	sid := peer.SID()
+	u := peer.User()
+
+	h.peers.Lock()
+	defer h.peers.Unlock()
+	// cleanup temporary bindings
+	delete(h.peers.reserved, u.Name)
+
+	if pre != nil {
+		pre()
+	}
+
+	// add user to the hub
+	h.peers.bySID[sid] = peer
+	h.peers.byName[u.Name] = peer
+	h.invalidateList()
+	h.globalChat.Join(peer)
+	cntPeers.Add(1)
+	h.incShare(u.Share)
+
+	if post != nil {
+		post()
+	}
+}
+
 func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	log.Printf("%s: connected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {

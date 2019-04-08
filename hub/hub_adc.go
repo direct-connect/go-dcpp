@@ -377,25 +377,14 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		}
 	}
 
+	var list []Peer
 	// finally accept the user on the hub
-	h.peers.Lock()
-	// cleanup temporary bindings
-	delete(h.peers.reserved, peer.user.Name)
-	delete(h.peers.loggingCID, u.Id)
-
-	// make a snapshot of peers to send info to
-	list := h.listPeers()
-
-	// add user to the hub
-	h.peers.bySID[peer.sid] = peer
-	h.peers.byCID[u.Id] = peer
-	h.peers.byName[u.Name] = peer
-	h.invalidateList()
-	h.globalChat.Join(peer)
-	cntPeers.Add(1)
-	h.incShare(peer.User().Share)
-	h.peers.Unlock()
-
+	h.acceptPeer(peer, func() {
+		delete(h.peers.loggingCID, u.Id)
+		h.peers.byCID[u.Id] = peer
+		// make a snapshot of peers to send info to
+		list = h.listPeers()
+	}, nil)
 	// notify other users about the new one
 	h.broadcastUserJoin(peer, list)
 	return nil
