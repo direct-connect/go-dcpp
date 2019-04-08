@@ -287,35 +287,28 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 
 	// ok, now lock for writes and try to bind nick and CID
-	h.peers.Lock()
-	_, sameName1 := h.peers.reserved[u.Name]
-	_, sameName2 := h.peers.byName[u.Name]
-	if sameName1 || sameName2 {
-		h.peers.Unlock()
-
+	// still, no one will see the user yet
+	unbind, ok := h.reserveName(u.Name, func() bool {
+		_, sameCID1 := h.peers.loggingCID[u.Id]
+		_, sameCID2 := h.peers.byCID[u.Id]
+		if sameCID1 || sameCID2 {
+			sameCID = true
+			return false
+		}
+		h.peers.loggingCID[u.Id] = struct{}{}
+		return true
+	}, func() {
+		delete(h.peers.loggingCID, u.Id)
+	})
+	if !ok {
+		if sameCID {
+			err = errors.New("CID taken")
+			_ = peer.sendError(adc.Fatal, 24, err)
+			return err
+		}
 		err = errNickTaken
 		_ = peer.sendError(adc.Fatal, 22, err)
 		return err
-	}
-	_, sameCID1 := h.peers.loggingCID[u.Id]
-	_, sameCID2 := h.peers.byCID[u.Id]
-	if sameCID1 || sameCID2 {
-		h.peers.Unlock()
-
-		err = errors.New("CID taken")
-		_ = peer.sendError(adc.Fatal, 24, err)
-		return err
-	}
-	// bind nick and cid, still no one will see us yet
-	h.peers.reserved[u.Name] = struct{}{}
-	h.peers.loggingCID[u.Id] = struct{}{}
-	h.peers.Unlock()
-
-	unbind := func() {
-		h.peers.Lock()
-		delete(h.peers.reserved, u.Name)
-		delete(h.peers.loggingCID, u.Id)
-		h.peers.Unlock()
 	}
 
 	if u.Ip4 == "0.0.0.0" {

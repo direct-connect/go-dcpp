@@ -221,24 +221,16 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	}
 
 	// ok, now lock for writes and try to bind nick
-	h.peers.Lock()
-	_, sameName1 := h.peers.reserved[name]
-	_, sameName2 := h.peers.byName[name]
-	if sameName1 || sameName2 {
-		h.peers.Unlock()
-
+	// still, no one will see the user yet
+	unbind, ok := h.reserveName(name, nil, nil)
+	if !ok {
 		_ = peer.writeOneNow(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
 		return nil, errNickTaken
 	}
-	// bind nick, still no one will see us yet
-	h.peers.reserved[name] = struct{}{}
-	h.peers.Unlock()
 
 	err = h.nmdcAccept(peer)
 	if err != nil || peer.getState() == nmdcPeerClosed {
-		h.peers.Lock()
-		delete(h.peers.reserved, name)
-		h.peers.Unlock()
+		unbind()
 
 		str := "connection is closed"
 		if err != nil {

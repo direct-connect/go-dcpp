@@ -84,8 +84,9 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 	pref := &irc.Prefix{Name: host}
 
 	var (
-		name string
-		user string
+		name   string
+		user   string
+		unbind func()
 	)
 	for {
 		deadline := time.Now().Add(time.Second * 5)
@@ -125,22 +126,17 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			})
 			continue
 		}
-		h.peers.Lock()
-		_, sameName1 := h.peers.reserved[name]
-		_, sameName2 := h.peers.byName[name]
-		if sameName1 || sameName2 {
-			h.peers.Unlock()
 
-			_ = c.WriteMessage(&irc.Message{
-				Prefix:  pref,
-				Command: "433",
-				Params:  []string{"*", name, errNickTaken.Error()},
-			})
-			continue
+		var ok bool
+		unbind, ok = h.reserveName(name, nil, nil)
+		if ok {
+			break
 		}
-		h.peers.reserved[name] = struct{}{}
-		h.peers.Unlock()
-		break
+		_ = c.WriteMessage(&irc.Message{
+			Prefix:  pref,
+			Command: "433",
+			Params:  []string{"*", name, errNickTaken.Error()},
+		})
 	}
 	conn.SetReadDeadline(time.Time{})
 
@@ -164,9 +160,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 
 	err := h.ircAccept(peer)
 	if err != nil {
-		h.peers.Lock()
-		delete(h.peers.reserved, name)
-		h.peers.Unlock()
+		unbind()
 		return nil, err
 	}
 

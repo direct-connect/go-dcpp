@@ -414,6 +414,39 @@ func (h *Hub) nameAvailable(name string, fnc func()) bool {
 	return !sameName1 && !sameName2
 }
 
+// reserveName bind a provided name or return false otherwise.
+//
+// A pair of callbacks can be passed to be executed under peers write lock.
+//
+// The first callback is executed when the name can be bound and can provide additional
+// checks or bind any other identifier. If callback returns false the name won't be bound
+// and the function will return false.
+//
+// The second callback is executed after the name is unbound.
+func (h *Hub) reserveName(name string, bind func() bool, unbind func()) (func(), bool) {
+	h.peers.Lock()
+	_, sameName1 := h.peers.reserved[name]
+	_, sameName2 := h.peers.byName[name]
+	if sameName1 || sameName2 {
+		h.peers.Unlock()
+		return nil, false
+	}
+	if bind != nil && !bind() {
+		h.peers.Unlock()
+		return nil, false
+	}
+	h.peers.reserved[name] = struct{}{}
+	h.peers.Unlock()
+	return func() {
+		h.peers.Lock()
+		delete(h.peers.reserved, name)
+		if unbind != nil {
+			unbind()
+		}
+		h.peers.Unlock()
+	}, true
+}
+
 func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	log.Printf("%s: connected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {
