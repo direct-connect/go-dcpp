@@ -552,6 +552,15 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		}
 		h.nmdcHandleResult(peer, to, msg)
 		return nil
+	case *nmdcp.MyINFO:
+		if string(msg.Name) != peer.Name() {
+			return fmt.Errorf("myinfo: invalid nick: %q", msg.Name)
+		}
+		peer.mu.Lock()
+		defer peer.mu.Unlock()
+		peer.setUser(msg)
+		// TODO: notify about info update
+		return nil
 	default:
 		// TODO
 		data, _ := nmdcp.Marshal(nil, msg)
