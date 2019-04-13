@@ -2,6 +2,7 @@ package hub
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -47,6 +48,12 @@ func (h *Hub) validateUserName(name string) error {
 	}
 	if strings.ContainsAny(name, "\x00 <>") {
 		return errNameInvalidChars
+	}
+	if h.fallback != nil {
+		_, err := h.fallback.NewEncoder().String(name)
+		if err != nil {
+			return fmt.Errorf("invalid name: %v (%q)", err, name)
+		}
 	}
 	return nil
 }
