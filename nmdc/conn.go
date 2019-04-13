@@ -147,7 +147,14 @@ func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
+func (c *Conn) SetWriteDeadline(t time.Time) error {
+	return c.conn.SetWriteDeadline(t)
+}
+
 func (c *Conn) SetWriteTimeout(dt time.Duration) {
+	if dt <= 0 {
+		c.w.Timeout = nil
+	}
 	c.w.Timeout = func(enable bool) error {
 		if enable {
 			return c.conn.SetWriteDeadline(time.Now().Add(dt))

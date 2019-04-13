@@ -386,7 +386,10 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	if !h.callOnJoined(peer) {
 		return nil // TODO: eny errors?
 	}
-	go peer.writer()
+	// looks like we are disabling the timeout, but we are not
+	// the timeout will be set manually by the writer goroutine
+	peer.c.SetWriteTimeout(-1)
+	go peer.writer(writeTimeout)
 	for {
 		msg, err := peer.c.ReadMsg(time.Time{})
 		if err == io.EOF {
@@ -730,7 +733,7 @@ func (p *nmdcPeer) Close() error {
 	return p.closeOn(nil)
 }
 
-func (p *nmdcPeer) writer() {
+func (p *nmdcPeer) writer(timeout time.Duration) {
 	defer p.Close()
 	ticker := time.NewTicker(time.Minute / 2)
 	defer ticker.Stop()
@@ -743,6 +746,7 @@ func (p *nmdcPeer) writer() {
 			return
 		case <-ticker.C:
 			// keep alive
+			_ = p.c.SetWriteDeadline(time.Now().Add(timeout))
 			err = p.c.WriteLine([]byte("|"))
 		case <-p.write.wake:
 			p.write.Lock()
@@ -753,6 +757,7 @@ func (p *nmdcPeer) writer() {
 				buf2 = buf[:0]
 				continue
 			}
+			_ = p.c.SetWriteDeadline(time.Now().Add(timeout))
 			for _, m := range buf {
 				err = p.c.WriteMsg(m)
 				if err != nil {
@@ -764,6 +769,7 @@ func (p *nmdcPeer) writer() {
 		if err == nil {
 			err = p.c.Flush()
 		}
+		_ = p.c.SetWriteDeadline(time.Time{})
 		if err != nil {
 			if p.Online() {
 				log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
