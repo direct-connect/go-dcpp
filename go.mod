@@ -5,7 +5,7 @@ require (
 	github.com/Shopify/go-lua v0.0.0-20181106184032-48449c60c0a9
 	github.com/dgraph-io/badger v1.5.4 // indirect
 	github.com/dgryski/go-farm v0.0.0-20190104051053-3adb47b1fb0f // indirect
-	github.com/direct-connect/go-dc v0.5.6
+	github.com/direct-connect/go-dc v0.6.0
 	github.com/go-irc/irc v2.1.0+incompatible
 	github.com/go-logfmt/logfmt v0.4.0 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
@@ -26,6 +26,7 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/viper v1.3.1
+	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.3.0
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	golang.org/x/crypto v0.0.0-20190325154230-a5d413f7728c // indirect

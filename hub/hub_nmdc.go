@@ -13,8 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/text/encoding"
-
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
@@ -85,11 +83,7 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, stri
 		Lock: "_godcpp", // TODO: randomize
 		PK:   h.conf.Soft.Name + " " + h.conf.Soft.Version,
 	}
-	err := c.WriteMsg(lock)
-	if err != nil {
-		return nil, "", err
-	}
-	err = c.Flush()
+	err := c.WriteOneMsg(lock)
 	if err != nil {
 		return nil, "", err
 	}
@@ -119,13 +113,9 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, stri
 		return nil, "", errors.New("NoGetINFO is not supported")
 	}
 
-	err = c.WriteMsg(&nmdcp.Supports{
+	err = c.WriteOneMsg(&nmdcp.Supports{
 		Ext: nmdcFeatures.List(),
 	})
-	if err != nil {
-		return nil, "", err
-	}
-	err = c.Flush()
 	if err != nil {
 		return nil, "", err
 	}
@@ -154,36 +144,23 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 
 	fea, nick, err := h.nmdcLock(deadline, c)
 	if err != nil {
-		_ = c.WriteMsg(&nmdcp.ChatMessage{Text: err.Error()})
-		_ = c.Flush()
+		_ = c.WriteOneMsg(&nmdcp.ChatMessage{Text: err.Error()})
 		return nil, err
 	}
 	addr, ok := c.RemoteAddr().(*net.TCPAddr)
 	if !ok {
 		err = fmt.Errorf("not a tcp address: %T", c.RemoteAddr())
-		_ = c.WriteMsg(&nmdcp.ChatMessage{Text: err.Error()})
-		_ = c.Flush()
+		_ = c.WriteOneMsg(&nmdcp.ChatMessage{Text: err.Error()})
 		return nil, err
 	}
 	name := string(nick)
 	err = h.validateUserName(name)
 	if err != nil {
-		_ = c.WriteMsg(&nmdcp.ChatMessage{Text: err.Error()})
-		_ = c.Flush()
+		_ = c.WriteOneMsg(&nmdcp.ChatMessage{Text: err.Error()})
 		return nil, err
 	}
 
-	peer := &nmdcPeer{
-		BasePeer: BasePeer{
-			hub:      h,
-			hubAddr:  c.LocalAddr(),
-			peerAddr: c.RemoteAddr(),
-			sid:      h.nextSID(),
-		},
-		conn: c, ip: addr.IP,
-		fea: fea,
-	}
-	peer.user.Name = nick
+	peer := newNMDC(h, c, fea, nick, addr.IP)
 
 	if peer.fea.Has(nmdcp.ExtBotINFO) {
 		cntPings.Add(1)
@@ -216,7 +193,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 
 	// do not lock for writes first
 	if !h.nameAvailable(name, nil) {
-		_ = peer.writeOneNow(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
+		_ = peer.c.WriteOneMsg(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
 		return nil, errNickTaken
 	}
 
@@ -224,7 +201,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	// still, no one will see the user yet
 	unbind, ok := h.reserveName(name, nil, nil)
 	if !ok {
-		_ = peer.writeOneNow(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
+		_ = peer.c.WriteOneMsg(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
 		return nil, errNickTaken
 	}
 
@@ -236,7 +213,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		if err != nil {
 			str = err.Error()
 		}
-		_ = peer.conn.WriteMsg(&nmdcp.ChatMessage{Text: "handshake failed: " + str})
+		_ = peer.c.WriteOneMsg(&nmdcp.ChatMessage{Text: "handshake failed: " + str})
 		return nil, err
 	}
 
@@ -256,7 +233,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
 	}
 
-	if err := peer.conn.Flush(); err != nil {
+	if err := peer.c.Flush(); err != nil {
 		_ = peer.closeOn(list)
 		return nil, err
 	}
@@ -267,12 +244,8 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 
-	c := peer.conn
-	err := c.StartBatch()
-	if err != nil {
-		return err
-	}
-	err = c.WriteMsg(&nmdcp.HubName{
+	c := peer.c
+	err := c.WriteMsg(&nmdcp.HubName{
 		String: nmdcp.String(h.conf.Name),
 	})
 	if err != nil {
@@ -286,11 +259,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if isRegistered {
 		// give the user a minute to enter a password
 		deadline = time.Now().Add(time.Minute)
-		err = c.WriteMsg(&nmdcp.GetPass{})
-		if err != nil {
-			return err
-		}
-		err = c.EndBatch(true)
+		err = c.WriteOneMsg(&nmdcp.GetPass{})
 		if err != nil {
 			return err
 		}
@@ -304,26 +273,18 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		if err != nil {
 			return err
 		} else if !ok {
-			err = c.WriteMsg(&nmdcp.BadPass{})
+			err = c.WriteOneMsg(&nmdcp.BadPass{})
 			if err != nil {
 				return err
 			}
 			return errors.New("wrong password")
 		}
 		deadline = time.Now().Add(time.Second * 5)
-		err = c.StartBatch()
-		if err != nil {
-			return err
-		}
 	}
 
-	err = c.WriteMsg(&nmdcp.Hello{
-		Name: nmdcp.Name(peer.user.Name),
+	err = c.WriteOneMsg(&nmdcp.Hello{
+		Name: nmdcp.Name(peer.info.user.Name),
 	})
-	if err != nil {
-		return err
-	}
-	err = c.EndBatch(true)
 	if err != nil {
 		return err
 	}
@@ -335,17 +296,17 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	} else if vers.Vers != "1,0091" && vers.Vers != "1.0091" && vers.Vers != "1,0098" {
 		return fmt.Errorf("unexpected version: %q", vers)
 	}
-	curName := peer.user.Name
+	curName := peer.info.user.Name
 
 	// according to spec, we should only wait for GetNickList, but some clients
 	// skip it and send MyINFO directly when reconnecting
-	m, err := c.ReadMsgToAny(deadline, &nmdcp.GetNickList{}, &peer.user)
+	m, err := c.ReadMsgToAny(deadline, &nmdcp.GetNickList{}, &peer.info.user)
 	if err != nil {
 		return err
 	}
 	switch m.(type) {
 	case *nmdcp.GetNickList:
-		err = c.ReadMsgTo(deadline, &peer.user)
+		err = c.ReadMsgTo(deadline, &peer.info.user)
 		if err != nil {
 			return fmt.Errorf("expected user info: %v", err)
 		}
@@ -354,21 +315,18 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	default:
 		return fmt.Errorf("expected user info, got: %T", m)
 	}
-	cntClients.WithLabelValues(peer.user.Client.Name, peer.user.Client.Version).Add(1)
-	if curName != peer.user.Name {
+	cli := peer.info.user.Client
+	cntClients.WithLabelValues(cli.Name, cli.Version).Add(1)
+	if curName != peer.info.user.Name {
 		return errors.New("nick mismatch")
 	}
 
-	peer.setUser(&peer.user)
+	peer.setUser(&peer.info.user)
 
-	err = c.StartBatch()
-	if err != nil {
-		return err
-	}
-	err = c.WriteLine(peer.userRaw)
-	if err != nil {
-		return err
-	}
+	//err = c.WriteLine(peer.userRaw)
+	//if err != nil {
+	//	return err
+	//}
 	err = c.WriteMsg(&nmdcp.HubTopic{
 		Text: h.conf.Desc,
 	})
@@ -412,7 +370,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			return err
 		}
 	}
-	return c.EndBatch(true)
+	return c.Flush()
 }
 
 func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
@@ -427,12 +385,12 @@ func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
 }
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
-	peer.conn.KeepAlive(time.Minute / 2)
 	if !h.callOnJoined(peer) {
 		return nil // TODO: eny errors?
 	}
+	go peer.writer()
 	for {
-		msg, err := peer.conn.ReadMsg(time.Time{})
+		msg, err := peer.c.ReadMsg(time.Time{})
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
@@ -482,8 +440,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		if !ok {
 			return nil
 		}
-		_ = p2.writeAsync(msg)
-		return nil
+		return p2.SendNMDC(msg)
 	case *nmdcp.RevConnectToMe:
 		if string(msg.From) != peer.Name() {
 			return errors.New("invalid name in RevConnectToMe")
@@ -556,9 +513,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		if string(msg.Name) != peer.Name() {
 			return fmt.Errorf("myinfo: invalid nick: %q", msg.Name)
 		}
-		peer.mu.Lock()
-		defer peer.mu.Unlock()
-		peer.setUser(msg)
+		peer.SetInfo(msg)
 		// TODO: notify about info update
 		return nil
 	default:
@@ -647,7 +602,7 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 
 func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 	for _, c := range h.ListCommands() {
-		err := peer.conn.WriteMsg(&nmdcp.UserCommand{
+		err := peer.c.WriteMsg(&nmdcp.UserCommand{
 			Typ:     nmdcp.TypeRaw,
 			Context: nmdcp.ContextUser,
 			Path:    c.Menu,
@@ -669,18 +624,44 @@ const (
 	nmdcPeerClosed
 )
 
+func newNMDC(h *Hub, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
+	peer := &nmdcPeer{
+		BasePeer: BasePeer{
+			hub:      h,
+			hubAddr:  c.LocalAddr(),
+			peerAddr: c.RemoteAddr(),
+			sid:      h.nextSID(),
+		},
+		c: c, ip: ip,
+		fea: fea,
+	}
+	peer.close.done = make(chan struct{})
+	peer.write.wake = make(chan struct{}, 1)
+	peer.info.user.Name = nick
+	return peer
+}
+
 type nmdcPeer struct {
 	BasePeer
 	state uint32 // atomic
 
-	conn *nmdc.Conn
-	fea  nmdcp.Extensions
-	ip   net.IP
+	c   *nmdc.Conn
+	fea nmdcp.Extensions
+	ip  net.IP
 
-	mu      sync.RWMutex
-	user    nmdcp.MyINFO
-	userRaw []byte
-	closeMu sync.Mutex
+	close struct {
+		sync.Mutex
+		done chan struct{}
+	}
+	write struct {
+		wake chan struct{}
+		sync.Mutex
+		buf []nmdcp.Message
+	}
+	info struct {
+		sync.RWMutex
+		user nmdcp.MyINFO
+	}
 
 	search struct {
 		sync.RWMutex
@@ -697,15 +678,21 @@ func (p *nmdcPeer) getState() uint32 {
 	return atomic.LoadUint32(&p.state)
 }
 
+func (p *nmdcPeer) SetInfo(u *nmdcp.MyINFO) {
+	p.info.Lock()
+	defer p.info.Unlock()
+	p.setUser(u)
+}
+
 func (p *nmdcPeer) setUser(u *nmdcp.MyINFO) {
-	if u != &p.user {
-		p.user = *u
+	if u != &p.info.user {
+		p.info.user = *u
 	}
-	data, err := nmdcp.Marshal(p.conn.TextEncoder(), u)
-	if err != nil {
-		panic(err)
-	}
-	p.userRaw = data
+	//data, err := nmdcp.Marshal(p.conn.TextEncoder(), u)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//p.userRaw = data
 }
 
 func (p *nmdcPeer) User() User {
@@ -726,23 +713,23 @@ func (p *nmdcPeer) User() User {
 }
 
 func (p *nmdcPeer) Name() string {
-	p.mu.RLock()
-	name := p.user.Name
-	p.mu.RUnlock()
+	p.info.RLock()
+	name := p.info.user.Name
+	p.info.RUnlock()
 	return string(name)
 }
 
-func (p *nmdcPeer) rawInfo() ([]byte, encoding.Encoding) {
-	p.mu.RLock()
-	data := p.userRaw
-	p.mu.RUnlock()
-	return data, p.conn.Encoding()
-}
+//func (p *nmdcPeer) rawInfo() ([]byte, encoding.Encoding) {
+//	p.mu.RLock()
+//	data := p.userRaw
+//	p.mu.RUnlock()
+//	return data, p.conn.Encoding()
+//}
 
 func (p *nmdcPeer) Info() nmdcp.MyINFO {
-	p.mu.RLock()
-	u := p.user
-	p.mu.RUnlock()
+	p.info.RLock()
+	u := p.info.user
+	p.info.RUnlock()
 	return u
 }
 
@@ -751,19 +738,17 @@ func (p *nmdcPeer) closeOn(list []Peer) error {
 	case nmdcPeerClosed, nmdcPeerJoining:
 		return nil
 	}
-	p.closeMu.Lock()
-	defer p.closeMu.Unlock()
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.close.Lock()
+	defer p.close.Unlock()
 	switch p.getState() {
 	case nmdcPeerClosed, nmdcPeerJoining:
 		return nil
 	}
-	err := p.conn.Close()
+	close(p.close.done)
 	atomic.StoreUint32(&p.state, nmdcPeerClosed)
+	err := p.c.Close()
 
-	name := string(p.user.Name)
-	p.hub.leave(p, p.sid, name, list)
+	p.hub.leave(p, p.sid, p.Name(), list)
 	return err
 }
 
@@ -771,70 +756,59 @@ func (p *nmdcPeer) Close() error {
 	return p.closeOn(nil)
 }
 
-func (p *nmdcPeer) write(msg nmdcp.Message) error {
+func (p *nmdcPeer) writer() {
+	defer p.Close()
+	ticker := time.NewTicker(time.Minute / 2)
+	defer ticker.Stop()
+
+	var buf2 []nmdcp.Message
+	for {
+		var err error
+		select {
+		case <-p.close.done:
+			return
+		case <-ticker.C:
+			// keep alive
+			err = p.c.WriteLine([]byte("|"))
+		case <-p.write.wake:
+			p.write.Lock()
+			buf := p.write.buf
+			p.write.buf = buf2
+			p.write.Unlock()
+			if len(buf) == 0 {
+				buf2 = buf[:0]
+				continue
+			}
+			for _, m := range buf {
+				err = p.c.WriteMsg(m)
+				if err != nil {
+					break
+				}
+			}
+			buf2 = buf[:0]
+		}
+		if err == nil {
+			err = p.c.Flush()
+		}
+		if err != nil {
+			log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+			return
+		}
+	}
+}
+
+func (p *nmdcPeer) SendNMDC(m ...nmdcp.Message) error {
 	if p.getState() == nmdcPeerClosed {
 		return errConnectionClosed
 	}
-	if err := p.conn.WriteMsg(msg); err != nil {
-		_ = p.Close()
-		return err
+	p.write.Lock()
+	p.write.buf = append(p.write.buf, m...)
+	p.write.Unlock()
+	select {
+	case p.write.wake <- struct{}{}:
+	default:
 	}
 	return nil
-}
-
-func (p *nmdcPeer) writeAsync(msg nmdcp.Message) error {
-	if p.getState() == nmdcPeerClosed {
-		return errConnectionClosed
-	}
-	if err := p.conn.WriteMsgAsync(msg); err != nil {
-		_ = p.Close()
-		return err
-	}
-	return nil
-}
-
-func (p *nmdcPeer) writeLine(data []byte) error {
-	if p.getState() == nmdcPeerClosed {
-		return errConnectionClosed
-	}
-	if err := p.conn.WriteLine(data); err != nil {
-		_ = p.Close()
-		return err
-	}
-	return nil
-}
-
-func (p *nmdcPeer) writeLineAsync(data []byte) error {
-	if p.getState() == nmdcPeerClosed {
-		return errConnectionClosed
-	}
-	if err := p.conn.WriteLineAsync(data); err != nil {
-		_ = p.Close()
-		return err
-	}
-	return nil
-}
-
-func (p *nmdcPeer) writeOneNow(msg nmdcp.Message) error {
-	if p.getState() == nmdcPeerClosed {
-		return errConnectionClosed
-	}
-	// should only be used for closing the connection
-	if err := p.conn.WriteMsg(msg); err != nil {
-		return err
-	}
-	if err := p.conn.Flush(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p *nmdcPeer) failed(e error) error {
-	return p.writeOneNow(&nmdcp.Failed{Err: e})
-}
-
-func (p *nmdcPeer) error(e error) error {
-	return p.writeOneNow(&nmdcp.Error{Err: e})
 }
 
 func (p *nmdcPeer) verifyAddr(addr string) error {
@@ -853,12 +827,12 @@ func (p *nmdcPeer) verifyAddr(addr string) error {
 }
 
 func (p *nmdcPeer) BroadcastJoin(peers []Peer) {
-	join, enc := p.rawInfo()
+	//join, enc := p.rawInfo()
 	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.conn.Encoding() == nil {
-			_ = p2.writeLineAsync(join)
-			continue
-		}
+		//if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.conn.Encoding() == nil {
+		//	_ = p2.writeLineAsync(join)
+		//	continue
+		//}
 		_ = p2.PeersJoin([]Peer{p})
 	}
 }
@@ -899,47 +873,43 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	if p.getState() == nmdcPeerClosed {
 		return errConnectionClosed
 	}
-	if !initial {
-		err := p.conn.StartBatch()
-		if err != nil {
-			_ = p.Close()
-			return err
-		}
-	}
 	for _, peer := range peers {
-		if p2, ok := peer.(*nmdcPeer); ok {
-			data, enc := p2.rawInfo()
-			if enc == nil && p.conn.Encoding() == nil {
-				if err := p.conn.WriteLine(data); err != nil {
-					return err
-				}
-				continue
-			}
-		}
+		//if p2, ok := peer.(*nmdcPeer); ok {
+		//	data, enc := p2.rawInfo()
+		//	if enc == nil && p.conn.Encoding() == nil {
+		//		if err := p.conn.WriteLine(data); err != nil {
+		//			return err
+		//		}
+		//		continue
+		//	}
+		//}
 		info := peer.User().toNMDC()
-		if err := p.conn.WriteMsg(&info); err != nil {
+		var err error
+		if initial {
+			err = p.c.WriteMsg(&info)
+		} else {
+			err = p.SendNMDC(&info)
+		}
+		if err != nil {
 			return err
 		}
 	}
-	if initial {
-		return nil
-	}
-	return p.conn.EndBatch(false)
+	return nil
 }
 
 func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
-	enc := p.conn.TextEncoder()
-	quit, err := nmdcp.Marshal(enc, &nmdcp.Quit{
-		Name: nmdcp.Name(p.Name()),
-	})
-	if err != nil {
-		panic(err)
-	}
+	//enc := p.conn.TextEncoder()
+	//quit, err := nmdcp.Marshal(enc, &nmdcp.Quit{
+	//	Name: nmdcp.Name(p.Name()),
+	//})
+	//if err != nil {
+	//	panic(err)
+	//}
 	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p2.conn.TextEncoder() == nil {
-			_ = p2.writeLineAsync(quit)
-			continue
-		}
+		//if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p2.conn.TextEncoder() == nil {
+		//	_ = p2.writeLineAsync(quit)
+		//	continue
+		//}
 		_ = p2.PeersLeave([]Peer{p})
 	}
 }
@@ -950,30 +920,13 @@ func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 	} else if p.getState() == nmdcPeerClosed {
 		return errConnectionClosed
 	}
-	if len(peers) == 1 {
-		return p.writeAsync(&nmdcp.Quit{
-			Name: nmdcp.Name(peers[0].Name()),
+	cmds := make([]nmdcp.Message, 0, len(peers))
+	for _, peer := range peers {
+		cmds = append(cmds, &nmdcp.Quit{
+			Name: nmdcp.Name(peer.Name()),
 		})
 	}
-	err := p.conn.StartBatch()
-	if err != nil {
-		_ = p.Close()
-		return err
-	}
-	for _, peer := range peers {
-		if err := p.conn.WriteMsg(&nmdcp.Quit{
-			Name: nmdcp.Name(peer.Name()),
-		}); err != nil {
-			_ = p.Close()
-			return err
-		}
-	}
-	err = p.conn.EndBatch(false)
-	if err != nil {
-		_ = p.Close()
-		return err
-	}
-	return nil
+	return p.SendNMDC(cmds...)
 }
 
 func (p *nmdcPeer) JoinRoom(room *Room) error {
@@ -981,29 +934,25 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 	if rname == "" {
 		return nil
 	}
-	err := p.writeAsync(&nmdcp.MyINFO{
-		Name:       rname,
-		HubsNormal: room.Users(), // TODO: update
-		Client:     p.hub.conf.Soft,
-		Mode:       nmdcp.UserModeActive,
-		Flag:       nmdcp.FlagStatusServer,
-		Slots:      1,
-		Conn:       nmdcp.ConnSpeedModem, // "modem" icon
-	})
-	if err != nil {
-		return err
-	}
-	err = p.writeAsync(&nmdcp.OpList{
-		Names: nmdcp.Names{rname},
-	})
-	if err != nil {
-		return err
-	}
-	return p.writeAsync(&nmdcp.PrivateMessage{
-		From: rname, Name: rname,
-		To:   p.Name(),
-		Text: "joined the room",
-	})
+	return p.SendNMDC(
+		&nmdcp.MyINFO{
+			Name:       rname,
+			HubsNormal: room.Users(), // TODO: update
+			Client:     p.hub.conf.Soft,
+			Mode:       nmdcp.UserModeActive,
+			Flag:       nmdcp.FlagStatusServer,
+			Slots:      1,
+			Conn:       nmdcp.ConnSpeedModem, // "modem" icon
+		},
+		&nmdcp.OpList{
+			Names: nmdcp.Names{rname},
+		},
+		&nmdcp.PrivateMessage{
+			From: rname, Name: rname,
+			To:   p.Name(),
+			Text: "joined the room",
+		},
+	)
 }
 
 func (p *nmdcPeer) LeaveRoom(room *Room) error {
@@ -1011,23 +960,22 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 	if rname == "" {
 		return nil
 	}
-	err := p.writeAsync(&nmdcp.PrivateMessage{
-		From: rname, Name: rname,
-		To:   p.Name(),
-		Text: "left the room",
-	})
-	if err != nil {
-		return err
-	}
-	return p.writeAsync(&nmdcp.Quit{
-		Name: nmdcp.Name(rname),
-	})
+	return p.SendNMDC(
+		&nmdcp.PrivateMessage{
+			From: rname, Name: rname,
+			To:   p.Name(),
+			Text: "left the room",
+		},
+		&nmdcp.Quit{
+			Name: nmdcp.Name(rname),
+		},
+	)
 }
 
 func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	rname := room.Name()
 	if rname == "" {
-		return p.writeAsync(&nmdcp.ChatMessage{
+		return p.SendNMDC(&nmdcp.ChatMessage{
 			Name: msg.Name,
 			Text: msg.Text,
 		})
@@ -1035,7 +983,7 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if from == p {
 		return nil // no echo
 	}
-	return p.writeAsync(&nmdcp.PrivateMessage{
+	return p.SendNMDC(&nmdcp.PrivateMessage{
 		From: rname,
 		To:   p.Name(),
 		Name: msg.Name,
@@ -1045,7 +993,7 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 
 func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 	fname := msg.Name
-	return p.writeAsync(&nmdcp.PrivateMessage{
+	return p.SendNMDC(&nmdcp.PrivateMessage{
 		From: fname, Name: fname,
 		To:   p.Name(),
 		Text: msg.Text,
@@ -1053,12 +1001,12 @@ func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
-	return p.writeAsync(&nmdcp.ChatMessage{Name: p.hub.conf.Name, Text: text})
+	return p.SendNMDC(&nmdcp.ChatMessage{Name: p.hub.conf.Name, Text: text})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
 	// TODO: save token somewhere?
-	return p.writeAsync(&nmdcp.ConnectToMe{
+	return p.SendNMDC(&nmdcp.ConnectToMe{
 		Targ:    peer.Name(),
 		Address: addr,
 		Secure:  secure,
@@ -1067,7 +1015,7 @@ func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) 
 
 func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	// TODO: save token somewhere?
-	return p.writeAsync(&nmdcp.RevConnectToMe{
+	return p.SendNMDC(&nmdcp.RevConnectToMe{
 		From: peer.Name(),
 		To:   p.Name(),
 	})
@@ -1108,7 +1056,7 @@ func (s *nmdcSearch) SendResult(r SearchResult) error {
 	default:
 		return nil // ignore
 	}
-	return s.p.writeAsync(sr)
+	return s.p.SendNMDC(sr)
 }
 
 func (s *nmdcSearch) Close() error {
@@ -1133,12 +1081,12 @@ func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) er
 	p.setActiveSearch(out, req)
 	if req, ok := req.(TTHSearch); ok {
 		if p.fea.Has(nmdcp.ExtTTHS) {
-			return p.writeAsync(&nmdcp.TTHSearchPassive{
+			return p.SendNMDC(&nmdcp.TTHSearchPassive{
 				User: out.Peer().Name(),
 				TTH:  TTH(req),
 			})
 		}
-		return p.writeAsync(&nmdcp.Search{
+		return p.SendNMDC(&nmdcp.Search{
 			User:     out.Peer().Name(),
 			DataType: nmdcp.DataTypeTTH, TTH: (*TTH)(&req),
 		})
@@ -1185,5 +1133,5 @@ func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) er
 		return nil // ignore
 	}
 	msg.Pattern += strings.Join(name.And, " ")
-	return p.writeAsync(msg)
+	return p.SendNMDC(msg)
 }

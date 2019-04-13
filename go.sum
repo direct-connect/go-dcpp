@@ -73,6 +73,8 @@ github.com/direct-connect/go-dc v0.5.5 h1:NXoJrriyrXV+PmDcIfVBYzKoO1t1cQB1GG9f+B
 github.com/direct-connect/go-dc v0.5.5/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
 github.com/direct-connect/go-dc v0.5.6 h1:J1xizSk+abxpRDITegkoey1NQF6dL5PjMFZs6bNnubk=
 github.com/direct-connect/go-dc v0.5.6/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
+github.com/direct-connect/go-dc v0.6.0 h1:WUY2vGBK4hj2OSNvqoIflnsmT8lMGALhozXmQd8tWbw=
+github.com/direct-connect/go-dc v0.6.0/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.3.3/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
@@ -246,6 +248,7 @@ github.com/spf13/viper v1.3.1 h1:5+8j8FTpnFV4nEImW/ofkzEt8VoOiLXxdYIDsB73T38=
 github.com/spf13/viper v1.3.1/go.mod h1:ZiWeW+zYFKm7srdB9IoDzzZXaJaI5eL9QjNiN/DMA2s=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+github.com/stretchr/objx v0.2.0/go.mod h1:qt09Ya8vawLte6SNmTgCsAVtYtaKzEcn8ATUoHMkEqE=
 github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1w=
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.3.0 h1:TivCn/peBQ7UY8ooIcPgZFpTNSz0Q2U6UrFlUfqbe0Q=

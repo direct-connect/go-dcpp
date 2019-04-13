@@ -77,8 +77,7 @@ func DialContext(ctx context.Context, addr string) (*Conn, error) {
 // NewConn runs an NMDC protocol over a specified connection.
 func NewConn(conn net.Conn) (*Conn, error) {
 	c := &Conn{
-		conn:   conn,
-		closed: make(chan struct{}),
+		conn: conn,
 	}
 	c.w = nmdc.NewWriter(conn)
 	c.r = nmdc.NewReader(conn)
@@ -109,7 +108,7 @@ func NewConn(conn net.Conn) (*Conn, error) {
 // Conn is a NMDC protocol connection.
 type Conn struct {
 	cmu    sync.Mutex
-	closed chan struct{}
+	closed bool
 
 	encoding atomic.Value // encoding.Encoding
 	fallback encoding.Encoding
@@ -138,10 +137,6 @@ func (c *Conn) OnMessageR(fnc func(m nmdc.Message) (bool, error)) {
 
 func (c *Conn) OnMessageW(fnc func(m nmdc.Message) (bool, error)) {
 	c.w.OnMessage(fnc)
-}
-
-func (c *Conn) SafeRead(v bool) {
-	c.r.Safe = v
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -201,58 +196,15 @@ func (c *Conn) SetFallbackEncoding(enc encoding.Encoding) {
 func (c *Conn) Close() error {
 	c.cmu.Lock()
 	defer c.cmu.Unlock()
-	// should not hold any other mutex
-	select {
-	case <-c.closed:
+	if c.closed {
 		return nil
-	default:
-		close(c.closed)
 	}
+	c.closed = true
+	// should not hold any other mutex
 	return c.conn.Close()
 }
 
-// KeepAlive starts sending keep-alive messages on the connection.
-func (c *Conn) KeepAlive(interval time.Duration) {
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		// skip one tick
-		select {
-		case <-c.closed:
-			return
-		case <-ticker.C:
-		}
-		for {
-			select {
-			case <-c.closed:
-				return
-			case <-ticker.C:
-			}
-			// empty message serves as keep-alive for NMDC
-			err := c.w.WriteLineAsync([]byte("|"))
-			if err != nil {
-				_ = c.Close()
-				return
-			}
-		}
-	}()
-}
-
-// StartBatch starts a batch of messages. Caller should call EndBatch to flush the buffer.
-func (c *Conn) StartBatch() error {
-	return c.w.StartBatch()
-}
-
-// EndBatch flushes a batch of messages.
-func (c *Conn) EndBatch(force bool) error {
-	return c.w.EndBatch(force)
-}
-
 func (c *Conn) WriteMsg(m nmdc.Message) error {
-	return c.w.WriteMsg(m)
-}
-
-func (c *Conn) WriteMsgAsync(m nmdc.Message) error {
 	return c.w.WriteMsg(m)
 }
 
@@ -260,11 +212,21 @@ func (c *Conn) WriteLine(data []byte) error {
 	return c.w.WriteLine(data)
 }
 
-func (c *Conn) WriteLineAsync(data []byte) error {
-	return c.w.WriteLineAsync(data)
+func (c *Conn) Flush() error {
+	return c.w.Flush()
 }
 
-func (c *Conn) Flush() error {
+func (c *Conn) WriteOneMsg(m nmdc.Message) error {
+	if err := c.w.WriteMsg(m); err != nil {
+		return err
+	}
+	return c.w.Flush()
+}
+
+func (c *Conn) WriteOneLine(data []byte) error {
+	if err := c.w.WriteLine(data); err != nil {
+		return err
+	}
 	return c.w.Flush()
 }
 
