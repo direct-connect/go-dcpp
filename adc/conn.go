@@ -145,33 +145,8 @@ func (c *Conn) Close() error {
 	return c.conn.Close()
 }
 
-// KeepAlive starts sending keep-alive messages on the connection.
-func (c *Conn) KeepAlive(interval time.Duration) {
-	if c.closed != nil {
-		// already enabled
-		return
-	}
-	c.closed = make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-c.closed:
-				return
-			case <-ticker.C:
-			}
-			// empty packet serves as keep-alive for ADC
-			err := c.writeRawPacket([]byte{lineDelim})
-			if err == nil {
-				err = c.Flush()
-			}
-			if err != nil {
-				_ = c.Close()
-				return
-			}
-		}
-	}()
+func (c *Conn) WriteKeepAlive() error {
+	return c.writeRawPacket([]byte{lineDelim})
 }
 
 // ReadPacket reads and decodes a single ADC command.

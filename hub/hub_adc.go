@@ -93,15 +93,18 @@ func (h *Hub) adcHandshake(c *adc.Conn) (*adcPeer, error) {
 }
 
 func (h *Hub) adcServePeer(peer *adcPeer) error {
-	peer.conn.KeepAlive(time.Minute / 2)
 	if !h.callOnJoined(peer) {
 		return nil // TODO: eny errors?
 	}
+	go peer.writer()
 	for {
-		p, err := peer.conn.ReadPacket(time.Time{})
+		p, err := peer.c.ReadPacket(time.Time{})
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
+			if !peer.Online() {
+				return nil
+			}
 			return err
 		}
 		if err = h.adcHandlePacket(peer, p); err != nil {
@@ -137,10 +140,7 @@ func (h *Hub) adcHandlePacket(peer *adcPeer, p adc.Packet) error {
 		if peer.sid != p.ID {
 			return errors.New("malformed echo packet")
 		}
-		if err := peer.conn.WritePacket(p); err != nil {
-			return err
-		}
-		if err := peer.conn.Flush(); err != nil {
+		if err := peer.SendADC(p); err != nil {
 			return err
 		}
 		h.adcDirect((*adc.DirectPacket)(p), peer)
@@ -212,12 +212,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 		return nil, err
 	}
 
-	peer := &adcPeer{
-		conn: c,
-		fea:  mutual,
-	}
-	// and allocate a SID for the client
-	h.newBasePeer(&peer.BasePeer, c)
+	peer := newADC(h, c, mutual)
 
 	err = c.WriteInfoMsg(adc.SIDAssign{
 		SID: peer.SID(),
@@ -235,7 +230,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 	// client should send INF with ID and PID set
-	p, err := peer.conn.ReadPacket(deadline)
+	p, err := peer.c.ReadPacket(deadline)
 	if err != nil {
 		return err
 	}
@@ -256,14 +251,14 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 	if u.Id != u.Pid.Hash() {
 		err = errors.New("invalid pid supplied")
-		_ = peer.sendError(adc.Fatal, 27, err)
+		_ = peer.sendErrorNow(adc.Fatal, 27, err)
 		return err
 	}
 	u.Pid = nil
 
 	err = h.validateUserName(u.Name)
 	if err != nil {
-		_ = peer.sendError(adc.Fatal, 21, err)
+		_ = peer.sendErrorNow(adc.Fatal, 21, err)
 		return err
 	}
 
@@ -277,12 +272,12 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	if sameName {
 		err = errNickTaken
-		_ = peer.sendError(adc.Fatal, 22, err)
+		_ = peer.sendErrorNow(adc.Fatal, 22, err)
 		return err
 	}
 	if sameCID {
 		err = errors.New("CID taken")
-		_ = peer.sendError(adc.Fatal, 24, err)
+		_ = peer.sendErrorNow(adc.Fatal, 24, err)
 		return err
 	}
 
@@ -303,11 +298,11 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	if !ok {
 		if sameCID {
 			err = errors.New("CID taken")
-			_ = peer.sendError(adc.Fatal, 24, err)
+			_ = peer.sendErrorNow(adc.Fatal, 24, err)
 			return err
 		}
 		err = errNickTaken
-		_ = peer.sendError(adc.Fatal, 22, err)
+		_ = peer.sendErrorNow(adc.Fatal, 22, err)
 		return err
 	}
 
@@ -338,7 +333,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	deadline = time.Now().Add(time.Second * 5)
 
 	// send hub info
-	err = peer.conn.WriteInfoMsg(adc.HubInfo{
+	err = peer.c.WriteInfoMsg(adc.HubInfo{
 		Name:        st.Name,
 		Desc:        st.Desc,
 		Application: st.Soft.Name,
@@ -351,21 +346,21 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 	// send OK status
-	err = peer.conn.WriteInfoMsg(adc.Status{
+	err = peer.c.WriteInfoMsg(adc.Status{
 		Sev:  adc.Success,
 		Code: 0,
 		Msg:  "powered by Gophers",
 	})
 
 	// send user list (except his own info)
-	err = peer.PeersJoin(h.Peers())
+	err = peer.peersJoin(h.Peers(), true)
 	if err != nil {
 		unbind()
 		return err
 	}
 
 	// write his info and flush
-	err = peer.PeersJoin([]Peer{peer})
+	err = peer.peersJoin([]Peer{peer}, true)
 	if err != nil {
 		unbind()
 		return err
@@ -389,7 +384,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}, nil)
 	// notify other users about the new one
 	h.broadcastUserJoin(peer, list)
-	return nil
+	return peer.c.Flush()
 }
 
 func (h *Hub) adcStageVerify(peer *adcPeer) error {
@@ -404,18 +399,18 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 	//some bytes for check password
 	var salt [24]byte
 	rand.Read(salt[:])
-	err = peer.conn.WriteInfoMsg(adc.GetPassword{
+	err = peer.c.WriteInfoMsg(adc.GetPassword{
 		Salt: salt[:],
 	})
 	if err != nil {
 		return err
 	}
-	err = peer.conn.Flush()
+	err = peer.c.Flush()
 	if err != nil {
 		return err
 	}
 
-	p, err := peer.conn.ReadPacket(deadline)
+	p, err := peer.c.ReadPacket(deadline)
 	if err != nil {
 		return err
 	}
@@ -434,7 +429,7 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 		return err
 	} else if !ok {
 		err = errors.New("wrong password")
-		_ = peer.sendError(adc.Fatal, 23, err)
+		_ = peer.sendErrorNow(adc.Fatal, 23, err)
 		return err
 	}
 	return nil
@@ -476,7 +471,7 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 	for _, c := range h.ListCommands() {
-		err := peer.conn.WriteInfoMsg(adc.UserCommand{
+		err := peer.c.WriteInfoMsg(adc.UserCommand{
 			Path:     c.Menu,
 			Command:  "HMSG !" + c.Name + "\n",
 			Category: adc.CategoryUser,
@@ -485,7 +480,7 @@ func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 			return err
 		}
 	}
-	return peer.conn.Flush()
+	return nil
 }
 
 func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
@@ -510,8 +505,7 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 		// TODO: decode other packets
 		for _, peer := range h.Peers() {
 			if p2, ok := peer.(*adcPeer); ok {
-				_ = p2.conn.WritePacket(p)
-				_ = p2.conn.Flush()
+				_ = p2.SendADC(p)
 			}
 		}
 	}
@@ -571,8 +565,7 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	default:
 		// TODO: decode other packets
 		if p2, ok := peer.(*adcPeer); ok {
-			_ = p2.conn.WritePacket(p)
-			_ = p2.conn.Flush()
+			_ = p2.SendADC(p)
 		}
 	}
 }
@@ -625,8 +618,7 @@ func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest, peers []Pee
 
 func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
 	if to, ok := to.(*adcPeer); ok {
-		_ = to.conn.WriteDirect(peer.SID(), to.SID(), *res)
-		_ = to.conn.Flush()
+		_ = to.SendADCDirect(peer.SID(), *res)
 		return
 	}
 	peer.search.RLock()
@@ -654,12 +646,27 @@ func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
 
 var _ Peer = (*adcPeer)(nil)
 
+func newADC(h *Hub, c *adc.Conn, fea adc.ModFeatures) *adcPeer {
+	peer := &adcPeer{
+		c:   c,
+		fea: fea,
+	}
+	h.newBasePeer(&peer.BasePeer, c)
+	peer.write.wake = make(chan struct{}, 1)
+	return peer
+}
+
 type adcPeer struct {
 	BasePeer
 
-	conn *adc.Conn
-	fea  adc.ModFeatures
+	c   *adc.Conn
+	fea adc.ModFeatures
 
+	write struct {
+		wake chan struct{}
+		sync.Mutex
+		buf []adc.Packet
+	}
 	info struct {
 		cid adc.CID
 
@@ -713,23 +720,116 @@ func (p *adcPeer) User() User {
 	}
 }
 
-func (p *adcPeer) sendInfo(m adc.Message) error {
-	err := p.conn.WriteInfoMsg(m)
+func (p *adcPeer) writer() {
+	defer p.Close()
+	ticker := time.NewTicker(time.Minute / 2)
+	defer ticker.Stop()
+
+	var buf2 []adc.Packet
+	for {
+		var err error
+		select {
+		case <-p.close.done:
+			return
+		case <-ticker.C:
+			// keep alive
+			err = p.c.WriteKeepAlive()
+		case <-p.write.wake:
+			p.write.Lock()
+			buf := p.write.buf
+			p.write.buf = buf2
+			p.write.Unlock()
+			if len(buf) == 0 {
+				buf2 = buf[:0]
+				continue
+			}
+			for _, m := range buf {
+				err = p.c.WritePacket(m)
+				if err != nil {
+					break
+				}
+			}
+			buf2 = buf[:0]
+		}
+		if err == nil {
+			err = p.c.Flush()
+		}
+		if err != nil {
+			if p.Online() {
+				log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+			}
+			return
+		}
+	}
+}
+
+func (p *adcPeer) SendADC(m ...adc.Packet) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
+	p.write.Lock()
+	if !p.Online() {
+		p.write.Unlock()
+		return errConnectionClosed
+	}
+	p.write.buf = append(p.write.buf, m...)
+	p.write.Unlock()
+	select {
+	case p.write.wake <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (p *adcPeer) SendADCInfo(m adc.Message) error {
+	data, err := adc.Marshal(m)
 	if err != nil {
 		return err
 	}
-	return p.conn.Flush()
+	return p.SendADC(&adc.InfoPacket{
+		BasePacket: adc.BasePacket{Name: m.Cmd(), Data: data},
+	})
 }
 
-func (p *adcPeer) sendError(sev adc.Severity, code int, err error) error {
-	return p.sendInfo(adc.Status{
+func (p *adcPeer) SendADCDirect(from SID, m adc.Message) error {
+	data, err := adc.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return p.SendADC(&adc.DirectPacket{
+		ID: from, Targ: p.SID(),
+		BasePacket: adc.BasePacket{Name: m.Cmd(), Data: data},
+	})
+}
+
+func (p *adcPeer) SendADCBroadcast(from SID, m adc.Message) error {
+	data, err := adc.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return p.SendADC(&adc.BroadcastPacket{
+		ID:         from,
+		BasePacket: adc.BasePacket{Name: m.Cmd(), Data: data},
+	})
+}
+
+func (p *adcPeer) sendInfoNow(m adc.Message) error {
+	err := p.c.WriteInfoMsg(m)
+	if err != nil {
+		return err
+	}
+	return p.c.Flush()
+}
+
+func (p *adcPeer) sendErrorNow(sev adc.Severity, code int, err error) error {
+	return p.sendInfoNow(adc.Status{
 		Sev: sev, Code: code, Msg: err.Error(),
 	})
 }
 
 func (p *adcPeer) Close() error {
 	return p.closeWith(
-		p.conn.Close,
+		p.c.Close,
 		func() error {
 			p.hub.leaveCID(p, p.sid, p.info.cid)
 			return nil
@@ -744,6 +844,10 @@ func (p *adcPeer) BroadcastJoin(peers []Peer) {
 }
 
 func (p *adcPeer) PeersJoin(peers []Peer) error {
+	return p.peersJoin(peers, false)
+}
+
+func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
@@ -794,11 +898,17 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 		if !p.Online() {
 			return errConnectionClosed
 		}
-		if err := p.conn.WriteBroadcast(peer.SID(), &u); err != nil {
+		var err error
+		if initial {
+			err = p.c.WriteBroadcast(peer.SID(), &u)
+		} else {
+			err = p.SendADCBroadcast(peer.SID(), &u)
+		}
+		if err != nil {
 			return err
 		}
 	}
-	return p.conn.Flush()
+	return nil
 }
 
 func (p *adcPeer) BroadcastLeave(peers []Peer) {
@@ -815,13 +925,13 @@ func (p *adcPeer) PeersLeave(peers []Peer) error {
 		if !p.Online() {
 			return errConnectionClosed
 		}
-		if err := p.conn.WriteInfoMsg(&adc.Disconnect{
+		if err := p.SendADCInfo(&adc.Disconnect{
 			ID: peer.SID(),
 		}); err != nil {
 			return err
 		}
 	}
-	return p.conn.Flush()
+	return nil
 }
 
 func (p *adcPeer) JoinRoom(room *Room) error {
@@ -834,7 +944,7 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 	rsid := room.SID()
 	rname := room.Name()
 	h := tiger.HashBytes([]byte(rname)) // TODO: include hub name?
-	err := p.conn.WriteBroadcast(rsid, adc.User{
+	err := p.SendADCBroadcast(rsid, adc.User{
 		Id:          types.CID(h),
 		Name:        rname,
 		HubsNormal:  room.Users(), // TODO: update
@@ -846,13 +956,13 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 	if err != nil {
 		return err
 	}
-	err = p.conn.WriteDirect(rsid, p.SID(), adc.ChatMessage{
+	err = p.SendADCDirect(rsid, adc.ChatMessage{
 		Text: "joined the room", PM: &rsid,
 	})
 	if err != nil {
 		return err
 	}
-	return p.conn.Flush()
+	return nil
 }
 
 func (p *adcPeer) LeaveRoom(room *Room) error {
@@ -863,44 +973,39 @@ func (p *adcPeer) LeaveRoom(room *Room) error {
 		return nil
 	}
 	rsid := room.SID()
-	err := p.conn.WriteDirect(rsid, p.SID(), adc.ChatMessage{
+	err := p.SendADCDirect(rsid, adc.ChatMessage{
 		Text: "left the room", PM: &rsid,
 	})
 	if err != nil {
 		return err
 	}
-	err = p.conn.WriteBroadcast(rsid, adc.Disconnect{
+	err = p.SendADCBroadcast(rsid, adc.Disconnect{
 		ID: rsid,
 	})
 	if err != nil {
 		return err
 	}
-	return p.conn.Flush()
+	return nil
 }
 
 func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	var err error
-	if room.Name() != "" {
-		if p == from {
-			return nil // no echo
-		}
-		rsid := room.SID()
-		fsid := from.SID()
-		err = p.conn.WriteDirect(fsid, p.SID(), adc.ChatMessage{
-			Text: msg.Text, PM: &rsid,
-		})
-	} else {
-		err = p.conn.WriteBroadcast(from.SID(), &adc.ChatMessage{
+	if room.Name() == "" {
+		return p.SendADCBroadcast(from.SID(), &adc.ChatMessage{
 			Text: msg.Text,
 		})
+
 	}
-	if err != nil {
-		return err
+	if p == from {
+		return nil // no echo
 	}
-	return p.conn.Flush()
+	rsid := room.SID()
+	fsid := from.SID()
+	return p.SendADCDirect(fsid, adc.ChatMessage{
+		Text: msg.Text, PM: &rsid,
+	})
 }
 
 func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
@@ -908,26 +1013,18 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 		return errConnectionClosed
 	}
 	src := from.SID()
-	err := p.conn.WriteDirect(src, p.sid, &adc.ChatMessage{
+	return p.SendADCBroadcast(src, &adc.ChatMessage{
 		Text: msg.Text, PM: &src,
 	})
-	if err != nil {
-		return err
-	}
-	return p.conn.Flush()
 }
 
 func (p *adcPeer) HubChatMsg(text string) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	err := p.conn.WriteInfoMsg(&adc.ChatMessage{
+	return p.SendADCInfo(&adc.ChatMessage{
 		Text: text,
 	})
-	if err != nil {
-		return err
-	}
-	return p.conn.Flush()
 }
 
 func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
@@ -955,7 +1052,7 @@ func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 	} else {
 		field = [2]byte{'I', '6'} // IPv6
 	}
-	err = p.conn.WriteInfoMsg(adc.UserMod{
+	err = p.SendADCInfo(adc.UserMod{
 		field: host,
 	})
 	if err != nil {
@@ -967,16 +1064,11 @@ func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 	if secure {
 		proto = adc.ProtoADCS
 	}
-	err = p.conn.WriteDirect(peer.SID(), p.sid, &adc.ConnectRequest{
+	return p.SendADCDirect(peer.SID(), &adc.ConnectRequest{
 		Proto: proto,
 		Port:  port,
 		Token: token,
 	})
-	if err != nil {
-		return err
-	}
-
-	return p.conn.Flush()
 }
 
 func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
@@ -988,14 +1080,10 @@ func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 	if secure {
 		proto = adc.ProtoADCS
 	}
-	err := p.conn.WriteDirect(peer.SID(), p.sid, &adc.RevConnectRequest{
+	return p.SendADCDirect(peer.SID(), &adc.RevConnectRequest{
 		Proto: proto,
 		Token: token,
 	})
-	if err != nil {
-		return err
-	}
-	return p.conn.Flush()
 }
 
 func (p *adcPeer) newSearch(token string) Search {
@@ -1035,11 +1123,7 @@ func (s *adcSearch) SendResult(r SearchResult) error {
 	default:
 		return nil // ignore
 	}
-	err := s.p.conn.WriteDirect(r.From().SID(), s.p.SID(), sr)
-	if err == nil {
-		err = s.p.conn.Flush()
-	}
-	return err
+	return s.p.SendADCDirect(r.From().SID(), sr)
 }
 
 func (s *adcSearch) Close() error {
@@ -1131,9 +1215,5 @@ func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) err
 		msg.And = name.And
 		msg.Not = name.Not
 	}
-	err := p.conn.WriteBroadcast(out.Peer().SID(), msg)
-	if err == nil {
-		err = p.conn.Flush()
-	}
-	return err
+	return p.SendADCBroadcast(out.Peer().SID(), msg)
 }
