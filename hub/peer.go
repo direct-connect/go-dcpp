@@ -8,14 +8,18 @@ import (
 	"github.com/direct-connect/go-dcpp/internal/safe"
 )
 
+type connAddr interface {
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+}
+
 type Peer interface {
 	base() *BasePeer
 
 	Online() bool
 	SID() SID
 	Name() string
-	LocalAddr() net.Addr
-	RemoteAddr() net.Addr
+	connAddr
 	User() User
 
 	Close() error
@@ -39,6 +43,16 @@ type Peer interface {
 	Search(ctx context.Context, req SearchRequest, out Search) error
 }
 
+func (h *Hub) newBasePeer(p *BasePeer, c connAddr) {
+	*p = BasePeer{
+		hub:      h,
+		hubAddr:  c.LocalAddr(),
+		peerAddr: c.RemoteAddr(),
+		sid:      h.nextSID(),
+	}
+	p.close.done = make(chan struct{})
+}
+
 type BasePeer struct {
 	hub     *Hub
 	offline safe.Bool
@@ -48,6 +62,11 @@ type BasePeer struct {
 	sid      SID
 	name     safe.String
 
+	close struct {
+		sync.Mutex
+		done chan struct{}
+	}
+
 	rooms struct {
 		sync.RWMutex
 		list []*Room
@@ -56,10 +75,6 @@ type BasePeer struct {
 
 func (p *BasePeer) base() *BasePeer {
 	return p
-}
-
-func (p *BasePeer) setOffline() {
-	p.offline.Set(true)
 }
 
 func (p *BasePeer) setName(name string) {
@@ -84,4 +99,24 @@ func (p *BasePeer) LocalAddr() net.Addr {
 
 func (p *BasePeer) RemoteAddr() net.Addr {
 	return p.peerAddr
+}
+
+func (p *BasePeer) closeWith(closers ...func() error) error {
+	if !p.Online() {
+		return nil
+	}
+	p.close.Lock()
+	defer p.close.Unlock()
+	if !p.Online() {
+		return nil
+	}
+	close(p.close.done)
+	p.offline.Set(true)
+	var first error
+	for _, fnc := range closers {
+		if err := fnc(); err != nil {
+			first = err
+		}
+	}
+	return first
 }

@@ -211,10 +211,16 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	peer := &adcPeer{
+		conn: c,
+		fea:  mutual,
+	}
 	// and allocate a SID for the client
-	sid := h.nextSID()
+	h.newBasePeer(&peer.BasePeer, c)
+
 	err = c.WriteInfoMsg(adc.SIDAssign{
-		SID: sid,
+		SID: peer.SID(),
 	})
 	if err != nil {
 		return nil, err
@@ -223,16 +229,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &adcPeer{
-		BasePeer: BasePeer{
-			hub:      h,
-			hubAddr:  c.LocalAddr(),
-			peerAddr: c.RemoteAddr(),
-			sid:      sid,
-		},
-		conn: c,
-		fea:  mutual,
-	}, nil
+	return peer, nil
 }
 
 func (h *Hub) adcStageIdentity(peer *adcPeer) error {
@@ -670,8 +667,6 @@ type adcPeer struct {
 		user adc.User
 	}
 
-	closeMu sync.Mutex
-
 	search struct {
 		sync.RWMutex
 		tokens map[string]*adcSearchToken
@@ -733,19 +728,13 @@ func (p *adcPeer) sendError(sev adc.Severity, code int, err error) error {
 }
 
 func (p *adcPeer) Close() error {
-	if !p.Online() {
-		return nil
-	}
-	p.closeMu.Lock()
-	defer p.closeMu.Unlock()
-	if !p.Online() {
-		return nil
-	}
-	p.setOffline()
-	err := p.conn.Close()
-
-	p.hub.leaveCID(p, p.sid, p.info.cid)
-	return err
+	return p.closeWith(
+		p.conn.Close,
+		func() error {
+			p.hub.leaveCID(p, p.sid, p.info.cid)
+			return nil
+		},
+	)
 }
 
 func (p *adcPeer) BroadcastJoin(peers []Peer) {

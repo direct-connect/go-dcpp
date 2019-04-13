@@ -141,12 +141,6 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 	conn.SetReadDeadline(time.Time{})
 
 	peer := &ircPeer{
-		BasePeer: BasePeer{
-			hub:      h,
-			hubAddr:  conn.LocalAddr(),
-			peerAddr: conn.RemoteAddr(),
-			sid:      h.nextSID(),
-		},
 		hostPref: pref,
 		ownPref: &irc.Prefix{
 			Name: name,
@@ -156,6 +150,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 		c:    c,
 		conn: conn,
 	}
+	h.newBasePeer(&peer.BasePeer, conn)
 	peer.setName(name)
 
 	err := h.ircAccept(peer)
@@ -302,8 +297,6 @@ type ircPeer struct {
 	rmu sync.Mutex
 	wmu sync.Mutex
 	c   *irc.Conn
-
-	closeMu sync.Mutex
 }
 
 func (p *ircPeer) writeMessage(m *irc.Message) error {
@@ -330,19 +323,13 @@ func (p *ircPeer) User() User {
 }
 
 func (p *ircPeer) Close() error {
-	if !p.Online() {
-		return nil
-	}
-	p.closeMu.Lock()
-	defer p.closeMu.Unlock()
-	if !p.Online() {
-		return nil
-	}
-	p.setOffline()
-	err := p.conn.Close()
-
-	p.hub.leave(p, p.sid, nil)
-	return err
+	return p.closeWith(
+		p.conn.Close,
+		func() error {
+			p.hub.leave(p, p.sid, nil)
+			return nil
+		},
+	)
 }
 
 func (p *ircPeer) BroadcastJoin(peers []Peer) {

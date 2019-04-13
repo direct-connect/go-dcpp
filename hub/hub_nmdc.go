@@ -619,25 +619,12 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 
 var _ Peer = (*nmdcPeer)(nil)
 
-const (
-	nmdcPeerConnecting = iota
-	nmdcPeerJoining
-	nmdcPeerNormal
-	nmdcPeerClosed
-)
-
 func newNMDC(h *Hub, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
 	peer := &nmdcPeer{
-		BasePeer: BasePeer{
-			hub:      h,
-			hubAddr:  c.LocalAddr(),
-			peerAddr: c.RemoteAddr(),
-			sid:      h.nextSID(),
-		},
 		c: c, ip: ip,
 		fea: fea,
 	}
-	peer.close.done = make(chan struct{})
+	h.newBasePeer(&peer.BasePeer, c)
 	peer.write.wake = make(chan struct{}, 1)
 	peer.info.user.Name = nick
 	return peer
@@ -650,10 +637,6 @@ type nmdcPeer struct {
 	fea nmdcp.Extensions
 	ip  net.IP
 
-	close struct {
-		sync.Mutex
-		done chan struct{}
-	}
 	write struct {
 		wake chan struct{}
 		sync.Mutex
@@ -731,20 +714,13 @@ func (p *nmdcPeer) Info() nmdcp.MyINFO {
 }
 
 func (p *nmdcPeer) closeOn(list []Peer) error {
-	if !p.Online() {
-		return nil
-	}
-	p.close.Lock()
-	defer p.close.Unlock()
-	if !p.Online() {
-		return nil
-	}
-	close(p.close.done)
-	p.setOffline()
-	err := p.c.Close()
-
-	p.hub.leave(p, p.sid, list)
-	return err
+	return p.closeWith(
+		p.c.Close,
+		func() error {
+			p.hub.leave(p, p.sid, list)
+			return nil
+		},
+	)
 }
 
 func (p *nmdcPeer) Close() error {
