@@ -758,11 +758,12 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 				continue
 			}
 			_ = p.c.SetWriteDeadline(time.Now().Add(timeout))
-			for _, m := range buf {
+			for i, m := range buf {
 				err = p.c.WriteMsg(m)
 				if err != nil {
 					break
 				}
+				buf[i] = nil
 			}
 			buf2 = buf[:0]
 		}
