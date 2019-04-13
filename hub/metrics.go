@@ -3,6 +3,8 @@ package hub
 import (
 	"time"
 
+	"github.com/direct-connect/go-dc/nmdc"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -12,6 +14,23 @@ func measure(m prometheus.Observer) func() {
 	return func() {
 		dt := time.Since(start)
 		m.Observe(dt.Seconds())
+	}
+}
+
+const cmdUnknown = "other"
+
+func measureM(m map[string]prometheus.Observer, k string) func() {
+	o, ok := m[k]
+	if !ok {
+		o = m[cmdUnknown]
+	}
+	if o == nil {
+		return func() {}
+	}
+	start := time.Now()
+	return func() {
+		dt := time.Since(start)
+		o.Observe(dt.Seconds())
 	}
 }
 
@@ -178,22 +197,10 @@ var (
 		Name: "dc_nmdc_handshake_dur",
 		Help: "The time to perform NMDC handshake",
 	})
-	cntNMDCCommandsR = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "dc_nmdc_commands_read",
-		Help: "The total number of NMDC commands received",
-	}, []string{"cmd"})
-	cntNMDCCommandsW = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "dc_nmdc_commands_write",
-		Help: "The total number of NMDC commands sent",
-	}, []string{"cmd"})
 	cntNMDCExtensions = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "dc_nmdc_extension",
 		Help: "The total number of NMDC connections with a given extension",
 	}, []string{"ext"})
-	durNMDCHandle = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "dc_nmdc_handle",
-		Help: "The time to to handle a specific command",
-	}, []string{"cmd"})
 
 	sizeADCLinesR = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "dc_adc_lines_read",
@@ -237,3 +244,39 @@ var (
 		Help: "Total share size",
 	})
 )
+
+var (
+	cntNMDCCommandsR = make(map[string]prometheus.Counter)
+	cntNMDCCommandsW = make(map[string]prometheus.Counter)
+	durNMDCHandle    = make(map[string]prometheus.Observer)
+	sizeNMDCCommandR = make(map[string]prometheus.Observer)
+)
+
+func init() {
+	nmdcCommandsR := promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_nmdc_commands_read",
+		Help: "The total number of NMDC commands received",
+	}, []string{"cmd"})
+	nmdcCommandsW := promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_nmdc_commands_write",
+		Help: "The total number of NMDC commands sent",
+	}, []string{"cmd"})
+	nmdcCommandsRSize := promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "dc_nmdc_commands_read_bytes",
+		Help: "The total number of NMDC command bytes received",
+	}, []string{"cmd"})
+	nmdcHandleDur := promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "dc_nmdc_handle",
+		Help: "The time to to handle a specific command",
+	}, []string{"cmd"})
+	reg := func(cmd string) {
+		cntNMDCCommandsR[cmd] = nmdcCommandsR.WithLabelValues(cmd)
+		cntNMDCCommandsW[cmd] = nmdcCommandsW.WithLabelValues(cmd)
+		sizeNMDCCommandR[cmd] = nmdcCommandsRSize.WithLabelValues(cmd)
+		durNMDCHandle[cmd] = nmdcHandleDur.WithLabelValues(cmd)
+	}
+	for _, cmd := range nmdc.RegisteredTypes() {
+		reg(cmd)
+	}
+	reg(cmdUnknown)
+}

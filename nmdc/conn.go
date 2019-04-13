@@ -129,6 +129,10 @@ func (c *Conn) OnLineW(fnc func(line []byte) (bool, error)) {
 	c.w.OnLine(fnc)
 }
 
+func (c *Conn) OnRawMessageR(fnc func(cmd, data []byte) (bool, error)) {
+	c.r.OnRawMessage(fnc)
+}
+
 func (c *Conn) OnMessageR(fnc func(m nmdc.Message) (bool, error)) {
 	c.r.OnMessage(fnc)
 }

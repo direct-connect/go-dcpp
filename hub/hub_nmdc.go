@@ -54,19 +54,40 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 		log.Printf("nmdc: failed to unmarshal:\n%q\n", string(line))
 		return true, err
 	})
+	c.OnRawMessageR(func(cmd, data []byte) (bool, error) {
+		cnt, ok := sizeNMDCCommandR[string(cmd)]
+		if !ok {
+			cnt = sizeNMDCCommandR[cmdUnknown]
+		}
+		if cnt != nil {
+			n := 1
+			if len(cmd) != 0 {
+				n += 1 + len(cmd)
+			}
+			if len(data) != 0 {
+				n += 1 + len(data)
+			}
+			cnt.Observe(float64(n))
+		}
+		return true, nil
+	})
 	c.OnMessageR(func(m nmdcp.Message) (bool, error) {
-		if _, ok := m.(*nmdcp.RawMessage); !ok {
-			cntNMDCCommandsR.WithLabelValues(m.Type()).Add(1)
-		} else {
-			cntNMDCCommandsR.WithLabelValues("unknown").Add(1)
+		cnt, ok := cntNMDCCommandsR[m.Type()]
+		if !ok {
+			cnt = cntNMDCCommandsR[cmdUnknown]
+		}
+		if cnt != nil {
+			cnt.Add(1)
 		}
 		return true, nil
 	})
 	c.OnMessageW(func(m nmdcp.Message) (bool, error) {
-		if _, ok := m.(*nmdcp.RawMessage); !ok {
-			cntNMDCCommandsW.WithLabelValues(m.Type()).Add(1)
-		} else {
-			cntNMDCCommandsW.WithLabelValues("unknown").Add(1)
+		cnt, ok := cntNMDCCommandsW[m.Type()]
+		if !ok {
+			cnt = cntNMDCCommandsW[cmdUnknown]
+		}
+		if cnt != nil {
+			cnt.Add(1)
 		}
 		return true, nil
 	})
@@ -414,7 +435,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 }
 
 func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
-	defer measure(durNMDCHandle.WithLabelValues(msg.Type()))()
+	defer measureM(durNMDCHandle, msg.Type())()
 
 	switch msg := msg.(type) {
 	case *nmdcp.ChatMessage:
