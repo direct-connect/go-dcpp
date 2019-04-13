@@ -497,11 +497,13 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 	// TODO: disallow STA and some others
 	switch msg := msg.(type) {
 	case adc.ChatMessage:
-		text := string(msg.Text)
-		if h.isCommand(from, text) {
+		if h.isCommand(from, msg.Text) {
 			return
 		}
-		h.globalChat.SendChat(from, text)
+		h.globalChat.SendChat(from, Message{
+			Text: msg.Text,
+			Me:   msg.Me,
+		})
 	case adc.SearchRequest:
 		h.adcHandleSearch(from, &msg, nil)
 	default:
@@ -529,7 +531,10 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 		}
 		switch msg := msg.(type) {
 		case adc.ChatMessage:
-			r.SendChat(from, string(msg.Text))
+			r.SendChat(from, Message{
+				Text: msg.Text,
+				Me:   msg.Me,
+			})
 		}
 		return
 	}
@@ -956,7 +961,7 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 		return err
 	}
 	err = p.SendADCDirect(rsid, adc.ChatMessage{
-		Text: "joined the room", PM: &rsid,
+		Text: "joined", PM: &rsid, Me: true,
 	})
 	if err != nil {
 		return err
@@ -973,7 +978,7 @@ func (p *adcPeer) LeaveRoom(room *Room) error {
 	}
 	rsid := room.SID()
 	err := p.SendADCDirect(rsid, adc.ChatMessage{
-		Text: "left the room", PM: &rsid,
+		Text: "parted", PM: &rsid, Me: true,
 	})
 	if err != nil {
 		return err
@@ -993,7 +998,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	}
 	if room.Name() == "" {
 		return p.SendADCBroadcast(from.SID(), &adc.ChatMessage{
-			Text: msg.Text,
+			Text: msg.Text, Me: msg.Me,
 		})
 
 	}
@@ -1003,7 +1008,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	rsid := room.SID()
 	fsid := from.SID()
 	return p.SendADCDirect(fsid, adc.ChatMessage{
-		Text: msg.Text, PM: &rsid,
+		Text: msg.Text, PM: &rsid, Me: msg.Me,
 	})
 }
 
@@ -1013,7 +1018,7 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 	}
 	src := from.SID()
 	return p.SendADCBroadcast(src, &adc.ChatMessage{
-		Text: msg.Text, PM: &src,
+		Text: msg.Text, PM: &src, Me: msg.Me,
 	})
 }
 

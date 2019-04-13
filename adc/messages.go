@@ -547,6 +547,7 @@ var (
 type ChatMessage struct {
 	Text string `adc:"#"`
 	PM   *SID   `adc:"PM"`
+	Me   bool   `adc:"ME"`
 	// TODO: TS
 }
 

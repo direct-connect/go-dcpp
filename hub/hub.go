@@ -544,7 +544,11 @@ func (h *Hub) isCommand(peer Peer, text string) bool {
 		return true // special case
 	}
 	switch text[0] {
-	case '!', '+', '/':
+	case '/':
+		if text == "/me" || strings.HasPrefix(text[1:], "me ") {
+			return false
+		}
+	case '!', '+':
 	default:
 		return false
 	}

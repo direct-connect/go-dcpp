@@ -2,6 +2,7 @@ package adc
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -52,18 +53,16 @@ func unmarshalValue(s []byte, rv reflect.Value) error {
 		return nil
 	}
 	switch rv.Kind() {
-	case reflect.Int:
-		vi, err := strconv.Atoi(string(s))
-		if err != nil {
-			return err
+	case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16:
+		bits := 64
+		switch rv.Kind() {
+		case reflect.Int32, reflect.Int16:
+			bits = 32
 		}
-		rv.Set(reflect.ValueOf(vi).Convert(rv.Type()))
-		return nil
-	case reflect.Int64:
 		sv := string(s)
-		vi, err := strconv.ParseInt(sv, 10, 64)
+		vi, err := strconv.ParseInt(sv, 10, bits)
 		if err != nil {
-			vf, err2 := strconv.ParseFloat(sv, 64)
+			vf, err2 := strconv.ParseFloat(sv, bits)
 			if err2 != nil {
 				return err
 			} else if math.Round(vf) != vf {
@@ -71,10 +70,10 @@ func unmarshalValue(s []byte, rv reflect.Value) error {
 			}
 			vi = int64(vf)
 		}
-		rv.Set(reflect.ValueOf(vi).Convert(rv.Type()))
+		rv.SetInt(vi)
 		return nil
 	case reflect.String:
-		rv.Set(reflect.ValueOf(unescape(s)).Convert(rv.Type()))
+		rv.SetString(unescape(s))
 		return nil
 	case reflect.Ptr:
 		if len(s) == 0 {
@@ -86,6 +85,15 @@ func unmarshalValue(s []byte, rv reflect.Value) error {
 			rv.Set(nv)
 		}
 		return err
+	case reflect.Bool:
+		if len(s) == 0 {
+			rv.SetBool(false)
+			return nil
+		} else if len(s) != 1 {
+			return errors.New("invalid bool value: " + string(s))
+		}
+		rv.SetBool(s[0] != 0)
+		return nil
 	}
 	return fmt.Errorf("unknown type: %v", rv.Type())
 }
@@ -160,19 +168,22 @@ func marshalValue(o interface{}) ([]byte, error) {
 	rv := reflect.ValueOf(o)
 	switch rv.Kind() {
 	case reflect.String:
-		s := rv.Convert(reflect.TypeOf(string(""))).Interface().(string)
+		s := rv.String()
 		return escape(s), nil
-	case reflect.Int:
-		v := rv.Convert(reflect.TypeOf(int(0))).Interface().(int)
-		return []byte(strconv.Itoa(v)), nil
-	case reflect.Int64:
-		v := rv.Convert(reflect.TypeOf(int64(0))).Interface().(int64)
+	case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16:
+		v := rv.Int()
 		return []byte(strconv.FormatInt(v, 10)), nil
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return marshalValue(rv.Elem().Interface())
+	case reflect.Bool:
+		v := rv.Bool()
+		if v {
+			return []byte("1"), nil
+		}
+		return []byte("0"), nil
 	}
 	return nil, fmt.Errorf("unsupported type: %T", o)
 }

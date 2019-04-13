@@ -113,6 +113,11 @@ var casesDecode = []struct {
 		&adc.ChatMessage{Text: "some text", PM: sidp("AAAB")},
 	},
 	{
+		"me",
+		`some\stext ME1`,
+		&adc.ChatMessage{Text: "some text", Me: true},
+	},
+	{
 		"user command",
 		`ADCH++/Hub\smanagement/Reload\sscripts TTHMSG\s+reload\n CT3`,
 		&adc.UserCommand{
@@ -200,6 +205,14 @@ var casesEncode = []struct {
 	{
 		adc.RevConnectRequest{Proto: `ADC/1.0`, Token: `12345678`},
 		`ADC/1.0 12345678`,
+	},
+	{
+		&adc.ChatMessage{Text: "some text", PM: sidp("AAAB")},
+		`some\stext PMAAAB`,
+	},
+	{
+		&adc.ChatMessage{Text: "some text", Me: true},
+		`some\stext ME1`,
 	},
 	{
 		adc.UserCommand{

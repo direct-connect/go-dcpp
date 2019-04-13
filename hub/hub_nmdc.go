@@ -445,7 +445,18 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		if h.isCommand(peer, msg.Text) {
 			return nil
 		}
-		h.globalChat.SendChat(peer, string(msg.Text))
+		m := Message{
+			Name: string(msg.Name),
+			Text: string(msg.Text),
+		}
+		if m.Text == "/me" {
+			m.Me = true
+			m.Text = ""
+		} else if strings.HasPrefix(m.Text, "/me ") {
+			m.Me = true
+			m.Text = m.Text[4:]
+		}
+		h.globalChat.SendChat(peer, m)
 		return nil
 	case *nmdcp.GetNickList:
 		list := h.Peers()
@@ -488,23 +499,31 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			return errors.New("invalid name in PrivateMessage")
 		}
 		to := string(msg.To)
+		m := Message{
+			Name: string(msg.From),
+			Text: string(msg.Text),
+		}
+		if m.Text == "/me" {
+			m.Me = true
+			m.Text = ""
+		} else if strings.HasPrefix(m.Text, "/me ") {
+			m.Me = true
+			m.Text = m.Text[4:]
+		}
 		if strings.HasPrefix(to, "#") {
 			// message in a chat room
 			r := h.Room(to)
 			if r == nil {
 				return nil
 			}
-			r.SendChat(peer, string(msg.Text))
+			r.SendChat(peer, m)
 		} else {
 			// private message
 			targ := h.PeerByName(to)
 			if targ == nil {
 				return nil
 			}
-			h.privateChat(peer, targ, Message{
-				Name: string(msg.From),
-				Text: string(msg.Text),
-			})
+			h.privateChat(peer, targ, m)
 		}
 		return nil
 	case *nmdcp.Search:
@@ -981,7 +1000,7 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 		&nmdcp.PrivateMessage{
 			From: rname, Name: rname,
 			To:   p.Name(),
-			Text: "joined the room",
+			Text: "/me joined",
 		},
 	)
 }
@@ -998,7 +1017,7 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 		&nmdcp.PrivateMessage{
 			From: rname, Name: rname,
 			To:   p.Name(),
-			Text: "left the room",
+			Text: "/me parted",
 		},
 		&nmdcp.Quit{
 			Name: nmdcp.Name(rname),
@@ -1009,6 +1028,9 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if !p.Online() {
 		return errConnectionClosed
+	}
+	if msg.Me && !strings.HasPrefix(msg.Text, "/me") {
+		msg.Text = "/me " + msg.Text
 	}
 	rname := room.Name()
 	if rname == "" {
@@ -1031,6 +1053,9 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 	if !p.Online() {
 		return errConnectionClosed
+	}
+	if msg.Me && !strings.HasPrefix(msg.Text, "/me") {
+		msg.Text = "/me " + msg.Text
 	}
 	fname := msg.Name
 	return p.SendNMDC(&nmdcp.PrivateMessage{

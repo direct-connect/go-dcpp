@@ -17,6 +17,7 @@ type Message struct {
 	Time time.Time
 	Name string
 	Text string
+	Me   bool
 }
 
 func (h *Hub) newRoom(name string) *Room {
@@ -139,11 +140,10 @@ func (r *Room) Leave(p Peer) {
 	}
 }
 
-func (r *Room) SendChat(from Peer, text string) {
-	m := Message{
-		Time: time.Now().UTC(),
-		Name: from.Name(),
-		Text: text,
+func (r *Room) SendChat(from Peer, m Message) {
+	m.Time = time.Now().UTC()
+	if m.Name == "" {
+		m.Name = from.Name()
 	}
 
 	if r.h.globalChat == r {
@@ -177,11 +177,21 @@ func (r *Room) ReplayChat(to Peer, n int) {
 
 	for _, m := range log {
 		// TODO: replay messages from peers themselves, if they are still online
-		err := to.HubChatMsg(fmt.Sprintf(
-			"[%s] <%s> %s",
-			m.Time.Format("15:04:05"),
-			m.Name, m.Text,
-		))
+		var txt string
+		if m.Me {
+			txt = fmt.Sprintf(
+				"[%s] * %s %s",
+				m.Time.Format("15:04:05"),
+				m.Name, m.Text,
+			)
+		} else {
+			txt = fmt.Sprintf(
+				"[%s] <%s> %s",
+				m.Time.Format("15:04:05"),
+				m.Name, m.Text,
+			)
+		}
+		err := to.HubChatMsg(txt)
 		if err != nil {
 			return
 		}
