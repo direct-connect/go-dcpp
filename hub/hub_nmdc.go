@@ -1096,10 +1096,15 @@ func (s *nmdcSearch) Close() error {
 
 func (p *nmdcPeer) gcSearches() {
 	now := time.Now()
+	i := 0
 	for p2, s := range p.search.peers {
 		if now.Sub(s.last.Get()) > searchTimeout {
 			delete(p.search.peers, p2)
 			_ = s.out.Close()
+		}
+		i++
+		if i > 5 {
+			break
 		}
 	}
 }
