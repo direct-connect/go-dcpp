@@ -131,6 +131,7 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 func (c *Conn) SetWriteTimeout(dt time.Duration) {
 	if dt <= 0 {
 		c.w.Timeout = nil
+		return
 	}
 	c.w.Timeout = func(enable bool) error {
 		if enable {

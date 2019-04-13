@@ -9,7 +9,6 @@ import (
 	"net"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -110,7 +109,6 @@ type Conn struct {
 	cmu    sync.Mutex
 	closed bool
 
-	encoding atomic.Value // encoding.Encoding
 	fallback encoding.Encoding
 
 	conn net.Conn
@@ -154,6 +152,7 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 func (c *Conn) SetWriteTimeout(dt time.Duration) {
 	if dt <= 0 {
 		c.w.Timeout = nil
+		return
 	}
 	c.w.Timeout = func(enable bool) error {
 		if enable {
@@ -161,11 +160,6 @@ func (c *Conn) SetWriteTimeout(dt time.Duration) {
 		}
 		return c.conn.SetWriteDeadline(time.Time{})
 	}
-}
-
-func (c *Conn) Encoding() encoding.Encoding {
-	v, _ := c.encoding.Load().(encoding.Encoding)
-	return v
 }
 
 func (c *Conn) FallbackEncoding() encoding.Encoding {
@@ -177,7 +171,6 @@ func (c *Conn) TextEncoder() *encoding.Encoder {
 }
 
 func (c *Conn) setEncoding(enc encoding.Encoding, event bool) {
-	c.encoding.Store(enc)
 	if enc != nil {
 		c.w.SetEncoder(enc.NewEncoder())
 		if !event {
@@ -211,8 +204,8 @@ func (c *Conn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Conn) WriteMsg(m nmdc.Message) error {
-	return c.w.WriteMsg(m)
+func (c *Conn) WriteMsg(m ...nmdc.Message) error {
+	return c.w.WriteMsg(m...)
 }
 
 func (c *Conn) WriteLine(data []byte) error {

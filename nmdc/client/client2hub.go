@@ -112,11 +112,7 @@ handshake:
 				// TODO: support hello as well
 				return nil, nil, fmt.Errorf("no hello is not supported: %v", msg.Ext)
 			}
-			err = conn.WriteMsg(&nmdcp.ValidateNick{Name: nmdcp.Name(conf.Name)})
-			if err != nil {
-				return nil, nil, err
-			}
-			err = conn.Flush()
+			err = conn.WriteOneMsg(&nmdcp.ValidateNick{Name: nmdcp.Name(conf.Name)})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -246,7 +242,7 @@ func (c *Conn) SendChatMsg(msg string) error {
 	c.imu.RLock()
 	name := c.user.Name
 	c.imu.RUnlock()
-	return c.conn.WriteMsg(&nmdcp.ChatMessage{
+	return c.conn.WriteOneMsg(&nmdcp.ChatMessage{
 		Name: name, Text: msg,
 	})
 }

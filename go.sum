@@ -77,6 +77,10 @@ github.com/direct-connect/go-dc v0.6.0 h1:WUY2vGBK4hj2OSNvqoIflnsmT8lMGALhozXmQd
 github.com/direct-connect/go-dc v0.6.0/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
 github.com/direct-connect/go-dc v0.6.1 h1:Va+Qk8CSJISkigN7gZzZOFqW0QhqKXD5zKvCh+Y4TtI=
 github.com/direct-connect/go-dc v0.6.1/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
+github.com/direct-connect/go-dc v0.6.2 h1:1iF2VyNwfHfPdh52n6anrYIgSCXB2qtLQZTqIqjLhNc=
+github.com/direct-connect/go-dc v0.6.2/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
+github.com/direct-connect/go-dc v0.6.3 h1:noHQ2ZgSsp7DTI0IhznNAhStCa189ePbYgPqxb4BRt4=
+github.com/direct-connect/go-dc v0.6.3/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.3.3/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
