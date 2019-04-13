@@ -117,7 +117,7 @@ func init() {
 		Use:   "ping [proto://]host[:port] [...]",
 		Short: "pings the hub and returns its stats",
 	}
-	pingOut := pingCmd.Flags().String("out", "json", "output format (json or xml)")
+	pingOut := pingCmd.Flags().String("out", "json", "output format (json, xml or xml-line)")
 	pingUsers := pingCmd.Flags().Bool("users", false, "return user list as well")
 	pingDebug := pingCmd.Flags().Bool("debug", false, "print protocol messages to stderr")
 	pingPretty := pingCmd.Flags().Bool("pretty", false, "pretty-print an output")
@@ -154,10 +154,13 @@ func init() {
 				e.SetIndent("", "\t")
 			}
 			enc = e.Encode
-		case "xml":
+		case "xml", "xml-line":
 			e := hublist.NewXMLWriter(w)
 			if *pingName != "" {
 				e.SetHublistName(*pingName)
+			}
+			if *pingOut == "xml-line" {
+				e.Headers(false)
 			}
 			enc = func(o interface{}) error {
 				return e.WriteHub(o.(hublist.Hub))

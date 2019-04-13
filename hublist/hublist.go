@@ -122,14 +122,15 @@ type XMLListWriter struct {
 	w   io.Writer
 	enc *xml.Encoder
 
-	name string
-	addr string
+	name    string
+	addr    string
+	headers bool
 
 	started []string
 }
 
 func NewXMLWriter(w io.Writer) *XMLListWriter {
-	return &XMLListWriter{w: w}
+	return &XMLListWriter{w: w, headers: true}
 }
 
 func (w *XMLListWriter) SetHublistName(name string) {
@@ -138,6 +139,10 @@ func (w *XMLListWriter) SetHublistName(name string) {
 
 func (w *XMLListWriter) SetHublistURL(url string) {
 	w.addr = url
+}
+
+func (w *XMLListWriter) Headers(v bool) {
+	w.headers = v
 }
 
 func (w *XMLListWriter) startToken(name string, attrs []xml.Attr) error {
@@ -149,12 +154,17 @@ func (w *XMLListWriter) startToken(name string, attrs []xml.Attr) error {
 }
 
 func (w *XMLListWriter) writeHeader() error {
-	_, err := w.w.Write([]byte(xml.Header))
-	if err != nil {
-		return err
+	if w.headers {
+		_, err := w.w.Write([]byte(xml.Header))
+		if err != nil {
+			return err
+		}
 	}
 	w.enc = xml.NewEncoder(w.w)
 	w.enc.Indent("", "\t")
+	if !w.headers {
+		return nil
+	}
 	var attr []xml.Attr
 	if w.name != "" {
 		attr = append(attr, xml.Attr{
@@ -168,7 +178,7 @@ func (w *XMLListWriter) writeHeader() error {
 			Value: w.addr,
 		})
 	}
-	err = w.startToken("Hublist", attr)
+	err := w.startToken("Hublist", attr)
 	if err != nil {
 		return err
 	}
