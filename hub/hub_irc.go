@@ -153,10 +153,10 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 			User: user,
 			Host: host,
 		},
-		name: name,
 		c:    c,
 		conn: conn,
 	}
+	peer.setName(name)
 
 	err := h.ircAccept(peer)
 	if err != nil {
@@ -172,9 +172,9 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Prefix:  peer.hostPref,
 		Command: "001",
 		Params: []string{
-			peer.name,
+			peer.Name(),
 			fmt.Sprintf("Welcome to the %s Internet Relay Chat Network %s",
-				h.conf.Name, peer.name),
+				h.conf.Name, peer.Name()),
 		},
 	})
 	if err != nil {
@@ -187,7 +187,7 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Prefix:  peer.hostPref,
 		Command: "002",
 		Params: []string{
-			peer.name,
+			peer.Name(),
 			fmt.Sprintf("Your host is %s[%s/%s], running version %s",
 				host, host, port, vers),
 		},
@@ -200,7 +200,7 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Prefix:  peer.hostPref,
 		Command: "003",
 		Params: []string{
-			peer.name,
+			peer.Name(),
 			fmt.Sprintf("This server was created %s at %s UTC",
 				h.created.Format("Mon Jan 2 2006"), h.created.UTC().Format("15:04:05")),
 		},
@@ -213,7 +213,7 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Prefix:  peer.hostPref,
 		Command: "004",
 		Params: []string{
-			peer.name,
+			peer.Name(),
 			host,
 			vers,
 			// TODO: select ones that makes sense
@@ -227,7 +227,7 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Prefix:  peer.hostPref,
 		Command: "005",
 		Params: []string{
-			peer.name,
+			peer.Name(),
 			// TODO: select ones that makes sense
 			"CHANTYPES=#", "EXCEPTS", "INVEX",
 			"CHANMODES=eIbq,k,flj,CFLMPQScgimnprstz",
@@ -303,10 +303,7 @@ type ircPeer struct {
 	wmu sync.Mutex
 	c   *irc.Conn
 
-	mu      sync.RWMutex
-	name    string
 	closeMu sync.Mutex
-	closed  bool
 }
 
 func (p *ircPeer) writeMessage(m *irc.Message) error {
@@ -321,19 +318,9 @@ func (p *ircPeer) readMessage() (*irc.Message, error) {
 	return p.c.ReadMessage()
 }
 
-func (p *ircPeer) Name() string {
-	p.mu.RLock()
-	name := p.name
-	p.mu.RUnlock()
-	return name
-}
-
 func (p *ircPeer) User() User {
-	p.mu.RLock()
-	name := p.name
-	p.mu.RUnlock()
 	return User{
-		Name: name,
+		Name: p.Name(),
 		App: dc.Software{
 			// TODO: propagate the real IRC client version
 			Name:    "DC-IRC bridge",
@@ -343,17 +330,18 @@ func (p *ircPeer) User() User {
 }
 
 func (p *ircPeer) Close() error {
-	p.closeMu.Lock()
-	defer p.closeMu.Unlock()
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if p.closed {
+	if !p.Online() {
 		return nil
 	}
+	p.closeMu.Lock()
+	defer p.closeMu.Unlock()
+	if !p.Online() {
+		return nil
+	}
+	p.setOffline()
 	err := p.conn.Close()
-	p.closed = true
 
-	p.hub.leave(p, p.sid, p.name, nil)
+	p.hub.leave(p, p.sid, nil)
 	return err
 }
 

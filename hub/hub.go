@@ -594,9 +594,9 @@ func (h *Hub) ListCommands() []*Command {
 	return command
 }
 
-func (h *Hub) leave(peer Peer, sid SID, name string, notify []Peer) {
+func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
 	h.peers.Lock()
-	delete(h.peers.byName, name)
+	delete(h.peers.byName, peer.Name())
 	delete(h.peers.bySID, sid)
 	h.invalidateList()
 	if notify == nil {
@@ -610,9 +610,9 @@ func (h *Hub) leave(peer Peer, sid SID, name string, notify []Peer) {
 	h.broadcastUserLeave(peer, notify)
 }
 
-func (h *Hub) leaveCID(peer Peer, sid SID, cid CID, name string) {
+func (h *Hub) leaveCID(peer Peer, sid SID, cid CID) {
 	h.peers.Lock()
-	delete(h.peers.byName, name)
+	delete(h.peers.byName, peer.Name())
 	delete(h.peers.bySID, sid)
 	delete(h.peers.byCID, cid)
 	h.invalidateList()

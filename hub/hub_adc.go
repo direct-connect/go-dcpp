@@ -329,7 +329,9 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		}
 	}
 	u.Normalize()
-	peer.user = u
+	peer.setName(u.Name)
+	peer.info.cid = u.Id
+	peer.info.user = u
 
 	st := h.Stats()
 	if err := h.adcStageVerify(peer); err != nil {
@@ -661,11 +663,14 @@ type adcPeer struct {
 	conn *adc.Conn
 	fea  adc.ModFeatures
 
-	mu   sync.RWMutex
-	user adc.User
+	info struct {
+		cid adc.CID
+
+		sync.RWMutex
+		user adc.User
+	}
 
 	closeMu sync.Mutex
-	closed  bool
 
 	search struct {
 		sync.RWMutex
@@ -686,17 +691,10 @@ func (s *adcSearchToken) getLast() time.Time {
 	return time.Unix(0, ns)
 }
 
-func (p *adcPeer) Name() string {
-	p.mu.RLock()
-	name := p.user.Name
-	p.mu.RUnlock()
-	return name
-}
-
 func (p *adcPeer) Info() adc.User {
-	p.mu.RLock()
-	u := p.user
-	p.mu.RUnlock()
+	p.info.RLock()
+	u := p.info.user
+	p.info.RUnlock()
 	return u
 }
 
@@ -735,17 +733,18 @@ func (p *adcPeer) sendError(sev adc.Severity, code int, err error) error {
 }
 
 func (p *adcPeer) Close() error {
-	p.closeMu.Lock()
-	defer p.closeMu.Unlock()
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if p.closed {
+	if !p.Online() {
 		return nil
 	}
+	p.closeMu.Lock()
+	defer p.closeMu.Unlock()
+	if !p.Online() {
+		return nil
+	}
+	p.setOffline()
 	err := p.conn.Close()
-	p.closed = true
 
-	p.hub.leaveCID(p, p.sid, p.user.Id, p.user.Name)
+	p.hub.leaveCID(p, p.sid, p.info.cid)
 	return err
 }
 
@@ -756,6 +755,9 @@ func (p *adcPeer) BroadcastJoin(peers []Peer) {
 }
 
 func (p *adcPeer) PeersJoin(peers []Peer) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	for _, peer := range peers {
 		var u adc.User
 		if p2, ok := peer.(*adcPeer); ok {
@@ -796,9 +798,12 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 				}
 			}
 		}
-		if u.Application != "" && p.user.Application == "" {
+		if u.Application != "" && p.Info().Application == "" {
 			// doesn't support AP field
 			u.Application, u.Version = "", u.Application+" "+u.Version
+		}
+		if !p.Online() {
+			return errConnectionClosed
 		}
 		if err := p.conn.WriteBroadcast(peer.SID(), &u); err != nil {
 			return err
@@ -814,7 +819,13 @@ func (p *adcPeer) BroadcastLeave(peers []Peer) {
 }
 
 func (p *adcPeer) PeersLeave(peers []Peer) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	for _, peer := range peers {
+		if !p.Online() {
+			return errConnectionClosed
+		}
 		if err := p.conn.WriteInfoMsg(&adc.Disconnect{
 			ID: peer.SID(),
 		}); err != nil {
@@ -825,6 +836,9 @@ func (p *adcPeer) PeersLeave(peers []Peer) error {
 }
 
 func (p *adcPeer) JoinRoom(room *Room) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	if room.Name() == "" {
 		return nil
 	}
@@ -853,6 +867,9 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 }
 
 func (p *adcPeer) LeaveRoom(room *Room) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	if room.Name() == "" {
 		return nil
 	}
@@ -873,6 +890,9 @@ func (p *adcPeer) LeaveRoom(room *Room) error {
 }
 
 func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	var err error
 	if room.Name() != "" {
 		if p == from {
@@ -895,6 +915,9 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 }
 
 func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	src := from.SID()
 	err := p.conn.WriteDirect(src, p.sid, &adc.ChatMessage{
 		Text: msg.Text, PM: &src,
@@ -906,6 +929,9 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 }
 
 func (p *adcPeer) HubChatMsg(text string) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	err := p.conn.WriteInfoMsg(&adc.ChatMessage{
 		Text: text,
 	})
@@ -916,6 +942,9 @@ func (p *adcPeer) HubChatMsg(text string) error {
 }
 
 func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	host, sport, err := net.SplitHostPort(addr)
 	if err != nil {
 		return err
@@ -962,6 +991,9 @@ func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 }
 
 func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	// we need to pretend that peer speaks the same protocol as we do
 	proto := adc.ProtoADC
 	if secure {
@@ -991,6 +1023,9 @@ func (s *adcSearch) Peer() Peer {
 }
 
 func (s *adcSearch) SendResult(r SearchResult) error {
+	if !s.p.Online() {
+		return errConnectionClosed
+	}
 	sr := adc.SearchResult{
 		Token: s.token,
 		Slots: 1, // TODO
@@ -1050,6 +1085,9 @@ func (p *adcPeer) searchToken(out Search) string {
 }
 
 func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	token := ""
 	if as, ok := out.(*adcSearch); ok {
 		token = as.token

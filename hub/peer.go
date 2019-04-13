@@ -4,11 +4,14 @@ import (
 	"context"
 	"net"
 	"sync"
+
+	"github.com/direct-connect/go-dcpp/internal/safe"
 )
 
 type Peer interface {
 	base() *BasePeer
 
+	Online() bool
 	SID() SID
 	Name() string
 	LocalAddr() net.Addr
@@ -37,11 +40,13 @@ type Peer interface {
 }
 
 type BasePeer struct {
-	hub *Hub
+	hub     *Hub
+	offline safe.Bool
 
 	hubAddr  net.Addr
 	peerAddr net.Addr
 	sid      SID
+	name     safe.String
 
 	rooms struct {
 		sync.RWMutex
@@ -51,6 +56,22 @@ type BasePeer struct {
 
 func (p *BasePeer) base() *BasePeer {
 	return p
+}
+
+func (p *BasePeer) setOffline() {
+	p.offline.Set(true)
+}
+
+func (p *BasePeer) setName(name string) {
+	p.name.Set(name)
+}
+
+func (p *BasePeer) Name() string {
+	return p.name.Get()
+}
+
+func (p *BasePeer) Online() bool {
+	return !p.offline.Get()
 }
 
 func (p *BasePeer) SID() SID {

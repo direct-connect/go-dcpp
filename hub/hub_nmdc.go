@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
@@ -206,7 +205,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	}
 
 	err = h.nmdcAccept(peer)
-	if err != nil || peer.getState() == nmdcPeerClosed {
+	if err != nil || !peer.Online() {
 		unbind()
 
 		str := "connection is closed"
@@ -222,12 +221,10 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 	h.acceptPeer(peer, func() {
 		// make a snapshot of peers to send info to
 		list = h.listPeers()
-		atomic.StoreUint32(&peer.state, nmdcPeerJoining)
 	}, nil)
 
 	// notify other users about the new one
 	h.broadcastUserJoin(peer, list)
-	atomic.StoreUint32(&peer.state, nmdcPeerNormal)
 
 	if h.conf.ChatLogJoin != 0 {
 		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
@@ -394,6 +391,9 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
+			if !peer.Online() {
+				return nil
+			}
 			return err
 		}
 		if err = h.nmdcHandle(peer, msg); err != nil {
@@ -643,7 +643,6 @@ func newNMDC(h *Hub, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP)
 
 type nmdcPeer struct {
 	BasePeer
-	state uint32 // atomic
 
 	c   *nmdc.Conn
 	fea nmdcp.Extensions
@@ -672,10 +671,6 @@ type nmdcPeer struct {
 type nmdcSearchRun struct {
 	req SearchRequest
 	out Search
-}
-
-func (p *nmdcPeer) getState() uint32 {
-	return atomic.LoadUint32(&p.state)
 }
 
 func (p *nmdcPeer) SetInfo(u *nmdcp.MyINFO) {
@@ -734,21 +729,19 @@ func (p *nmdcPeer) Info() nmdcp.MyINFO {
 }
 
 func (p *nmdcPeer) closeOn(list []Peer) error {
-	switch p.getState() {
-	case nmdcPeerClosed, nmdcPeerJoining:
+	if !p.Online() {
 		return nil
 	}
 	p.close.Lock()
 	defer p.close.Unlock()
-	switch p.getState() {
-	case nmdcPeerClosed, nmdcPeerJoining:
+	if !p.Online() {
 		return nil
 	}
 	close(p.close.done)
-	atomic.StoreUint32(&p.state, nmdcPeerClosed)
+	p.setOffline()
 	err := p.c.Close()
 
-	p.hub.leave(p, p.sid, p.Name(), list)
+	p.hub.leave(p, p.sid, list)
 	return err
 }
 
@@ -791,17 +784,23 @@ func (p *nmdcPeer) writer() {
 			err = p.c.Flush()
 		}
 		if err != nil {
-			log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+			if p.Online() {
+				log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+			}
 			return
 		}
 	}
 }
 
 func (p *nmdcPeer) SendNMDC(m ...nmdcp.Message) error {
-	if p.getState() == nmdcPeerClosed {
+	if !p.Online() {
 		return errConnectionClosed
 	}
 	p.write.Lock()
+	if !p.Online() {
+		p.write.Unlock()
+		return errConnectionClosed
+	}
 	p.write.buf = append(p.write.buf, m...)
 	p.write.Unlock()
 	select {
@@ -870,10 +869,10 @@ func (u User) toNMDC() nmdcp.MyINFO {
 }
 
 func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
-	if p.getState() == nmdcPeerClosed {
-		return errConnectionClosed
-	}
 	for _, peer := range peers {
+		if !p.Online() {
+			return errConnectionClosed
+		}
 		//if p2, ok := peer.(*nmdcPeer); ok {
 		//	data, enc := p2.rawInfo()
 		//	if enc == nil && p.conn.Encoding() == nil {
@@ -917,11 +916,14 @@ func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
 func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 	if len(peers) == 0 {
 		return nil
-	} else if p.getState() == nmdcPeerClosed {
+	} else if !p.Online() {
 		return errConnectionClosed
 	}
 	cmds := make([]nmdcp.Message, 0, len(peers))
 	for _, peer := range peers {
+		if !p.Online() {
+			return errConnectionClosed
+		}
 		cmds = append(cmds, &nmdcp.Quit{
 			Name: nmdcp.Name(peer.Name()),
 		})
@@ -930,6 +932,9 @@ func (p *nmdcPeer) PeersLeave(peers []Peer) error {
 }
 
 func (p *nmdcPeer) JoinRoom(room *Room) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	rname := room.Name()
 	if rname == "" {
 		return nil
@@ -956,6 +961,9 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 }
 
 func (p *nmdcPeer) LeaveRoom(room *Room) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	rname := room.Name()
 	if rname == "" {
 		return nil
@@ -973,6 +981,9 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 }
 
 func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	rname := room.Name()
 	if rname == "" {
 		return p.SendNMDC(&nmdcp.ChatMessage{
@@ -992,6 +1003,9 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 }
 
 func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	fname := msg.Name
 	return p.SendNMDC(&nmdcp.PrivateMessage{
 		From: fname, Name: fname,
@@ -1001,10 +1015,16 @@ func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 }
 
 func (p *nmdcPeer) HubChatMsg(text string) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	return p.SendNMDC(&nmdcp.ChatMessage{Name: p.hub.conf.Name, Text: text})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	// TODO: save token somewhere?
 	return p.SendNMDC(&nmdcp.ConnectToMe{
 		Targ:    peer.Name(),
@@ -1014,6 +1034,9 @@ func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) 
 }
 
 func (p *nmdcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	// TODO: save token somewhere?
 	return p.SendNMDC(&nmdcp.RevConnectToMe{
 		From: peer.Name(),
@@ -1034,6 +1057,9 @@ func (s *nmdcSearch) Peer() Peer {
 }
 
 func (s *nmdcSearch) SendResult(r SearchResult) error {
+	if !s.p.Online() {
+		return errConnectionClosed
+	}
 	h := s.p.hub
 	// TODO: additional filtering?
 	sr := &nmdcp.SR{
@@ -1078,6 +1104,9 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 }
 
 func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
 	p.setActiveSearch(out, req)
 	if req, ok := req.(TTHSearch); ok {
 		if p.fea.Has(nmdcp.ExtTTHS) {
