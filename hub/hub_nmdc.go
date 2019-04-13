@@ -1109,7 +1109,7 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 	p.search.Lock()
 	defer p.search.Unlock()
 	cur := p.search.peers[p2]
-	if cur.out != nil {
+	if cur != nil && cur.out != nil {
 		_ = cur.out.Close()
 	}
 	if p.search.peers == nil {
