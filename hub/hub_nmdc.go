@@ -421,7 +421,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		return nil
 	case *nmdcp.ConnectToMe:
 		targ := h.PeerByName(string(msg.Targ))
-		if targ == nil {
+		if targ == nil || targ == peer {
 			return nil
 		}
 		if err := peer.verifyAddr(msg.Address); err != nil {
@@ -446,7 +446,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			return errors.New("invalid name in RevConnectToMe")
 		}
 		targ := h.PeerByName(string(msg.To))
-		if targ == nil {
+		if targ == nil || targ == peer {
 			return nil
 		}
 		h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
@@ -512,6 +512,8 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 	case *nmdcp.MyINFO:
 		if string(msg.Name) != peer.Name() {
 			return fmt.Errorf("myinfo: invalid nick: %q", msg.Name)
+		} else if u := peer.Info(); u.Client != msg.Client {
+			return errors.New("client masquerade is not allowed")
 		}
 		peer.SetInfo(msg)
 		// TODO: notify about info update
