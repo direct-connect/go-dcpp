@@ -979,6 +979,7 @@ func (p *adcPeer) LeaveRoom(room *Room) error {
 	rsid := room.SID()
 	err := p.SendADCDirect(rsid, adc.ChatMessage{
 		Text: "parted", PM: &rsid, Me: true,
+		TS: time.Now().Unix(),
 	})
 	if err != nil {
 		return err
@@ -999,6 +1000,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if room.Name() == "" {
 		return p.SendADCBroadcast(from.SID(), &adc.ChatMessage{
 			Text: msg.Text, Me: msg.Me,
+			TS: msg.Time.Unix(),
 		})
 
 	}
@@ -1009,6 +1011,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	fsid := from.SID()
 	return p.SendADCDirect(fsid, adc.ChatMessage{
 		Text: msg.Text, PM: &rsid, Me: msg.Me,
+		TS: msg.Time.Unix(),
 	})
 }
 
@@ -1019,6 +1022,7 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 	src := from.SID()
 	return p.SendADCBroadcast(src, &adc.ChatMessage{
 		Text: msg.Text, PM: &src, Me: msg.Me,
+		TS: msg.Time.Unix(),
 	})
 }
 
@@ -1028,6 +1032,7 @@ func (p *adcPeer) HubChatMsg(text string) error {
 	}
 	return p.SendADCInfo(&adc.ChatMessage{
 		Text: text,
+		TS:   time.Now().Unix(),
 	})
 }
 

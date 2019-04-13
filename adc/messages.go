@@ -548,7 +548,7 @@ type ChatMessage struct {
 	Text string `adc:"#"`
 	PM   *SID   `adc:"PM"`
 	Me   bool   `adc:"ME"`
-	// TODO: TS
+	TS   int64  `adc:"TS"`
 }
 
 func (ChatMessage) Cmd() MsgType {
