@@ -172,7 +172,9 @@ func (c *Conn) TextEncoder() *encoding.Encoder {
 
 func (c *Conn) setEncoding(enc encoding.Encoding, event bool) {
 	if enc != nil {
-		c.w.SetEncoder(enc.NewEncoder())
+		e := enc.NewEncoder()
+		e = encoding.HTMLEscapeUnsupported(e)
+		c.w.SetEncoder(e)
 		if !event {
 			c.r.SetDecoder(enc.NewDecoder())
 		}
