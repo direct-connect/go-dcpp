@@ -13,6 +13,7 @@ import (
 	"time"
 
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
+	"github.com/direct-connect/go-dcpp/internal/safe"
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
@@ -586,6 +587,7 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 		// not searching for anything
 		return
 	}
+	cur.last.SetNow()
 	var res SearchResult
 	path := strings.Join(msg.Path, "/")
 	if msg.IsDir {
@@ -649,13 +651,14 @@ type nmdcPeer struct {
 
 	search struct {
 		sync.RWMutex
-		peers map[Peer]nmdcSearchRun
+		peers map[Peer]*nmdcSearchRun
 	}
 }
 
 type nmdcSearchRun struct {
-	req SearchRequest
-	out Search
+	last safe.Time
+	req  SearchRequest
+	out  Search
 }
 
 func (p *nmdcPeer) SetInfo(u *nmdcp.MyINFO) {
@@ -1067,6 +1070,16 @@ func (s *nmdcSearch) Close() error {
 	return nil // TODO: block new results
 }
 
+func (p *nmdcPeer) gcSearches() {
+	now := time.Now()
+	for p2, s := range p.search.peers {
+		if now.Sub(s.last.Get()) > searchTimeout {
+			delete(p.search.peers, p2)
+			_ = s.out.Close()
+		}
+	}
+}
+
 func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 	p2 := out.Peer()
 	p.search.Lock()
@@ -1076,9 +1089,13 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 		_ = cur.out.Close()
 	}
 	if p.search.peers == nil {
-		p.search.peers = make(map[Peer]nmdcSearchRun)
+		p.search.peers = make(map[Peer]*nmdcSearchRun)
+	} else {
+		p.gcSearches()
 	}
-	p.search.peers[p2] = nmdcSearchRun{out: out, req: req}
+	s := &nmdcSearchRun{out: out, req: req}
+	s.last.SetNow()
+	p.search.peers[p2] = s
 }
 
 func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
