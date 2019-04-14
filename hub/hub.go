@@ -231,9 +231,8 @@ func (h *Hub) ListenAndServe(addr string) error {
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
-			if strings.Contains(err.Error(), "too many open files") {
-				log.Printf("%v (%T)", err, err)
-				continue
+			if isTooManyFDs(err) {
+				continue // skip "too many open files" error
 			}
 			return err
 		}

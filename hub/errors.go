@@ -2,7 +2,11 @@ package hub
 
 import (
 	"errors"
+	"net"
+	"os"
 	"strconv"
+	"strings"
+	"syscall"
 )
 
 var (
@@ -20,4 +24,22 @@ func (e *ErrUnknownProtocol) Error() string {
 		tls = " (TLS)"
 	}
 	return "unknown protocol magic: " + strconv.Quote(string(e.Magic)) + tls
+}
+
+func isTooManyFDs(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch e := err.(type) {
+	case *net.OpError:
+		return isTooManyFDs(e.Err)
+	case *os.SyscallError:
+		return isTooManyFDs(e.Err)
+	case syscall.Errno:
+		switch e {
+		case syscall.EMFILE, syscall.ENFILE:
+			return true
+		}
+	}
+	return strings.Contains(err.Error(), "too many open files")
 }
