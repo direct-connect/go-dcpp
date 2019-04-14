@@ -212,6 +212,22 @@ func (h *Hub) ListenAndServe(addr string) error {
 		return err
 	}
 	defer lis.Close()
+	var errorsN uint64
+	done := make(chan struct{})
+	defer close(done)
+	const maxErrorsPerSec = 25
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				atomic.StoreUint64(&errorsN, 0)
+			}
+		}
+	}()
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
@@ -230,7 +246,9 @@ func (h *Hub) ListenAndServe(addr string) error {
 			}()
 			if err := h.Serve(conn); err != nil && err != io.EOF {
 				cntConnError.Add(1)
-				log.Printf("%s: %v", conn.RemoteAddr(), err)
+				if n := atomic.AddUint64(&errorsN, 1); n < maxErrorsPerSec {
+					log.Printf("%s: %v", conn.RemoteAddr(), err)
+				}
 			}
 		}()
 	}
@@ -255,9 +273,9 @@ const (
 )
 
 // serve automatically detects the protocol and start the hub-client handshake.
-func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
+func (h *Hub) serve(conn net.Conn, insecure bool) error {
 	timeout := peekTimeout
-	if !allowTLS {
+	if !insecure {
 		timeout = 2 * peekTimeout
 	}
 
@@ -267,7 +285,7 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 	if err != nil {
 		if te, ok := err.(timeoutErr); ok && te.Timeout() {
 			cntConnAuto.Add(1)
-			if !allowTLS {
+			if !insecure {
 				cntConnNMDCS.Add(1)
 			}
 			// only NMDC protocol expects the server to speak first
@@ -276,13 +294,13 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 		return err
 	}
 
-	if pt := time.Since(start).Seconds(); allowTLS {
+	if pt := time.Since(start).Seconds(); insecure {
 		durConnPeek.Observe(pt)
 	} else {
 		durConnPeekTLS.Observe(pt)
 	}
 
-	if allowTLS && h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
+	if insecure && h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
 		// TLS 1.x handshake
 		tconn := tls.Server(conn, h.tls)
 		if err := tconn.Handshake(); err != nil {
@@ -327,24 +345,24 @@ func (h *Hub) serve(conn net.Conn, allowTLS bool) error {
 	switch string(buf) {
 	case "HSUP":
 		// ADC client-hub handshake
-		if !allowTLS {
+		if !insecure {
 			cntConnADCS.Add(1)
 		}
 		return h.ServeADC(conn)
 	case "NICK":
 		// IRC handshake
-		if !allowTLS {
+		if !insecure {
 			cntConnIRCS.Add(1)
 		}
 		return h.ServeIRC(conn)
 	case "HEAD", "GET ", "POST", "PUT ", "DELE", "OPTI":
 		// HTTP1 request
-		if !allowTLS {
+		if !insecure {
 			cntConnHTTPS.Add(1)
 		}
 		return h.ServeHTTP1(conn)
 	}
-	return fmt.Errorf("unknown protocol magic: %q", string(buf))
+	return &ErrUnknownProtocol{Magic: buf[:], Secure: !insecure}
 }
 
 // Serve automatically detects the protocol and start the hub-client handshake.
