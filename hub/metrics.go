@@ -34,6 +34,16 @@ func measureM(m map[string]prometheus.Observer, k string) func() {
 	}
 }
 
+func countM(m map[string]prometheus.Counter, k string, n int) {
+	cnt, ok := m[k]
+	if !ok {
+		cnt = m[cmdUnknown]
+	}
+	if cnt != nil {
+		cnt.Add(float64(n))
+	}
+}
+
 var (
 	cntConnAccepted = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "dc_conn_accepted",
@@ -250,16 +260,21 @@ var (
 )
 
 var (
-	cntNMDCCommandsR = make(map[string]prometheus.Counter)
-	cntNMDCCommandsW = make(map[string]prometheus.Counter)
-	durNMDCHandle    = make(map[string]prometheus.Observer)
-	sizeNMDCCommandR = make(map[string]prometheus.Observer)
+	cntNMDCCommandsR    = make(map[string]prometheus.Counter)
+	cntNMDCCommandsW    = make(map[string]prometheus.Counter)
+	cntNMDCCommandsDrop = make(map[string]prometheus.Counter)
+	durNMDCHandle       = make(map[string]prometheus.Observer)
+	sizeNMDCCommandR    = make(map[string]prometheus.Observer)
 )
 
 func init() {
 	nmdcCommandsR := promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "dc_nmdc_commands_read",
 		Help: "The total number of NMDC commands received",
+	}, []string{"cmd"})
+	nmdcCommandsDrop := promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dc_nmdc_commands_dropped",
+		Help: "The total number of dropped NMDC commands",
 	}, []string{"cmd"})
 	nmdcCommandsW := promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "dc_nmdc_commands_write",
@@ -275,6 +290,7 @@ func init() {
 	}, []string{"cmd"})
 	reg := func(cmd string) {
 		cntNMDCCommandsR[cmd] = nmdcCommandsR.WithLabelValues(cmd)
+		cntNMDCCommandsDrop[cmd] = nmdcCommandsDrop.WithLabelValues(cmd)
 		cntNMDCCommandsW[cmd] = nmdcCommandsW.WithLabelValues(cmd)
 		sizeNMDCCommandR[cmd] = nmdcCommandsRSize.WithLabelValues(cmd)
 		durNMDCHandle[cmd] = nmdcHandleDur.WithLabelValues(cmd)

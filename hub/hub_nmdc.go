@@ -24,7 +24,10 @@ var (
 	errConnectionClosed = errors.New("connection closed")
 )
 
-const nmdcFakeToken = "nmdc"
+const (
+	nmdcFakeToken = "nmdc"
+	nmdcMaxPerSec = 15
+)
 
 func (h *Hub) serveNMDC(conn net.Conn) error {
 	cntConnNMDC.Add(1)
@@ -72,23 +75,11 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 		return true, nil
 	})
 	c.OnMessageR(func(m nmdcp.Message) (bool, error) {
-		cnt, ok := cntNMDCCommandsR[m.Type()]
-		if !ok {
-			cnt = cntNMDCCommandsR[cmdUnknown]
-		}
-		if cnt != nil {
-			cnt.Add(1)
-		}
+		countM(cntNMDCCommandsR, m.Type(), 1)
 		return true, nil
 	})
 	c.OnMessageW(func(m nmdcp.Message) (bool, error) {
-		cnt, ok := cntNMDCCommandsW[m.Type()]
-		if !ok {
-			cnt = cntNMDCCommandsW[cmdUnknown]
-		}
-		if cnt != nil {
-			cnt.Add(1)
-		}
+		countM(cntNMDCCommandsW, m.Type(), 1)
 		return true, nil
 	})
 
@@ -418,6 +409,9 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	// the timeout will be set manually by the writer goroutine
 	peer.c.SetWriteTimeout(-1)
 	go peer.writer(writeTimeout)
+	cnt := make(map[string]uint)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		msg, err := peer.c.ReadMsg(time.Time{})
 		if err == io.EOF {
@@ -427,6 +421,29 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 				return nil
 			}
 			return err
+		}
+		typ := msg.Type()
+		if !nmdcp.IsRegistered(typ) {
+			countM(cntNMDCCommandsDrop, typ, 1)
+			continue
+		}
+		select {
+		case <-ticker.C:
+			for k := range cnt {
+				cnt[k] = 0
+			}
+		default:
+		}
+		n := cnt[typ]
+		n++
+		cnt[typ] = n
+		if n >= nmdcMaxPerSec {
+			countM(cntNMDCCommandsDrop, typ, 1)
+			if n == nmdcMaxPerSec {
+				log.Println("spam:", peer.Name(), typ, msg)
+			}
+			// TODO: temp ban?
+			continue
 		}
 		if err = h.nmdcHandle(peer, msg); err != nil {
 			return err
