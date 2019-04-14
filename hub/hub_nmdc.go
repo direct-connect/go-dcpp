@@ -446,13 +446,15 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 			continue
 		}
 		if err = h.nmdcHandle(peer, msg); err != nil {
+			countM(cntNMDCCommandsDrop, typ, 1)
 			return err
 		}
 	}
 }
 
 func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
-	defer measureM(durNMDCHandle, msg.Type())()
+	typ := msg.Type()
+	defer measureM(durNMDCHandle, typ)()
 
 	switch msg := msg.(type) {
 	case *nmdcp.ChatMessage:
@@ -482,6 +484,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 	case *nmdcp.ConnectToMe:
 		targ := h.PeerByName(string(msg.Targ))
 		if targ == nil || targ == peer {
+			countM(cntNMDCCommandsDrop, typ, 1)
 			return nil
 		}
 		if err := peer.verifyAddr(msg.Address); err != nil {
@@ -498,6 +501,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		}
 		p2, ok := targ.(*nmdcPeer)
 		if !ok {
+			countM(cntNMDCCommandsDrop, typ, 1)
 			return nil
 		}
 		return p2.SendNMDC(msg)
@@ -507,6 +511,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		}
 		targ := h.PeerByName(string(msg.To))
 		if targ == nil || targ == peer {
+			countM(cntNMDCCommandsDrop, typ, 1)
 			return nil
 		}
 		h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
@@ -531,6 +536,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			// message in a chat room
 			r := h.Room(to)
 			if r == nil {
+				countM(cntNMDCCommandsDrop, typ, 1)
 				return nil
 			}
 			r.SendChat(peer, m)
@@ -538,6 +544,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			// private message
 			targ := h.PeerByName(to)
 			if targ == nil {
+				countM(cntNMDCCommandsDrop, typ, 1)
 				return nil
 			}
 			h.privateChat(peer, targ, m)
@@ -573,6 +580,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		}
 		to := h.PeerByName(string(msg.To))
 		if to == nil {
+			countM(cntNMDCCommandsDrop, typ, 1)
 			return nil
 		}
 		h.nmdcHandleResult(peer, to, msg)
@@ -587,6 +595,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		// TODO: notify about info update
 		return nil
 	default:
+		countM(cntNMDCCommandsDrop, typ, 1)
 		// TODO
 		data, _ := nmdcp.Marshal(nil, msg)
 		log.Printf("%s: nmdc: %s", peer.RemoteAddr(), string(data))
