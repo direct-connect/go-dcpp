@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/direct-connect/go-dc/nmdc"
 )
 
 var (
@@ -42,4 +44,16 @@ func isTooManyFDs(err error) bool {
 		}
 	}
 	return strings.Contains(err.Error(), "too many open files")
+}
+
+func isProtocolErr(err error) bool {
+	switch err.(type) {
+	case *ErrUnknownProtocol:
+		return true
+	case *nmdc.ErrProtocolViolation:
+		return true
+	case *nmdc.ErrUnexpectedCommand:
+		return true
+	}
+	return false
 }

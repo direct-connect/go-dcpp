@@ -54,6 +54,7 @@ func NewHub(conf Config) (*Hub, error) {
 	}
 	h := &Hub{
 		created: time.Now(),
+		closed:  make(chan struct{}),
 		conf:    conf,
 		tls:     conf.TLS,
 	}
@@ -75,6 +76,7 @@ func NewHub(conf Config) (*Hub, error) {
 	}
 	h.userDB = NewUserDatabase()
 	h.initCommands()
+	go h.ipFilter.run(h.closed)
 	return h, nil
 }
 
@@ -82,8 +84,10 @@ const shareDiv = 1024 * 1024
 
 type Hub struct {
 	created time.Time
-	conf    Config
-	tls     *tls.Config
+	closed  chan struct{}
+
+	conf Config
+	tls  *tls.Config
 	httpData
 
 	userDB UserDatabase
@@ -117,6 +121,7 @@ type Hub struct {
 	rooms      rooms
 	plugins    plugins
 	hooks      hooks
+	ipFilter   ipFilter
 }
 
 func (h *Hub) SetDatabase(db Database) {
@@ -227,6 +232,12 @@ func (h *Hub) ListenAndServe(addr string) error {
 			}
 			return err
 		}
+		remote := conn.RemoteAddr()
+		if h.IsHardBlocked(remote) {
+			_ = conn.Close()
+			cntConnBlocked.Add(1)
+			continue
+		}
 		cntConnAccepted.Add(1)
 		cntConnOpen.Add(1)
 		go func() {
@@ -236,8 +247,11 @@ func (h *Hub) ListenAndServe(addr string) error {
 			}()
 			if err := h.Serve(conn); err != nil && err != io.EOF {
 				cntConnError.Add(1)
+				if isProtocolErr(err) {
+					h.probableAttack(remote, err)
+				}
 				if n := atomic.AddUint64(&errorsN, 1); n < maxErrorsPerSec {
-					log.Printf("%s: %v", conn.RemoteAddr(), err)
+					log.Printf("%s: %v", remote, err)
 				}
 			}
 		}()
@@ -249,6 +263,12 @@ func (h *Hub) Start() error {
 }
 
 func (h *Hub) Close() error {
+	select {
+	case <-h.closed:
+		return nil
+	default:
+		close(h.closed)
+	}
 	h.stopPlugins()
 	return nil
 }

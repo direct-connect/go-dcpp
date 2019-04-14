@@ -39,6 +39,10 @@ var (
 		Name: "dc_conn_accepted",
 		Help: "The total number of accepted connections",
 	})
+	cntConnBlocked = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dc_conn_blocked",
+		Help: "The total number of blocked connections",
+	})
 	cntConnError = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "dc_conn_error",
 		Help: "The total number of connections failed with an error",
