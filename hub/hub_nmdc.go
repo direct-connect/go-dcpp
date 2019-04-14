@@ -633,7 +633,7 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 	cur := peer.search.peers[to]
 	peer.search.RUnlock()
 
-	if cur.out == nil {
+	if cur == nil || cur.out == nil {
 		// not searching for anything
 		return
 	}
