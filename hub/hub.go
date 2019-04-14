@@ -67,8 +67,7 @@ func NewHub(conf Config) (*Hub, error) {
 	h.peers.reserved = make(map[string]struct{})
 	h.peers.byName = make(map[string]Peer)
 	h.peers.bySID = make(map[SID]Peer)
-	h.rooms.byName = make(map[string]*Room)
-	h.rooms.bySID = make(map[SID]*Room)
+	h.rooms.init()
 	h.globalChat = h.newRoom("")
 	h.initADC()
 	if err := h.initHTTP(); err != nil {
@@ -115,17 +114,9 @@ type Hub struct {
 	}
 
 	globalChat *Room
-
-	rooms struct {
-		sync.RWMutex
-		byName map[string]*Room
-		bySID  map[SID]*Room
-	}
-
-	plugins struct {
-		loaded []Plugin
-	}
-	events events
+	rooms      rooms
+	plugins    plugins
+	hooks      hooks
 }
 
 func (h *Hub) SetDatabase(db Database) {

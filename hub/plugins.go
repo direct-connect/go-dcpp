@@ -67,6 +67,10 @@ func RegisterPlugin(p Plugin) {
 	pluginsOrder = append(pluginsOrder, name)
 }
 
+type plugins struct {
+	loaded []Plugin
+}
+
 func (h *Hub) initPlugins() error {
 	for _, name := range pluginsOrder {
 		p := pluginsByName[name]

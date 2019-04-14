@@ -20,6 +20,17 @@ type Message struct {
 	Me   bool
 }
 
+type rooms struct {
+	sync.RWMutex
+	byName map[string]*Room
+	bySID  map[SID]*Room
+}
+
+func (r *rooms) init() {
+	r.byName = make(map[string]*Room)
+	r.bySID = make(map[SID]*Room)
+}
+
 func (h *Hub) newRoom(name string) *Room {
 	cntChatRooms.Add(1)
 	r := &Room{
