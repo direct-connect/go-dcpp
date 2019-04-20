@@ -159,7 +159,7 @@ func (db *tupleDatabase) migrateUsersV2(ctx context.Context) error {
 		name, pass := u[0], u[1]
 		key, err := tbl.InsertTuple(ctx, tuple.Tuple{
 			Key:  tuple.AutoKey(),
-			Data: tuple.Data{name, pass, nil},
+			Data: tuple.Data{name, pass, values.String("")},
 		})
 		if err != nil {
 			return err
