@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/text/encoding"
 
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
-	"github.com/direct-connect/go-dcpp/internal/safe"
 	"github.com/direct-connect/go-dcpp/nmdc"
 )
 
@@ -663,7 +663,7 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 		// not searching for anything
 		return
 	}
-	cur.last.SetNow()
+	atomic.StoreInt64(&cur.last, time.Now().Unix())
 	var res SearchResult
 	path := strings.Join(msg.Path, "/")
 	if msg.IsDir {
@@ -734,7 +734,7 @@ type nmdcPeer struct {
 }
 
 type nmdcSearchRun struct {
-	last safe.Time
+	last int64 // sec
 	req  SearchRequest
 	out  Search
 }
@@ -1167,14 +1167,14 @@ func (s *nmdcSearch) Close() error {
 }
 
 func (p *nmdcPeer) gcSearches() {
-	now := time.Now()
+	now := time.Now().Unix()
 	i := 0
 	for p2, s := range p.search.peers {
-		if now.Sub(s.last.Get()) > searchTimeout {
+		if now-atomic.LoadInt64(&s.last) > int64(searchTimeout/time.Second) {
 			delete(p.search.peers, p2)
 			_ = s.out.Close()
+			i++
 		}
-		i++
 		if i > 5 {
 			break
 		}
@@ -1195,7 +1195,7 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 		p.gcSearches()
 	}
 	s := &nmdcSearchRun{out: out, req: req}
-	s.last.SetNow()
+	atomic.StoreInt64(&s.last, time.Now().Unix())
 	p.search.peers[p2] = s
 }
 
