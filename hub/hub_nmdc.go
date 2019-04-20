@@ -29,6 +29,10 @@ const (
 	nmdcMaxPerSec = 15
 )
 
+var nmdcMaxPerSecCmd = map[string]uint{
+	(&nmdcp.SR{}).Type(): 50,
+}
+
 func (h *Hub) serveNMDC(conn net.Conn) error {
 	cntConnNMDC.Add(1)
 	cntConnNMDCOpen.Add(1)
@@ -409,6 +413,8 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	// the timeout will be set manually by the writer goroutine
 	peer.c.SetWriteTimeout(-1)
 	go peer.writer(writeTimeout)
+
+	var total uint
 	cnt := make(map[string]uint)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -429,6 +435,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		}
 		select {
 		case <-ticker.C:
+			total = 0
 			for k := range cnt {
 				cnt[k] = 0
 			}
@@ -437,13 +444,19 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		n := cnt[typ]
 		n++
 		cnt[typ] = n
-		if n >= nmdcMaxPerSec {
-			countM(cntNMDCCommandsDrop, typ, 1)
-			if n == nmdcMaxPerSec {
-				log.Println("spam:", peer.Name(), typ, msg)
+		if total > nmdcMaxPerSec {
+			max := uint(nmdcMaxPerSec)
+			if v, ok := nmdcMaxPerSecCmd[typ]; ok {
+				max = v
 			}
-			// TODO: temp ban?
-			continue
+			if n >= max {
+				countM(cntNMDCCommandsDrop, typ, 1)
+				if n == max {
+					log.Println("spam:", peer.Name(), typ, msg)
+				}
+				// TODO: temp ban?
+				continue
+			}
 		}
 		if err = h.nmdcHandle(peer, msg); err != nil {
 			countM(cntNMDCCommandsDrop, typ, 1)
