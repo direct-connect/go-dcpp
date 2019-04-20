@@ -241,12 +241,19 @@ func (s *Server) serve(c io.ReadWriteCloser, port int) error {
 		}
 		return r.Text(), nil
 	}
+	readBytes := func() ([]byte, error) {
+		if !r.Scan() {
+			return nil, r.Err()
+		}
+		return r.Bytes(), nil
+	}
 	readString := func() (string, error) {
-		s, err := readStringRaw()
+		s, err := readBytes()
 		if err != nil {
 			return "", err
 		}
-		return nmdcp.Unescape(s), nil
+		s = nmdcp.UnescapeBytes(s)
+		return string(s), nil
 	}
 
 	info.Name, err = readString()

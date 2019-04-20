@@ -311,8 +311,8 @@ func (p *ircPeer) readMessage() (*irc.Message, error) {
 	return p.c.ReadMessage()
 }
 
-func (p *ircPeer) User() User {
-	return User{
+func (p *ircPeer) UserInfo() UserInfo {
+	return UserInfo{
 		Name: p.Name(),
 		App: dc.Software{
 			// TODO: propagate the real IRC client version

@@ -25,10 +25,11 @@ func (*hubStats) Version() hub.Version {
 func (p *hubStats) Init(h *hub.Hub) error {
 	p.h = h
 	h.RegisterCommand(hub.Command{
-		Menu:  []string{"Stats"},
-		Name:  "stats",
-		Short: "show hub stats",
-		Func:  p.cmdStats,
+		Menu:    []string{"Stats"},
+		Name:    "stats",
+		Aliases: []string{"hubinfo"},
+		Short:   "show hub stats",
+		Func:    p.cmdStats,
 	})
 	return nil
 }

@@ -72,6 +72,16 @@ func (h *Hub) Room(name string) *Room {
 	return r
 }
 
+func (h *Hub) Rooms() []*Room {
+	h.rooms.RLock()
+	defer h.rooms.RUnlock()
+	list := make([]*Room, len(h.rooms.byName))
+	for _, r := range h.rooms.byName {
+		list = append(list, r)
+	}
+	return list
+}
+
 func (h *Hub) roomBySID(sid SID) *Room {
 	h.rooms.RLock()
 	r := h.rooms.bySID[sid]

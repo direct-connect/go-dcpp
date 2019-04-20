@@ -15,12 +15,14 @@ type connAddr interface {
 
 type Peer interface {
 	base() *BasePeer
+	setUser(u *User)
+	User() *User
 
 	Online() bool
 	SID() SID
 	Name() string
 	connAddr
-	User() User
+	UserInfo() UserInfo
 
 	Close() error
 
@@ -55,6 +57,7 @@ func (h *Hub) newBasePeer(p *BasePeer, c connAddr) {
 
 type BasePeer struct {
 	hub     *Hub
+	user    *User
 	offline safe.Bool
 
 	hubAddr  net.Addr
@@ -75,6 +78,14 @@ type BasePeer struct {
 
 func (p *BasePeer) base() *BasePeer {
 	return p
+}
+
+func (p *BasePeer) setUser(u *User) {
+	p.user = u
+}
+
+func (p *BasePeer) User() *User {
+	return p.user
 }
 
 func (p *BasePeer) setName(name string) {

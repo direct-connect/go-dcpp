@@ -2,13 +2,10 @@ package hub
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -74,9 +71,8 @@ func NewHub(conf Config) (*Hub, error) {
 	if err := h.initHTTP(); err != nil {
 		return nil, err
 	}
-	h.userDB = NewUserDatabase()
+	h.db = NewDatabase()
 	h.initCommands()
-	go h.ipFilter.run(h.closed)
 	return h, nil
 }
 
@@ -90,11 +86,13 @@ type Hub struct {
 	tls  *tls.Config
 	httpData
 
-	userDB UserDatabase
+	db Database
 
 	lastSID uint32
 
 	fallback encoding.Encoding
+
+	sampler sampler
 
 	peers struct {
 		curList atomic.Value // []Peer
@@ -122,10 +120,11 @@ type Hub struct {
 	plugins    plugins
 	hooks      hooks
 	ipFilter   ipFilter
+	profiles   profiles
 }
 
 func (h *Hub) SetDatabase(db Database) {
-	h.userDB = db
+	h.db = db
 }
 
 func (h *Hub) incShare(v uint64) {
@@ -136,16 +135,6 @@ func (h *Hub) incShare(v uint64) {
 func (h *Hub) decShare(v uint64) {
 	atomic.AddInt64(&h.peers.share, -int64(v/shareDiv))
 	cntShare.Add(-float64(v))
-}
-
-type Command struct {
-	Menu    []string
-	Name    string
-	Aliases []string
-	Short   string
-	Long    string
-	Func    func(p Peer, args string) error
-	run     func(p Peer, args string)
 }
 
 type Stats struct {
@@ -219,6 +208,9 @@ func (h *Hub) ListenAndServe(addr string) error {
 			select {
 			case <-done:
 				return
+			case <-h.closed:
+				_ = lis.Close()
+				return
 			case <-ticker.C:
 				atomic.StoreUint64(&errorsN, 0)
 			}
@@ -259,7 +251,14 @@ func (h *Hub) ListenAndServe(addr string) error {
 }
 
 func (h *Hub) Start() error {
-	return h.initPlugins()
+	if err := h.loadProfiles(); err != nil {
+		return err
+	}
+	if err := h.initPlugins(); err != nil {
+		return err
+	}
+	go h.ipFilter.run(h.closed)
+	return nil
 }
 
 func (h *Hub) Close() error {
@@ -485,7 +484,7 @@ func (h *Hub) reserveName(name string, bind func() bool, unbind func()) (func(),
 // adding the user to the list and the second is executed after it was added to the list.
 func (h *Hub) acceptPeer(peer Peer, pre, post func()) {
 	sid := peer.SID()
-	u := peer.User()
+	u := peer.UserInfo()
 
 	h.peers.Lock()
 	defer h.peers.Unlock()
@@ -539,97 +538,6 @@ func (h *Hub) sendMOTD(peer Peer) error {
 	return peer.HubChatMsg(motd)
 }
 
-func (h *Hub) cmdOutput(peer Peer, out string) {
-	if strings.Contains(out, "\n") {
-		out = "\n" + out
-	}
-	_ = peer.HubChatMsg(out)
-}
-
-func (h *Hub) cmdOutputf(peer Peer, format string, args ...interface{}) {
-	h.cmdOutput(peer, fmt.Sprintf(format, args...))
-}
-
-func (h *Hub) cmdOutputJSON(peer Peer, out interface{}) {
-	data, _ := json.MarshalIndent(out, "", "  ")
-	h.cmdOutput(peer, string(data))
-}
-
-func (h *Hub) RegisterCommand(cmd Command) {
-	cmd.run = func(p Peer, args string) {
-		err := cmd.Func(p, args)
-		if err != nil {
-			h.cmdOutput(p, "error: "+err.Error())
-		}
-	}
-	h.cmds.names[cmd.Name] = struct{}{}
-	h.cmds.byName[cmd.Name] = &cmd
-	for _, name := range cmd.Aliases {
-		h.cmds.byName[name] = &cmd
-	}
-}
-
-func (h *Hub) isCommand(peer Peer, text string) bool {
-	if text == "" {
-		return true // pretend that this is a command
-	} else if text == "/fav" {
-		return true // special case
-	}
-	switch text[0] {
-	case '/':
-		if text == "/me" || strings.HasPrefix(text[1:], "me ") {
-			return false
-		}
-	case '!', '+':
-	default:
-		return false
-	}
-	sub := strings.SplitN(text, " ", 2)
-	cmd := sub[0][1:]
-	args := ""
-	if len(sub) > 1 {
-		args = sub[1]
-	}
-	h.command(peer, cmd, args)
-	return true
-}
-
-func (h *Hub) command(peer Peer, cmd string, args string) {
-	c, ok := h.cmds.byName[cmd]
-	if !ok {
-		h.cmdOutput(peer, "unsupported command: "+cmd)
-		return
-	}
-	c.run(peer, args)
-}
-
-func (h *Hub) ListCommands() []*Command {
-	names := make([]string, 0, len(h.cmds.names))
-	for name := range h.cmds.names {
-		names = append(names, name)
-	}
-	command := make([]*Command, 0, len(names))
-	for _, name := range names {
-		if c := h.cmds.byName[name]; len(c.Menu) != 0 {
-			command = append(command, c)
-		}
-	}
-	sort.Slice(command, func(i, j int) bool {
-		a, b := command[i], command[j]
-		l := len(a.Menu)
-		if len(a.Menu) > len(b.Menu) {
-			l = len(b.Menu)
-		}
-		for n := 0; n <= l; n++ {
-			if a.Menu[n] != b.Menu[n] {
-				return a.Menu[n] < b.Menu[n]
-			}
-		}
-		return len(a.Menu) <= len(b.Menu)
-	})
-	return command
-}
-
 func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
 	h.peers.Lock()
 	delete(h.peers.byName, peer.Name())
@@ -641,7 +549,7 @@ func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
 	h.leaveRooms(peer)
 	h.peers.Unlock()
 	cntPeers.Add(-1)
-	h.decShare(peer.User().Share)
+	h.decShare(peer.UserInfo().Share)
 
 	h.broadcastUserLeave(peer, notify)
 }
@@ -656,7 +564,7 @@ func (h *Hub) leaveCID(peer Peer, sid SID, cid CID) {
 	h.leaveRooms(peer)
 	h.peers.Unlock()
 	cntPeers.Add(-1)
-	h.decShare(peer.User().Share)
+	h.decShare(peer.UserInfo().Share)
 
 	h.broadcastUserLeave(peer, notify)
 }
@@ -686,7 +594,7 @@ func (h *Hub) SendGlobalChat(text string) {
 	}
 }
 
-type User struct {
+type UserInfo struct {
 	Name           string
 	App            dc.Software
 	HubsNormal     int

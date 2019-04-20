@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
 
@@ -79,18 +80,18 @@ func initConfig(path string) error {
 	return viper.WriteConfigAs(path)
 }
 
-func readConfig() (*Config, error) {
+func readConfig(create bool) (*Config, error) {
 	err := viper.ReadInConfig()
 	if err == nil {
-		fmt.Printf("loaded config: %s\n\n", viper.ConfigFileUsed())
+		log.Printf("loaded config: %s\n", viper.ConfigFileUsed())
 	}
-	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+	if _, ok := err.(viper.ConfigFileNotFoundError); ok && create {
 		if err = initConfig(defaultConfig); err != nil {
 			return nil, err
 		}
 		err = viper.ReadInConfig()
 		if err == nil {
-			fmt.Println("initialized config:", viper.ConfigFileUsed())
+			log.Println("initialized config:", viper.ConfigFileUsed())
 		}
 	}
 	if err != nil {
@@ -144,10 +145,11 @@ func init() {
 	Root.AddCommand(serveCmd)
 
 	serveCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		conf, err := readConfig()
+		conf, err := readConfig(true)
 		if err != nil {
 			return err
 		}
+
 		noTLS := conf.Serve.TLS == nil
 		cert, kp, err := loadCert(conf)
 		if err != nil {
@@ -265,6 +267,16 @@ http://%s%s
 			addr, hub.HTTPInfoPathV0,
 			addr, hub.HTTPInfoPathV0,
 		)
+
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt)
+		go func() {
+			<-ch
+			fmt.Println("stopping server")
+			_ = h.Close()
+		}()
+
+		Root.SilenceUsage = true
 		return h.ListenAndServe(host)
 	}
 }

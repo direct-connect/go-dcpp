@@ -208,7 +208,7 @@ func (c *PeerConn) Peer() *Peer {
 
 type FileInfo struct {
 	Size int64
-	TTH  adc.TTH
+	TTH  *adc.TTH
 }
 
 type File interface {
@@ -217,7 +217,7 @@ type File interface {
 	io.Seeker
 	io.Closer
 	Size() int64
-	TTH() adc.TTH
+	TTH() *adc.TTH
 }
 
 func (c *PeerConn) statFile(ctx context.Context, typ, path string) (*adc.SearchResult, error) {
@@ -289,7 +289,8 @@ func (c *PeerConn) readFile(ctx context.Context, typ, path string, off, size int
 	// it's safe to unlock the mutex here since the underlying conn
 	// will be blocked and other requests will wait for this one complete
 	// TODO: open a new connection if we get another read request
-	return c.conn.ReadBinary(res.Bytes), nil
+	//return c.conn.ReadBinary(res.Bytes), nil
+	return nil, fmt.Errorf("file download not supported")
 }
 
 func (c *PeerConn) StatFile(ctx context.Context, path string) (FileInfo, error) {
@@ -421,6 +422,6 @@ func (f *peerFile) Size() int64 {
 	return f.info.Size
 }
 
-func (f *peerFile) TTH() adc.TTH {
+func (f *peerFile) TTH() *adc.TTH {
 	return f.info.TTH
 }

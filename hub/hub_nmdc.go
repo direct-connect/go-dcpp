@@ -51,6 +51,9 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 	c.SetFallbackEncoding(h.fallback)
 	c.OnLineR(func(line []byte) (bool, error) {
 		sizeNMDCLinesR.Observe(float64(len(line)))
+		if h.sampler.enabled() {
+			h.sampler.sample(line)
+		}
 		return true, nil
 	})
 	c.OnLineW(func(line []byte) (bool, error) {
@@ -269,11 +272,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 
-	isRegistered, err := h.IsRegistered(peer.Name())
+	user, rec, err := h.getUser(peer.Name())
 	if err != nil {
 		return err
 	}
-	if isRegistered {
+	if user != nil && rec != nil {
 		// give the user a minute to enter a password
 		_ = c.SetWriteDeadline(time.Now().Add(time.Minute))
 		deadline = time.Now().Add(time.Minute)
@@ -287,7 +290,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			return fmt.Errorf("expected password got: %v", err)
 		}
 
-		ok, err := h.nmdcCheckUserPass(peer.Name(), string(pass.String))
+		ok, err := h.nmdcCheckUserPass(rec, string(pass.String))
 		if err != nil {
 			return err
 		} else if !ok {
@@ -297,6 +300,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			}
 			return errors.New("wrong password")
 		}
+		peer.setUser(user)
 		deadline = time.Now().Add(time.Second * 5)
 	}
 
@@ -340,7 +344,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return errors.New("nick mismatch")
 	}
 
-	peer.setUser(&peer.info.user)
+	peer.setUserInfo(&peer.info.user)
 
 	//err = c.WriteLine(peer.info.raw)
 	//if err != nil {
@@ -394,15 +398,11 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	return c.Flush()
 }
 
-func (h *Hub) nmdcCheckUserPass(name string, pass string) (bool, error) {
-	if h.userDB == nil {
+func (h *Hub) nmdcCheckUserPass(rec *UserRecord, pass string) (bool, error) {
+	if h.db == nil {
 		return false, nil
 	}
-	exp, err := h.userDB.GetUserPassword(name)
-	if err != nil {
-		return false, err
-	}
-	return exp == pass, nil
+	return rec.Pass == pass, nil
 }
 
 func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
@@ -527,7 +527,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			countM(cntNMDCCommandsDrop, typ, 1)
 			return nil
 		}
-		h.revConnectReq(peer, targ, nmdcFakeToken, targ.User().TLS)
+		h.revConnectReq(peer, targ, nmdcFakeToken, targ.UserInfo().TLS)
 		return nil
 	case *nmdcp.PrivateMessage:
 		if name := peer.Name(); string(msg.From) != name || string(msg.Name) != name {
@@ -694,7 +694,7 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 }
 
 func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
-	for _, c := range h.ListCommands() {
+	for _, c := range h.ListCommands(peer.User()) {
 		err := peer.c.WriteMsg(&nmdcp.UserCommand{
 			Typ:     nmdcp.TypeRaw,
 			Context: nmdcp.ContextUser,
@@ -755,10 +755,10 @@ type nmdcSearchRun struct {
 func (p *nmdcPeer) SetInfo(u *nmdcp.MyINFO) {
 	p.info.Lock()
 	defer p.info.Unlock()
-	p.setUser(u)
+	p.setUserInfo(u)
 }
 
-func (p *nmdcPeer) setUser(u *nmdcp.MyINFO) {
+func (p *nmdcPeer) setUserInfo(u *nmdcp.MyINFO) {
 	if u != &p.info.user {
 		p.info.user = *u
 	}
@@ -774,9 +774,9 @@ func (p *nmdcPeer) setUser(u *nmdcp.MyINFO) {
 	p.info.raw = &nmdcp.RawMessage{Typ: u.Type(), Data: p.info.buf.Bytes()}
 }
 
-func (p *nmdcPeer) User() User {
+func (p *nmdcPeer) UserInfo() UserInfo {
 	u := p.Info()
-	return User{
+	return UserInfo{
 		Name:           string(u.Name),
 		App:            u.Client,
 		HubsNormal:     u.HubsNormal,
@@ -918,7 +918,7 @@ func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 	return p.peersJoin(peers, false)
 }
 
-func (u User) toNMDC() nmdcp.MyINFO {
+func (u UserInfo) toNMDC() nmdcp.MyINFO {
 	flag := nmdcp.FlagStatusNormal
 	if u.IPv4 {
 		flag |= nmdcp.FlagIPv4
@@ -963,7 +963,7 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 				continue
 			}
 		}
-		info := peer.User().toNMDC()
+		info := peer.UserInfo().toNMDC()
 		if initial {
 			err = p.c.WriteMsg(&info)
 		} else {

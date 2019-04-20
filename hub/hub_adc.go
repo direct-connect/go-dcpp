@@ -54,6 +54,9 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 	c.SetWriteTimeout(writeTimeout)
 	c.OnLineR(func(line []byte) (bool, error) {
 		sizeADCLinesR.Observe(float64(len(line)))
+		if h.sampler.enabled() {
+			h.sampler.sample(line)
+		}
 		return true, nil
 	})
 	c.OnLineW(func(line []byte) (bool, error) {
@@ -391,10 +394,10 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 }
 
 func (h *Hub) adcStageVerify(peer *adcPeer) error {
-	isRegistered, err := h.IsRegistered(peer.Name())
+	user, rec, err := h.getUser(peer.Name())
 	if err != nil {
 		return err
-	} else if !isRegistered {
+	} else if user == nil || rec == nil {
 		return nil
 	}
 	// give the user a minute to enter a password
@@ -427,7 +430,7 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 	if err := adc.Unmarshal(hp.Data, &pass); err != nil {
 		return err
 	}
-	ok, err = h.adcCheckUserPass(peer.Name(), salt[:], pass.Hash)
+	ok, err = h.adcCheckUserPass(rec, salt[:], pass.Hash)
 	if err != nil {
 		return err
 	} else if !ok {
@@ -435,19 +438,16 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 		_ = peer.sendErrorNow(adc.Fatal, 23, err)
 		return err
 	}
+	peer.setUser(user)
 	return nil
 }
 
-func (h *Hub) adcCheckUserPass(name string, salt []byte, hash tiger.Hash) (bool, error) {
-	if h.userDB == nil {
+func (h *Hub) adcCheckUserPass(rec *UserRecord, salt []byte, hash tiger.Hash) (bool, error) {
+	if h.db == nil {
 		return false, nil
 	}
-	pass, err := h.userDB.GetUserPassword(name)
-	if err != nil {
-		return false, err
-	}
-	check := make([]byte, len(pass)+len(salt))
-	i := copy(check, pass)
+	check := make([]byte, len(rec.Pass)+len(salt))
+	i := copy(check, rec.Pass)
 	copy(check[i:], salt)
 	exp := tiger.HashBytes(check)
 	return exp == hash, nil
@@ -473,7 +473,7 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 }
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
-	for _, c := range h.ListCommands() {
+	for _, c := range h.ListCommands(peer.User()) {
 		err := peer.c.WriteInfoMsg(adc.UserCommand{
 			Path:     c.Menu,
 			Command:  "HMSG !" + c.Name + "\n",
@@ -551,7 +551,7 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 		})
 	case adc.ConnectRequest:
 		info := from.Info()
-		pinf := peer.User()
+		pinf := peer.UserInfo()
 		var ip string
 		if pinf.IPv6 && info.Ip6 != "" {
 			ip = info.Ip6
@@ -700,9 +700,9 @@ func (p *adcPeer) Info() adc.User {
 	return u
 }
 
-func (p *adcPeer) User() User {
+func (p *adcPeer) UserInfo() UserInfo {
 	u := p.Info()
-	return User{
+	return UserInfo{
 		Name:  u.Name,
 		Share: uint64(u.ShareSize),
 		Email: u.Email,
@@ -862,7 +862,7 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 		} else {
 			// TODO: same address from multiple clients behind NAT, so we addend the name
 			addr, _, _ := net.SplitHostPort(peer.RemoteAddr().String())
-			info := peer.User()
+			info := peer.UserInfo()
 			// TODO: once we support name changes, we should make the user
 			//       virtually leave and rejoin with a new CID
 			cid := adc.CID(tiger.HashBytes([]byte(info.Name + "\x00" + addr)))

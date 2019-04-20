@@ -23,6 +23,15 @@ func addrString(a net.Addr) string {
 
 type addrKey string
 
+func (k addrKey) toIP() net.IP {
+	if len(k) != net.IPv4len && len(k) != net.IPv6len {
+		return nil
+	}
+	b := make([]byte, len(k))
+	copy(b, k)
+	return net.IP(b)
+}
+
 func minAddrKey(a net.Addr) addrKey {
 	switch a := a.(type) {
 	case *net.TCPAddr:
@@ -76,6 +85,10 @@ func (f *ipFilter) blockKey(key addrKey) {
 	f.blocked.Store(key, struct{}{})
 }
 
+func (f *ipFilter) unblockKey(key addrKey) {
+	f.blocked.Delete(key)
+}
+
 func (f *ipFilter) blockAndCheckKey(key addrKey) bool {
 	_, loaded := f.blocked.LoadOrStore(key, struct{}{})
 	return !loaded
@@ -93,12 +106,28 @@ func (h *Hub) IsHardBlockedIP(ip net.IP) bool {
 	return blocked
 }
 
+func (h *Hub) EachHardBlockedIP(fnc func(ip net.IP) bool) {
+	h.ipFilter.blocked.Range(func(key, _ interface{}) bool {
+		k := key.(addrKey)
+		ip := k.toIP()
+		if ip == nil {
+			return true
+		}
+		return fnc(ip)
+	})
+}
+
 func (h *Hub) HardBlock(a net.Addr) {
 	key := minAddrKey(a)
 	h.ipFilter.blockKey(key)
 }
 
 func (h *Hub) HardBlockIP(ip net.IP) {
+	key := minIPKey(ip)
+	h.ipFilter.blockKey(key)
+}
+
+func (h *Hub) HardUnBlockIP(ip net.IP) {
 	key := minIPKey(ip)
 	h.ipFilter.blockKey(key)
 }

@@ -142,7 +142,7 @@ func (h *Hub) Search(req SearchRequest, s Search, peers []Peer) {
 	for _, p := range peers {
 		if p == peer {
 			continue
-		} else if p.User().Share == 0 {
+		} else if p.UserInfo().Share == 0 {
 			continue
 		}
 		_ = p.Search(ctx, req, s)

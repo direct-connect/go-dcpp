@@ -132,7 +132,7 @@ func (h *Hub) serveV0Stats(w http.ResponseWriter, r *http.Request) {
 		UserList []userStats `json:"user_list,omitempty"`
 	}{Stats: st}
 	for _, p := range h.Peers() {
-		u := p.User()
+		u := p.UserInfo()
 		resp.UserList = append(resp.UserList, userStats{
 			Name: u.Name, Share: u.Share,
 		})

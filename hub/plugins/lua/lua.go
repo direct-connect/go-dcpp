@@ -226,7 +226,7 @@ func (s *Script) pushPeer(p hub.Peer) {
 		s.push(nil)
 		return
 	}
-	u := p.User()
+	u := p.UserInfo()
 	s.pushMap(M{
 		"name":  u.Name,
 		"email": u.Email,
