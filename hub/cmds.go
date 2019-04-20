@@ -28,9 +28,10 @@ const (
 	PermRoomsJoin = "rooms.join"
 	PermRoomsList = "rooms.list"
 
-	PermDrop  = "user.drop"
-	PermIP    = "user.ip"
-	PermBanIP = "ban.ip"
+	PermBroadcast = "hub.broadcast"
+	PermDrop      = "user.drop"
+	PermIP        = "user.ip"
+	PermBanIP     = "ban.ip"
 )
 
 func (h *Hub) initCommands() {
@@ -73,7 +74,13 @@ func (h *Hub) initCommands() {
 		Func:    h.cmdRooms,
 	})
 
-	// Operator info
+	// Operator commands
+	h.RegisterCommand(Command{
+		Name: "broadcast", Aliases: []string{"hub"},
+		Short:   "broadcast a chat message to all users",
+		Require: PermBroadcast,
+		Func:    h.cmdBroadcast,
+	})
 	h.RegisterCommand(Command{
 		Name: "getip", Aliases: []string{"gi"},
 		Short:   "returns IP of a user",
@@ -244,6 +251,11 @@ func (h *Hub) cmdRooms(p Peer, args string) error {
 	for _, r := range list {
 		buf.WriteString(r.Name() + "\n")
 	}
+	return nil
+}
+
+func (h *Hub) cmdBroadcast(p Peer, args string) error {
+	h.SendGlobalChat(args)
 	return nil
 }
 
