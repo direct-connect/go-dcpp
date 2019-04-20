@@ -80,7 +80,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		return nil, err
 	}
 	if _, ok := msg.(ZOn); ok {
-		err = c.r.ActivateZlib()
+		err = c.r.EnableZlib()
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +167,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		switch cmd := cmd.(type) {
 		case *InfoPacket:
 			if cmd.Name == (ZOn{}).Cmd() {
-				err = c.r.ActivateZlib()
+				err = c.r.EnableZlib()
 				if err != nil {
 					return &hub, err
 				}
