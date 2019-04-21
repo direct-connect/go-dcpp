@@ -49,7 +49,7 @@ func (h *Hub) initCommands() {
 		Func:  h.cmdChatLog,
 	})
 	h.RegisterCommand(Command{
-		Name: "reg", Aliases: []string{"register", "passwd"},
+		Name: "reg", Aliases: []string{"register", "passwd", "regme"},
 		Short: "registers a user or change a password",
 		Func:  h.cmdRegister,
 	})
