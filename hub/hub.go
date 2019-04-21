@@ -82,8 +82,9 @@ type Hub struct {
 	created time.Time
 	closed  chan struct{}
 
-	conf Config
-	tls  *tls.Config
+	conf  Config
+	addrs []string
+	tls   *tls.Config
 	httpData
 
 	db Database
@@ -125,6 +126,10 @@ type Hub struct {
 
 func (h *Hub) SetDatabase(db Database) {
 	h.db = db
+}
+
+func (h *Hub) AddAddress(addr string) {
+	h.addrs = append(h.addrs, addr)
 }
 
 func (h *Hub) incShare(v uint64) {
@@ -182,6 +187,7 @@ func (h *Hub) Stats() Stats {
 	if h.conf.Addr != "" {
 		st.Addr = append(st.Addr, h.conf.Addr)
 	}
+	st.Addr = append(st.Addr, h.addrs...)
 	return st
 }
 

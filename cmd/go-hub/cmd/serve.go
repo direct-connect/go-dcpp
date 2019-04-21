@@ -226,6 +226,7 @@ func init() {
 		}
 
 		if _, err := os.Stat(conf.Plugins.Path); err == nil {
+			fmt.Println("loading plugins in:", conf.Plugins.Path)
 			if err := h.LoadPluginsInDir(conf.Plugins.Path); err != nil {
 				return err
 			}
