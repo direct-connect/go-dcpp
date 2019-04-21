@@ -381,7 +381,8 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 
 	_ = c.SetWriteDeadline(time.Now().Add(writeTimeout))
 	// send user list (except his own info)
-	err = peer.peersJoin(h.Peers(), true)
+	peers := h.Peers()
+	err = peer.peersJoin(peers, true)
 	if err != nil {
 		return err
 	}
@@ -391,8 +392,17 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
-	// TODO: send the correct list once we supports ops
-	err = c.WriteMsg(&nmdcp.OpList{})
+	var ops nmdcp.Names
+	for _, p := range peers {
+		u := p.User()
+		if u == nil {
+			continue
+		}
+		if u.Has(FlagOpIcon) {
+			ops = append(ops, p.Name())
+		}
+	}
+	err = c.WriteMsg(&nmdcp.OpList{ops})
 	if err != nil {
 		return err
 	}
@@ -974,22 +984,23 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 		if !p.Online() {
 			return errConnectionClosed
 		}
+		var cmds []nmdcp.Message
 		if p2, ok := peer.(*nmdcPeer); ok {
-			data, enc := p2.rawInfo()
-			if enc == nil && p.c.TextEncoder() == nil {
-				if initial {
-					err = p.c.WriteMsg(data)
-				} else {
-					err = p.SendNMDC(data)
-				}
-				continue
+			if data, enc := p2.rawInfo(); enc == nil && p.c.TextEncoder() == nil {
+				cmds = []nmdcp.Message{data}
 			}
 		}
-		info := peer.UserInfo().toNMDC()
+		if len(cmds) == 0 {
+			info := peer.UserInfo().toNMDC()
+			cmds = []nmdcp.Message{&info}
+		}
+		if peer.User().Has(FlagOpIcon) {
+			cmds = append(cmds, &nmdcp.OpList{nmdcp.Names{peer.Name()}})
+		}
 		if initial {
-			err = p.c.WriteMsg(&info)
+			err = p.c.WriteMsg(cmds...)
 		} else {
-			err = p.SendNMDC(&info)
+			err = p.SendNMDC(cmds...)
 		}
 		if err != nil {
 			return err

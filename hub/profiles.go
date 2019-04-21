@@ -10,16 +10,35 @@ const (
 const (
 	ProfileNameRoot       = "root"
 	ProfileNameRegistered = "user"
+	ProfileNameOperator   = "op"
 	ProfileNameGuest      = "guest"
+)
+
+const (
+	FlagOpIcon  = "icon.op"
+	FlagRegIcon = "icon.reg"
 )
 
 func DefaultProfiles() map[string]Map {
 	return map[string]Map{
 		ProfileNameRoot: {
-			PermOwner: true,
+			PermOwner:  true,
+			FlagOpIcon: true,
+		},
+		ProfileNameOperator: {
+			ProfileParent: ProfileNameRegistered,
+			FlagOpIcon:    true,
+
+			PermRoomsList: true,
+			PermBroadcast: true,
+			PermDrop:      true,
+			PermIP:        true,
+			PermBanIP:     true,
 		},
 		ProfileNameRegistered: {
 			ProfileParent: ProfileNameGuest,
+			FlagRegIcon:   true,
+
 			PermRoomsJoin: true,
 		},
 		ProfileNameGuest: {},

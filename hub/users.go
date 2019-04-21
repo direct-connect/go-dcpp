@@ -81,6 +81,10 @@ func (u *User) SetProfile(p *UserProfile) {
 	u.mu.Unlock()
 }
 
+func (u *User) Has(flag string) bool {
+	return u.Profile().Has(flag)
+}
+
 func (u *User) HasPerm(perm string) bool {
 	if perm == "" || u.IsOwner() {
 		return true
