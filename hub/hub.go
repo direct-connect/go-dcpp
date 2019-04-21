@@ -282,9 +282,9 @@ const (
 )
 
 // serve automatically detects the protocol and start the hub-client handshake.
-func (h *Hub) serve(conn net.Conn, insecure bool) error {
+func (h *Hub) serve(conn net.Conn, cinfo *ConnInfo) error {
 	timeout := peekTimeout
-	if !insecure {
+	if cinfo.Secure {
 		timeout = 2 * peekTimeout
 	}
 
@@ -294,22 +294,19 @@ func (h *Hub) serve(conn net.Conn, insecure bool) error {
 	if err != nil {
 		if te, ok := err.(timeoutErr); ok && te.Timeout() {
 			cntConnAuto.Add(1)
-			if !insecure {
-				cntConnNMDCS.Add(1)
-			}
 			// only NMDC protocol expects the server to speak first
-			return h.serveNMDC(conn)
+			return h.ServeNMDC(conn, cinfo)
 		}
 		return err
 	}
 
-	if pt := time.Since(start).Seconds(); insecure {
+	if pt := time.Since(start).Seconds(); cinfo.TLSVers != 0 {
 		durConnPeek.Observe(pt)
 	} else {
 		durConnPeekTLS.Observe(pt)
 	}
 
-	if insecure && h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
+	if cinfo.TLSVers == 0 && h.tls != nil && len(buf) >= 2 && string(buf[:2]) == "\x16\x03" {
 		// TLS 1.x handshake
 		tconn := tls.Server(conn, h.tls)
 		if err := tconn.Handshake(); err != nil {
@@ -320,21 +317,22 @@ func (h *Hub) serve(conn net.Conn, insecure bool) error {
 
 		cntConnTLS.Add(1)
 
+		st := tconn.ConnectionState()
+		cinfo.Secure = true
+		cinfo.TLSVers = st.Version
+
 		// protocol negotiated by ALPN
-		proto := tconn.ConnectionState().NegotiatedProtocol
+		proto := st.NegotiatedProtocol
 		if proto != "" {
 			cntConnALPN.Add(1)
+			cinfo.ALPN = proto
 			log.Printf("%s: ALPN negotiated %q", tconn.RemoteAddr(), proto)
 		}
 		switch proto {
 		case "nmdc":
-			cntConnNMDCS.Add(1)
-			cntConnAlpnNMDC.Add(1)
-			return h.serveNMDC(tconn)
+			return h.ServeNMDC(tconn, cinfo)
 		case "adc":
-			cntConnADCS.Add(1)
-			cntConnAlpnADC.Add(1)
-			return h.ServeADC(tconn)
+			return h.ServeADC(tconn, cinfo)
 		case "http/0.9", "http/1.0", "http/1.1":
 			cntConnHTTPS.Add(1)
 			cntConnAlpnHTTP.Add(1)
@@ -345,7 +343,7 @@ func (h *Hub) serve(conn net.Conn, insecure bool) error {
 			return h.ServeHTTP2(tconn)
 		case "":
 			log.Printf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
-			return h.serve(tconn, false)
+			return h.serve(tconn, cinfo)
 		default:
 			return fmt.Errorf("unsupported protocol: %q", proto)
 		}
@@ -354,34 +352,32 @@ func (h *Hub) serve(conn net.Conn, insecure bool) error {
 	switch string(buf) {
 	case "HSUP":
 		// ADC client-hub handshake
-		if !insecure {
-			cntConnADCS.Add(1)
-		}
-		return h.ServeADC(conn)
+		return h.ServeADC(conn, cinfo)
 	case "NICK":
 		// IRC handshake
-		if !insecure {
-			cntConnIRCS.Add(1)
-		}
-		return h.ServeIRC(conn)
+		return h.ServeIRC(conn, cinfo)
 	case "HEAD", "GET ", "POST", "PUT ", "DELE", "OPTI":
 		// HTTP1 request
-		if !insecure {
+		if cinfo.Secure {
 			cntConnHTTPS.Add(1)
 		}
 		return h.ServeHTTP1(conn)
 	}
-	return &ErrUnknownProtocol{Magic: buf[:], Secure: !insecure}
+	return &ErrUnknownProtocol{Magic: buf[:], Secure: cinfo.Secure}
 }
 
 // Serve automatically detects the protocol and start the hub-client handshake.
 func (h *Hub) Serve(conn net.Conn) error {
 	if !h.callOnConnected(conn) {
+		cntConnBlocked.Add(1)
 		_ = conn.Close()
 		return nil
 	}
 	defer h.callOnDisconnected(conn)
-	return h.serve(conn, true)
+	return h.serve(conn, &ConnInfo{
+		Local:  conn.LocalAddr(),
+		Remote: conn.RemoteAddr(),
+	})
 }
 
 func (h *Hub) Peers() []Peer {

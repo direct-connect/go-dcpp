@@ -13,9 +13,18 @@ type connAddr interface {
 	RemoteAddr() net.Addr
 }
 
+type ConnInfo struct {
+	Local   net.Addr
+	Remote  net.Addr
+	Secure  bool
+	TLSVers uint16
+	ALPN    string
+}
+
 type Peer interface {
 	base() *BasePeer
 	setUser(u *User)
+	ConnInfo() *ConnInfo
 	User() *User
 
 	Online() bool
@@ -45,25 +54,23 @@ type Peer interface {
 	Search(ctx context.Context, req SearchRequest, out Search) error
 }
 
-func (h *Hub) newBasePeer(p *BasePeer, c connAddr) {
+func (h *Hub) newBasePeer(p *BasePeer, c *ConnInfo) {
 	*p = BasePeer{
-		hub:      h,
-		hubAddr:  c.LocalAddr(),
-		peerAddr: c.RemoteAddr(),
-		sid:      h.nextSID(),
+		hub:   h,
+		cinfo: c,
+		sid:   h.nextSID(),
 	}
 	p.close.done = make(chan struct{})
 }
 
 type BasePeer struct {
 	hub     *Hub
+	cinfo   *ConnInfo
 	user    *User
 	offline safe.Bool
 
-	hubAddr  net.Addr
-	peerAddr net.Addr
-	sid      SID
-	name     safe.String
+	sid  SID
+	name safe.String
 
 	close struct {
 		sync.Mutex
@@ -88,6 +95,10 @@ func (p *BasePeer) User() *User {
 	return p.user
 }
 
+func (p *BasePeer) ConnInfo() *ConnInfo {
+	return p.cinfo
+}
+
 func (p *BasePeer) setName(name string) {
 	p.name.Set(name)
 }
@@ -105,11 +116,11 @@ func (p *BasePeer) SID() SID {
 }
 
 func (p *BasePeer) LocalAddr() net.Addr {
-	return p.hubAddr
+	return p.cinfo.Local
 }
 
 func (p *BasePeer) RemoteAddr() net.Addr {
-	return p.peerAddr
+	return p.cinfo.Remote
 }
 
 func (p *BasePeer) closeWith(closers ...func() error) error {

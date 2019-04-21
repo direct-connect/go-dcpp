@@ -33,15 +33,23 @@ var nmdcMaxPerSecCmd = map[string]uint{
 	(&nmdcp.SR{}).Type(): 50,
 }
 
-func (h *Hub) serveNMDC(conn net.Conn) error {
+func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
 	cntConnNMDC.Add(1)
 	cntConnNMDCOpen.Add(1)
 	defer cntConnNMDCOpen.Add(-1)
-	log.Printf("%s: using NMDC", conn.RemoteAddr())
-	return h.ServeNMDC(conn)
-}
 
-func (h *Hub) ServeNMDC(conn net.Conn) error {
+	if cinfo.TLSVers != 0 {
+		cntConnNMDCS.Add(1)
+	}
+	if cinfo.ALPN != "" {
+		cntConnAlpnNMDC.Add(1)
+	}
+	if cinfo == nil {
+		cinfo = &ConnInfo{Local: conn.LocalAddr(), Remote: conn.RemoteAddr()}
+	}
+
+	log.Printf("%s: using NMDC", conn.RemoteAddr())
+
 	c, err := nmdc.NewConn(conn)
 	if err != nil {
 		return err
@@ -90,7 +98,7 @@ func (h *Hub) ServeNMDC(conn net.Conn) error {
 		return true, nil
 	})
 
-	peer, err := h.nmdcHandshake(c)
+	peer, err := h.nmdcHandshake(c, cinfo)
 	if err != nil {
 		return err
 	} else if peer == nil {
@@ -160,7 +168,7 @@ var nmdcFeatures = nmdcp.Extensions{
 	nmdcp.ExtZPipe0:      {}, // see nmdc.Conn
 }
 
-func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
+func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 	defer measure(durNMDCHandshake)()
 	deadline := time.Now().Add(time.Second * 5)
 
@@ -182,7 +190,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn) (*nmdcPeer, error) {
 		return nil, err
 	}
 
-	peer := newNMDC(h, c, fea, nick, addr.IP)
+	peer := newNMDC(h, cinfo, c, fea, nick, addr.IP)
 
 	if peer.fea.Has(nmdcp.ExtBotINFO) {
 		cntPings.Add(1)
@@ -277,6 +285,9 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	if user != nil && rec != nil {
+		if c := peer.ConnInfo(); c != nil && !c.Secure {
+			return errConnInsecure
+		}
 		// give the user a minute to enter a password
 		_ = c.SetWriteDeadline(time.Now().Add(time.Minute))
 		deadline = time.Now().Add(time.Minute)
@@ -710,12 +721,15 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 
 var _ Peer = (*nmdcPeer)(nil)
 
-func newNMDC(h *Hub, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
+func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
+	if cinfo == nil {
+		cinfo = &ConnInfo{Local: c.LocalAddr(), Remote: c.RemoteAddr()}
+	}
 	peer := &nmdcPeer{
 		c: c, ip: ip,
 		fea: fea,
 	}
-	h.newBasePeer(&peer.BasePeer, c)
+	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.write.wake = make(chan struct{}, 1)
 	peer.info.user.Name = nick
 	return peer

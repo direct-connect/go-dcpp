@@ -40,10 +40,16 @@ func (h *Hub) initADC() {
 	h.peers.byCID = make(map[adc.CID]*adcPeer)
 }
 
-func (h *Hub) ServeADC(conn net.Conn) error {
+func (h *Hub) ServeADC(conn net.Conn, cinfo *ConnInfo) error {
 	cntConnADC.Add(1)
 	cntConnADCOpen.Add(1)
 	defer cntConnADCOpen.Add(-1)
+	if cinfo.TLSVers != 0 {
+		cntConnADCS.Add(1)
+	}
+	if cinfo.ALPN != "" {
+		cntConnAlpnADC.Add(1)
+	}
 
 	log.Printf("%s: using ADC", conn.RemoteAddr())
 	c, err := adc.NewConn(conn)
@@ -64,7 +70,7 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 		return true, nil
 	})
 
-	peer, err := h.adcHandshake(c)
+	peer, err := h.adcHandshake(c, cinfo)
 	if err != nil {
 		return err
 	}
@@ -72,10 +78,10 @@ func (h *Hub) ServeADC(conn net.Conn) error {
 	return h.adcServePeer(peer)
 }
 
-func (h *Hub) adcHandshake(c *adc.Conn) (*adcPeer, error) {
+func (h *Hub) adcHandshake(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 	defer measure(durADCHandshake)()
 
-	peer, err := h.adcStageProtocol(c)
+	peer, err := h.adcStageProtocol(c, cinfo)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +175,7 @@ func (h *Hub) adcHandlePacket(peer *adcPeer, p adc.Packet) error {
 	}
 }
 
-func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
+func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 	deadline := time.Now().Add(time.Second * 5)
 	// Expect features from the client
 	p, err := c.ReadPacket(deadline)
@@ -218,7 +224,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn) (*adcPeer, error) {
 		return nil, err
 	}
 
-	peer := newADC(h, c, mutual)
+	peer := newADC(h, cinfo, c, mutual)
 
 	err = c.WriteInfoMsg(adc.SIDAssign{
 		SID: peer.SID(),
@@ -313,14 +319,14 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 
 	if u.Ip4 == "0.0.0.0" {
-		if t, ok := peer.peerAddr.(*net.TCPAddr); ok {
+		if t, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
 			if ip4 := t.IP.To4(); ip4 != nil {
 				u.Ip4 = ip4.String()
 			}
 		}
 	}
 	if u.Ip6 == "::" {
-		if t, ok := peer.peerAddr.(*net.TCPAddr); ok {
+		if t, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
 			if ip6 := t.IP.To16(); ip6 != nil {
 				u.Ip6 = ip6.String()
 			}
@@ -399,6 +405,9 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 		return err
 	} else if user == nil || rec == nil {
 		return nil
+	}
+	if c := peer.ConnInfo(); c != nil && !c.Secure {
+		return errConnInsecure
 	}
 	// give the user a minute to enter a password
 	deadline := time.Now().Add(time.Minute)
@@ -654,12 +663,15 @@ func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
 
 var _ Peer = (*adcPeer)(nil)
 
-func newADC(h *Hub, c *adc.Conn, fea adc.ModFeatures) *adcPeer {
+func newADC(h *Hub, cinfo *ConnInfo, c *adc.Conn, fea adc.ModFeatures) *adcPeer {
+	if cinfo == nil {
+		cinfo = &ConnInfo{Local: c.LocalAddr(), Remote: c.RemoteAddr()}
+	}
 	peer := &adcPeer{
 		c:   c,
 		fea: fea,
 	}
-	h.newBasePeer(&peer.BasePeer, c)
+	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.write.wake = make(chan struct{}, 1)
 	return peer
 }

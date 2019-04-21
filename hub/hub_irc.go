@@ -21,13 +21,21 @@ const (
 	ircHubChan = "#hub"
 )
 
-func (h *Hub) ServeIRC(conn net.Conn) error {
+func (h *Hub) ServeIRC(conn net.Conn, cinfo *ConnInfo) error {
 	cntConnIRC.Add(1)
 	cntConnIRCOpen.Add(1)
 	defer cntConnIRCOpen.Add(-1)
 
+	if cinfo.TLSVers != 0 {
+		cntConnIRCS.Add(1)
+	}
+
+	if cinfo == nil {
+		cinfo = &ConnInfo{Local: conn.LocalAddr(), Remote: conn.RemoteAddr()}
+	}
+
 	log.Printf("%s: using IRC", conn.RemoteAddr())
-	peer, err := h.ircHandshake(conn)
+	peer, err := h.ircHandshake(conn, cinfo)
 	if err != nil {
 		return err
 	}
@@ -73,7 +81,7 @@ func (h *Hub) ServeIRC(conn net.Conn) error {
 	}
 }
 
-func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
+func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 	c := irc.NewConn(conn)
 	if ircDebug {
 		c.Reader.DebugCallback = func(line string) { log.Println("<-", line) }
@@ -150,7 +158,7 @@ func (h *Hub) ircHandshake(conn net.Conn) (*ircPeer, error) {
 		c:    c,
 		conn: conn,
 	}
-	h.newBasePeer(&peer.BasePeer, conn)
+	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.setName(name)
 
 	err := h.ircAccept(peer)

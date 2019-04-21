@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	errNickTaken = errors.New("nick taken")
+	errNickTaken    = errors.New("nick taken")
+	errConnInsecure = errors.New("connection is insecure")
 )
 
 type ErrUnknownProtocol struct {

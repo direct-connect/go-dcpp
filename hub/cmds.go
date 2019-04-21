@@ -185,6 +185,9 @@ func (h *Hub) cmdChatLog(p Peer, args string) error {
 }
 
 func (h *Hub) cmdRegister(p Peer, args string) error {
+	if c := p.ConnInfo(); c != nil && !c.Secure {
+		return errConnInsecure
+	}
 	if len(args) < 6 {
 		h.cmdOutput(p, "password should be at least 6 characters")
 		return nil
