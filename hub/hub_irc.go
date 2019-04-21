@@ -307,6 +307,10 @@ type ircPeer struct {
 	c   *irc.Conn
 }
 
+func (*ircPeer) Searchable() bool {
+	return false
+}
+
 func (p *ircPeer) writeMessage(m *irc.Message) error {
 	p.wmu.Lock()
 	defer p.wmu.Unlock()

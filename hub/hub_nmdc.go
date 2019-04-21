@@ -634,10 +634,9 @@ func (h *Hub) nmdcHandleSearchTTH(peer *nmdcPeer, hash TTH) {
 
 func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdcp.Search) {
 	// ignore some parameters - all searches will be delivered as passive
-	s := peer.newSearch()
 	if msg.DataType == nmdcp.DataTypeTTH {
 		if peer.fea.Has(nmdcp.ExtTTHS) {
-			// ignore duplicate Search requests from peers that support SP
+			// ignore duplicate Search requests from peers that supports SP
 			return
 		}
 		h.nmdcHandleSearchTTH(peer, *msg.TTH)
@@ -675,6 +674,7 @@ func (h *Hub) nmdcHandleSearch(peer *nmdcPeer, msg *nmdcp.Search) {
 		}
 		req = freq
 	}
+	s := peer.newSearch()
 	h.Search(req, s, nil)
 }
 
@@ -756,8 +756,16 @@ type nmdcPeer struct {
 
 	search struct {
 		sync.RWMutex
-		peers map[Peer]*nmdcSearchRun
+		peers  map[Peer]*nmdcSearchRun
+		sorted []*nmdcSearchRun
 	}
+}
+
+func (p *nmdcPeer) Searchable() bool {
+	p.info.RLock()
+	share := p.info.user.ShareSize
+	p.info.RUnlock()
+	return share > 0
 }
 
 type nmdcSearchRun struct {
@@ -1195,17 +1203,22 @@ func (s *nmdcSearch) Close() error {
 
 func (p *nmdcPeer) gcSearches() {
 	now := time.Now().Unix()
-	i := 0
-	for p2, s := range p.search.peers {
+	last := -1
+	for i, s := range p.search.sorted {
 		if now-atomic.LoadInt64(&s.last) > int64(searchTimeout/time.Second) {
-			delete(p.search.peers, p2)
-			_ = s.out.Close()
-			i++
-		}
-		if i > 5 {
+			last = i
+		} else {
 			break
 		}
 	}
+	if last < len(p.search.sorted)/20 {
+		return
+	}
+	for _, s := range p.search.sorted[:last] {
+		_ = s.out.Close()
+		delete(p.search.peers, s.out.Peer())
+	}
+	p.search.sorted = p.search.sorted[last:]
 }
 
 func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
@@ -1224,6 +1237,7 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 	s := &nmdcSearchRun{out: out, req: req}
 	atomic.StoreInt64(&s.last, time.Now().Unix())
 	p.search.peers[p2] = s
+	p.search.sorted = append(p.search.sorted, s)
 }
 
 func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {

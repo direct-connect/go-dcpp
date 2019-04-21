@@ -32,6 +32,7 @@ type Peer interface {
 	Name() string
 	connAddr
 	UserInfo() UserInfo
+	Searchable() bool
 
 	Close() error
 

@@ -20,7 +20,7 @@ import (
 	"github.com/direct-connect/go-dcpp/internal/safe"
 )
 
-const searchTimeout = 15 * time.Minute
+const searchTimeout = time.Minute
 
 type SID = adc.SID
 
@@ -698,6 +698,13 @@ type adcPeer struct {
 		sync.RWMutex
 		tokens map[string]*adcSearchToken
 	}
+}
+
+func (p *adcPeer) Searchable() bool {
+	p.info.RLock()
+	share := p.info.user.ShareSize
+	p.info.RUnlock()
+	return share > 0
 }
 
 type adcSearchToken struct {

@@ -20,6 +20,8 @@ const (
 	FileTypeExecutable
 )
 
+var _ SearchRequest = NameSearch{}
+
 type NameSearch struct {
 	And []string
 	Not []string
@@ -39,6 +41,8 @@ func (f NameSearch) Match(r SearchResult) bool {
 	return true
 }
 
+var _ SearchRequest = TTHSearch{}
+
 type TTHSearch TTH
 
 func (TTHSearch) isSearchReq() {}
@@ -56,6 +60,8 @@ type SearchRequest interface {
 	Match(r SearchResult) bool
 	isSearchReq()
 }
+
+var _ SearchRequest = FileSearch{}
 
 type FileSearch struct {
 	NameSearch
@@ -82,6 +88,8 @@ func (s FileSearch) Match(r SearchResult) bool {
 	}
 	return false
 }
+
+var _ SearchRequest = DirSearch{}
 
 type DirSearch struct {
 	NameSearch
@@ -142,7 +150,7 @@ func (h *Hub) Search(req SearchRequest, s Search, peers []Peer) {
 	for _, p := range peers {
 		if p == peer {
 			continue
-		} else if p.UserInfo().Share == 0 {
+		} else if !p.Searchable() {
 			continue
 		}
 		_ = p.Search(ctx, req, s)
