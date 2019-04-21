@@ -42,7 +42,7 @@ type Plugin interface {
 	Version() Version
 	// Init the plugin for a given hub. The plugin should save the reference to
 	// the hub to be able to call methods on it.
-	Init(h *Hub) error
+	Init(h *Hub, path string) error
 	// Close shuts down a plugin.
 	Close() error
 }
@@ -64,18 +64,20 @@ func RegisterPlugin(p Plugin) {
 		panic(fmt.Errorf("plugin %q is already registered: %v vs %v", name, p.Version(), p2.Version()))
 	}
 	pluginsByName[name] = p
+	// should NOT be sorted
 	pluginsOrder = append(pluginsOrder, name)
 }
 
 type plugins struct {
 	loaded []Plugin
+	paths  map[string]string
 }
 
 func (h *Hub) initPlugins() error {
 	for _, name := range pluginsOrder {
 		p := pluginsByName[name]
 		fmt.Printf("loading plugin: %s (%v)\n", p.Name(), p.Version())
-		err := p.Init(h)
+		err := p.Init(h, h.plugins.paths[name])
 		if err != nil {
 			h.stopPlugins()
 			return err
@@ -104,6 +106,10 @@ func (h *Hub) LoadPluginsInDir(dir string) error {
 	}
 	defer d.Close()
 
+	if h.plugins.paths == nil {
+		h.plugins.paths = make(map[string]string)
+	}
+
 	var ext string
 	if runtime.GOOS == "windows" {
 		ext = ".dll"
@@ -121,10 +127,17 @@ func (h *Hub) LoadPluginsInDir(dir string) error {
 			if !strings.HasSuffix(name, ext) {
 				continue
 			}
+
+			pre := len(pluginsOrder)
 			// only init() matters
 			_, err := plugin.Open(filepath.Join(dir, name))
 			if err != nil {
 				return err
+			}
+			// trick to get newly registered plugins
+			// we need this to set proper relative paths
+			for _, pname := range pluginsOrder[pre:] {
+				h.plugins.paths[pname] = dir
 			}
 		}
 	}

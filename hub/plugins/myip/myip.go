@@ -19,10 +19,10 @@ func (*myIP) Name() string {
 }
 
 func (*myIP) Version() hub.Version {
-	return hub.Version{Major: 1}
+	return hub.Version{Major: 1, Minor: 1}
 }
 
-func (p *myIP) Init(h *hub.Hub) error {
+func (p *myIP) Init(h *hub.Hub, path string) error {
 	p.h = h
 	h.RegisterCommand(hub.Command{
 		Menu: []string{"My IP"},

@@ -23,7 +23,7 @@ func (*hubStats) Name() string {
 }
 
 func (*hubStats) Version() hub.Version {
-	return hub.Version{Major: 0, Minor: 3}
+	return hub.Version{Major: 0, Minor: 4}
 }
 
 func (p *hubStats) Init(h *hub.Hub, path string) error {

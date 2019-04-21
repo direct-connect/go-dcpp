@@ -34,25 +34,21 @@ func (p *plugin) Name() string {
 }
 
 func (p *plugin) Version() hub.Version {
-	return hub.Version{Major: 0, Minor: 1}
+	return hub.Version{Major: 0, Minor: 2}
 }
 
-func (p *plugin) Init(h *hub.Hub) error {
+func (p *plugin) Init(h *hub.Hub, path string) error {
 	p.h = h
-	return p.loadScripts()
+	return p.loadScripts(path)
 }
 
-func (p *plugin) loadScripts() error {
+func (p *plugin) loadScripts(path string) error {
 	p.scripts = make(map[string]*Script)
 
-	const dir = "scripts"
-	sdir, err := filepath.Abs(dir)
-	if err != nil {
-		return err
-	}
-	fmt.Println("\nlua: loading scripts in:", sdir)
+	path = filepath.Join(path, "scripts")
+	fmt.Println("\nlua: loading scripts in:", path)
 	defer fmt.Println()
-	d, err := os.Open(sdir)
+	d, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
@@ -70,12 +66,15 @@ func (p *plugin) loadScripts() error {
 			if !strings.HasSuffix(name, ".lua") {
 				continue
 			}
-			fmt.Println("lua: loading script:", "./"+name)
-			s, err := p.loadScript(filepath.Join(sdir, name))
+			fmt.Println("lua: loading script:", name)
+			s, err := p.loadScript(filepath.Join(path, name))
 			if err != nil {
 				return err
 			}
-			fmt.Printf("lua: loaded plugin: %q (v%s)\n", s.getString("script", "name"), s.getString("script", "version"))
+			fmt.Printf("lua: loaded plugin: %q (v%s)\n",
+				s.getString("script", "name"),
+				s.getString("script", "version"),
+			)
 		}
 	}
 }
