@@ -626,7 +626,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			return errors.New("client masquerade is not allowed")
 		}
 		peer.SetInfo(msg)
-		// TODO: notify about info update
+		h.broadcastUserUpdate(peer, nil)
 		return nil
 	default:
 		countM(cntNMDCCommandsDrop, typ, 1)
@@ -729,7 +729,10 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 	return nil
 }
 
-var _ Peer = (*nmdcPeer)(nil)
+var (
+	_ Peer        = (*nmdcPeer)(nil)
+	_ Broadcaster = (*nmdcPeer)(nil)
+)
 
 func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
 	if cinfo == nil {
@@ -935,19 +938,35 @@ func (p *nmdcPeer) verifyAddr(addr string) error {
 	return nil
 }
 
-func (p *nmdcPeer) BroadcastJoin(peers []Peer) {
-	join, enc := p.rawInfo()
+func (p *nmdcPeer) BroadcastJoinTo(peers []Peer) {
+	info, enc := p.rawInfo()
 	for _, p2 := range peers {
 		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.c.TextEncoder() == nil {
-			_ = p2.SendNMDC(join)
+			_ = p2.SendNMDC(info)
 			continue
 		}
 		_ = p2.PeersJoin([]Peer{p})
 	}
 }
 
+func (p *nmdcPeer) BroadcastUpdateTo(peers []Peer) {
+	info, enc := p.rawInfo()
+	for _, p2 := range peers {
+		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.c.TextEncoder() == nil {
+			_ = p2.SendNMDC(info)
+			continue
+		}
+		_ = p2.PeersUpdate([]Peer{p})
+	}
+}
+
 func (p *nmdcPeer) PeersJoin(peers []Peer) error {
 	return p.peersJoin(peers, false)
+}
+
+func (p *nmdcPeer) PeersUpdate(peers []Peer) error {
+	// same as join
+	return p.PeersJoin(peers)
 }
 
 func (u UserInfo) toNMDC() nmdcp.MyINFO {
@@ -987,14 +1006,21 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 		var cmds []nmdcp.Message
 		if p2, ok := peer.(*nmdcPeer); ok {
 			if data, enc := p2.rawInfo(); enc == nil && p.c.TextEncoder() == nil {
+				// UTF-8 encoded version (precomputed)
 				cmds = []nmdcp.Message{data}
+			} else {
+				// other encoding - re-encode NMDC info
+				info := p2.Info()
+				cmds = []nmdcp.Message{&info}
 			}
 		}
 		if len(cmds) == 0 {
+			// other protocols - translate info to NMDC
 			info := peer.UserInfo().toNMDC()
 			cmds = []nmdcp.Message{&info}
 		}
 		if peer.User().Has(FlagOpIcon) {
+			// operator flag is sent as a separate command
 			cmds = append(cmds, &nmdcp.OpList{nmdcp.Names{peer.Name()}})
 		}
 		if initial {
@@ -1009,7 +1035,7 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	return nil
 }
 
-func (p *nmdcPeer) BroadcastLeave(peers []Peer) {
+func (p *nmdcPeer) BroadcastLeaveTo(peers []Peer) {
 	enc := p.c.TextEncoder()
 	q := &nmdcp.Quit{
 		Name: nmdcp.Name(p.Name()),

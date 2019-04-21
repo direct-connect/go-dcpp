@@ -875,14 +875,14 @@ func (p *adcPeer) Close() error {
 	)
 }
 
-func (p *adcPeer) BroadcastJoin(peers []Peer) {
-	for _, p2 := range peers {
-		_ = p2.PeersJoin([]Peer{p})
-	}
-}
-
 func (p *adcPeer) PeersJoin(peers []Peer) error {
 	return p.peersJoin(peers, false)
+}
+
+func (p *adcPeer) PeersUpdate(peers []Peer) error {
+	// same as join
+	// TODO: diff infos
+	return p.PeersJoin(peers)
 }
 
 func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
@@ -948,12 +948,6 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 		}
 	}
 	return nil
-}
-
-func (p *adcPeer) BroadcastLeave(peers []Peer) {
-	for _, p2 := range peers {
-		_ = p2.PeersLeave([]Peer{p})
-	}
 }
 
 func (p *adcPeer) PeersLeave(peers []Peer) error {

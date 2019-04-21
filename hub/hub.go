@@ -515,7 +515,26 @@ func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
-	peer.BroadcastJoin(notify)
+	if p, ok := peer.(Broadcaster); ok {
+		p.BroadcastJoinTo(notify)
+		return
+	}
+	for _, p2 := range notify {
+		_ = p2.PeersJoin([]Peer{peer})
+	}
+}
+
+func (h *Hub) broadcastUserUpdate(peer Peer, notify []Peer) {
+	if notify == nil {
+		notify = h.Peers()
+	}
+	if p, ok := peer.(Broadcaster); ok {
+		p.BroadcastUpdateTo(notify)
+		return
+	}
+	for _, p2 := range notify {
+		_ = p2.PeersUpdate([]Peer{peer})
+	}
 }
 
 func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
@@ -523,7 +542,13 @@ func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
-	peer.BroadcastLeave(notify)
+	if p, ok := peer.(Broadcaster); ok {
+		p.BroadcastLeaveTo(notify)
+		return
+	}
+	for _, p2 := range notify {
+		_ = p2.PeersLeave([]Peer{peer})
+	}
 }
 
 func (h *Hub) privateChat(from, to Peer, m Message) {

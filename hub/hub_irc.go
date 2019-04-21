@@ -344,12 +344,6 @@ func (p *ircPeer) Close() error {
 	)
 }
 
-func (p *ircPeer) BroadcastJoin(peers []Peer) {
-	for _, p2 := range peers {
-		_ = p2.PeersJoin([]Peer{p})
-	}
-}
-
 func (p *ircPeer) PeersJoin(peers []Peer) error {
 	for _, peer := range peers {
 		m := &irc.Message{
@@ -373,10 +367,8 @@ func (p *ircPeer) PeersJoin(peers []Peer) error {
 	return nil
 }
 
-func (p *ircPeer) BroadcastLeave(peers []Peer) {
-	for _, p2 := range peers {
-		_ = p2.PeersLeave([]Peer{p})
-	}
+func (p *ircPeer) PeersUpdate(peers []Peer) error {
+	return nil // no updates
 }
 
 func (p *ircPeer) PeersLeave(peers []Peer) error {
