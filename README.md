@@ -4,7 +4,7 @@
 
 Direct Connect hub implementation for ADC and NMDC protocols.
 
-Requires Go 1.11+.
+Requires Go 1.12+.
 
 **Features:**
 
