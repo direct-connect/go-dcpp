@@ -1049,7 +1049,7 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 		return errConnectionClosed
 	}
 	src := from.SID()
-	return p.SendADCBroadcast(src, &adc.ChatMessage{
+	return p.SendADCDirect(src, &adc.ChatMessage{
 		Text: msg.Text, PM: &src, Me: msg.Me,
 		TS: msg.Time.Unix(),
 	})
