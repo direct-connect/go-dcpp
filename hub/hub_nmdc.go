@@ -26,11 +26,12 @@ var (
 
 const (
 	nmdcFakeToken = "nmdc"
-	nmdcMaxPerSec = 15
+	nmdcMaxPerSec = 10
 )
 
 var nmdcMaxPerSecCmd = map[string]uint{
-	(&nmdcp.SR{}).Type(): 50,
+	(&nmdcp.SR{}).Type():     50,
+	(&nmdcp.MyINFO{}).Type(): 2,
 }
 
 func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
@@ -853,6 +854,7 @@ func (p *nmdcPeer) closeOn(list []Peer) error {
 		p.c.Close,
 		func() error {
 			p.hub.leave(p, p.sid, list)
+			p.dropSearches()
 			return nil
 		},
 	)
@@ -1257,7 +1259,7 @@ func (p *nmdcPeer) gcSearches() {
 			break
 		}
 	}
-	if last < len(p.search.sorted)/20 {
+	if last < 1000 && last < len(p.search.sorted)/40 {
 		return
 	}
 	for _, s := range p.search.sorted[:last] {
@@ -1265,6 +1267,12 @@ func (p *nmdcPeer) gcSearches() {
 		delete(p.search.peers, s.out.Peer())
 	}
 	p.search.sorted = p.search.sorted[last:]
+}
+
+func (p *nmdcPeer) dropSearches() {
+	p.search.Lock()
+	p.search.peers = nil
+	p.search.Unlock()
 }
 
 func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
