@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Command struct {
@@ -44,8 +46,8 @@ func (h *Hub) initCommands() {
 		Func:  h.cmdHelp,
 	})
 	h.RegisterCommand(Command{
-		Name:  "log",
-		Short: "replay chat log",
+		Name: "history", Aliases: []string{"log"},
+		Short: "replay chat log history",
 		Func:  h.cmdChatLog,
 	})
 	h.RegisterCommand(Command{
@@ -393,9 +395,11 @@ func (h *Hub) RegisterCommand(cmd Command) {
 
 func (h *Hub) isCommand(peer Peer, text string) bool {
 	if text == "" {
-		return true // pretend that this is a command
+		return true // pretend that this is a command (ping)
 	} else if text == "/fav" {
-		return true // special case
+		return true // special case, client-side command
+	} else if len(text) == 1 {
+		return false // "+" or "!" are valid chat messages
 	}
 	switch text[0] {
 	case '/':
@@ -406,11 +410,18 @@ func (h *Hub) isCommand(peer Peer, text string) bool {
 	default:
 		return false
 	}
-	sub := strings.SplitN(text, " ", 2)
-	cmd := sub[0][1:]
+	cmd := text[1:]
+	i := strings.IndexByte(cmd, ' ')
 	args := ""
-	if len(sub) > 1 {
-		args = sub[1]
+	if i > 0 {
+		cmd = cmd[:i]
+		args = cmd[i+1:]
+	}
+	if len(cmd) == 0 {
+		return false // allow any combinations of "+ ..." or "! ..."
+	}
+	if r, _ := utf8.DecodeRuneInString(cmd); !unicode.IsLetter(r) {
+		return false // "!!..." or any other weird things
 	}
 	h.command(peer, cmd, args)
 	return true
