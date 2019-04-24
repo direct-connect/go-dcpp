@@ -1,5 +1,7 @@
 module github.com/direct-connect/go-dcpp
 
+go 1.12
+
 require (
 	github.com/DataDog/zstd v1.4.0 // indirect
 	github.com/Shopify/go-lua v0.0.0-20181106184032-48449c60c0a9
