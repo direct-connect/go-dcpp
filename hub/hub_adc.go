@@ -712,8 +712,16 @@ type adcSearchToken struct {
 	s    Search
 }
 
-func adcUserType(u *adc.User, c *User) {
+func adcUserType(u *adc.User, c *User, info *UserInfo) {
 	u.Type = adc.UserTypeNone
+	if info != nil {
+		switch info.Kind {
+		case UserBot:
+			u.Type = adc.UserTypeBot
+		case UserHub:
+			u.Type = adc.UserTypeHub
+		}
+	}
 	if c == nil {
 		return
 	}
@@ -730,7 +738,7 @@ func (p *adcPeer) Info() adc.User {
 	p.info.RLock()
 	u := p.info.user
 	p.info.RUnlock()
-	adcUserType(&u, p.User())
+	adcUserType(&u, p.User(), nil)
 	return u
 }
 
@@ -912,7 +920,7 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 				ShareSize:      int64(info.Share),
 				Email:          info.Email,
 			}
-			adcUserType(&u, peer.User())
+			adcUserType(&u, peer.User(), &info)
 			if info.TLS {
 				u.Features = append(u.Features, adc.FeaADC0)
 			}

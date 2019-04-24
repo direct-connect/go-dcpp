@@ -165,6 +165,7 @@ var nmdcFeatures = nmdcp.Extensions{
 	nmdcp.ExtUserIP2:     {},
 	nmdcp.ExtUserCommand: {},
 	nmdcp.ExtTTHS:        {},
+	nmdcp.ExtBotList:     {},
 	nmdcp.ExtZPipe0:      {}, // see nmdc.Conn
 }
 
@@ -980,6 +981,10 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 	if u.TLS {
 		flag |= nmdcp.FlagTLS
 	}
+	conn := "LAN(T3)" // TODO
+	if u.Kind == UserBot || u.Kind == UserHub {
+		conn = "" // empty conn indicates a bot
+	}
 	return nmdcp.MyINFO{
 		Name:           u.Name,
 		Client:         u.App,
@@ -990,10 +995,9 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 		Email:          u.Email,
 		ShareSize:      u.Share,
 		Flag:           flag,
+		Conn:           conn,
 
-		// TODO
 		Mode: nmdcp.UserModeActive,
-		Conn: "LAN(T3)",
 	}
 }
 
@@ -1016,8 +1020,13 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 		}
 		if len(cmds) == 0 {
 			// other protocols - translate info to NMDC
-			info := peer.UserInfo().toNMDC()
-			cmds = []nmdcp.Message{&info}
+			myinfo := peer.UserInfo().toNMDC()
+			cmds = []nmdcp.Message{&myinfo}
+		}
+		if p.fea.Has(nmdcp.ExtBotList) {
+			if info := peer.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
+				cmds = append(cmds, &nmdcp.BotList{nmdcp.Names{peer.Name()}})
+			}
 		}
 		if peer.User().Has(FlagOpIcon) {
 			// operator flag is sent as a separate command

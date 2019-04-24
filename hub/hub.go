@@ -67,6 +67,13 @@ func NewHub(conf Config) (*Hub, error) {
 	h.peers.bySID = make(map[SID]Peer)
 	h.rooms.init()
 	h.globalChat = h.newRoom("")
+
+	var err error
+	h.hubUser, err = h.newBot(conf.Name, UserHub, h.conf.Soft)
+	if err != nil {
+		return nil, err
+	}
+
 	h.initADC()
 	if err := h.initHTTP(); err != nil {
 		return nil, err
@@ -90,6 +97,7 @@ type Hub struct {
 	db Database
 
 	lastSID uint32
+	hubUser *Bot
 
 	fallback encoding.Encoding
 
@@ -195,6 +203,10 @@ func (h *Hub) nextSID() SID {
 	// TODO: reuse SIDs
 	v := atomic.AddUint32(&h.lastSID, 1)
 	return sidFromInt(v)
+}
+
+func (h *Hub) HubUser() *Bot {
+	return h.hubUser
 }
 
 func (h *Hub) ListenAndServe(addr string) error {
@@ -621,8 +633,17 @@ func (h *Hub) SendGlobalChat(text string) {
 	}
 }
 
+type UserKind int
+
+const (
+	UserNormal = UserKind(iota)
+	UserHub
+	UserBot
+)
+
 type UserInfo struct {
 	Name           string
+	Kind           UserKind
 	App            dc.Software
 	HubsNormal     int
 	HubsRegistered int
