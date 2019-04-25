@@ -1108,7 +1108,7 @@ func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 	} else {
 		field = [2]byte{'I', '6'} // IPv6
 	}
-	err = p.SendADCInfo(adc.UserMod{
+	err = p.SendADCBroadcast(peer.SID(), &adc.UserMod{
 		field: host,
 	})
 	if err != nil {
