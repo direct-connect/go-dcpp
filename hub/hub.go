@@ -439,7 +439,7 @@ func (h *Hub) PeerByName(name string) Peer {
 	return p
 }
 
-func (h *Hub) bySID(sid SID) Peer {
+func (h *Hub) peerBySID(sid SID) Peer {
 	h.peers.RLock()
 	p := h.peers.bySID[sid]
 	h.peers.RUnlock()
@@ -574,7 +574,7 @@ func (h *Hub) sendMOTD(peer Peer) error {
 	if motd == "" {
 		motd = "Welcome!"
 	}
-	return peer.HubChatMsg(motd)
+	return peer.HubChatMsg(Message{Text: motd})
 }
 
 func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
@@ -628,8 +628,9 @@ func (h *Hub) revConnectReq(from, to Peer, token string, secure bool) {
 }
 
 func (h *Hub) SendGlobalChat(text string) {
+	m := Message{Text: text}
 	for _, p := range h.Peers() {
-		_ = p.HubChatMsg(text)
+		_ = p.HubChatMsg(m)
 	}
 }
 

@@ -60,7 +60,7 @@ type Peer interface {
 	// PrivateMsg sends a private message for this peer.
 	PrivateMsg(from Peer, m Message) error
 	// HubChatMsg sends a global message from the hub.
-	HubChatMsg(text string) error
+	HubChatMsg(m Message) error
 
 	// JoinRoom sends a "room join" event for this peer.
 	JoinRoom(room *Room) error

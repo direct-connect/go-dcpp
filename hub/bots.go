@@ -110,7 +110,7 @@ func (p *botPeer) PrivateMsg(from Peer, m Message) error {
 	return nil
 }
 
-func (p *botPeer) HubChatMsg(text string) error {
+func (p *botPeer) HubChatMsg(m Message) error {
 	return nil
 }
 

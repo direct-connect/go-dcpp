@@ -19,7 +19,7 @@ func (*myIP) Name() string {
 }
 
 func (*myIP) Version() hub.Version {
-	return hub.Version{Major: 1, Minor: 1}
+	return hub.Version{Major: 2, Minor: 0}
 }
 
 func (p *myIP) Init(h *hub.Hub, path string) error {
@@ -35,7 +35,7 @@ func (p *myIP) Init(h *hub.Hub, path string) error {
 
 func (p *myIP) cmdIP(peer hub.Peer, args string) error {
 	host, _, _ := net.SplitHostPort(peer.RemoteAddr().String())
-	_ = peer.HubChatMsg("IP: " + host)
+	_ = peer.ChatMsg(nil, peer, hub.Message{Me: true, Text: "- " + host})
 	return nil
 }
 

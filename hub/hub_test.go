@@ -81,7 +81,7 @@ func TestHubEnterNMDC(t *testing.T) {
 			defer wg.Done()
 			defer hc.Close()
 
-			err := h.ServeNMDC(hc)
+			err := h.ServeNMDC(hc, nil)
 			if err != nil && err != io.ErrClosedPipe {
 				err = fmt.Errorf("hub(%d): %v", i, err)
 				log.Println(err)
@@ -100,7 +100,6 @@ func TestHubEnterNMDC(t *testing.T) {
 			}
 			defer c.Close()
 
-			c.SafeRead(true)
 			pc, err := client.HubHandshake(c, &client.Config{
 				Name: fmt.Sprintf("peer_%d", i),
 			})

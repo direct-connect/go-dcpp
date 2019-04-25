@@ -718,11 +718,18 @@ func (h *Hub) nmdcHandleResult(peer *nmdcPeer, to Peer, msg *nmdcp.SR) {
 
 func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 	for _, c := range h.ListCommands(peer.User()) {
+		cat := nmdcp.ContextHub
+		cmd := "<%[mynick]> !" + c.Name
+		if c.opt.OnUser {
+			cmd += " %[nick]"
+			cat = nmdcp.ContextUser
+		}
+		cmd += "|"
 		err := peer.c.WriteMsg(&nmdcp.UserCommand{
 			Typ:     nmdcp.TypeRaw,
-			Context: nmdcp.ContextUser,
+			Context: cat,
 			Path:    c.Menu,
-			Command: "<%[mynick]> !" + c.Name + "|",
+			Command: cmd,
 		})
 		if err != nil {
 			return err
@@ -983,7 +990,8 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 	if u.TLS {
 		flag |= nmdcp.FlagTLS
 	}
-	conn := "LAN(T3)" // TODO
+	conn := "LAN(T3)"            // TODO
+	mode := nmdcp.UserModeActive // TODO
 	if u.Kind == UserBot || u.Kind == UserHub {
 		conn = "" // empty conn indicates a bot
 	}
@@ -998,8 +1006,7 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 		ShareSize:      u.Share,
 		Flag:           flag,
 		Conn:           conn,
-
-		Mode: nmdcp.UserModeActive,
+		Mode:           mode,
 	}
 }
 
@@ -1141,8 +1148,10 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if msg.Me && !strings.HasPrefix(msg.Text, "/me") {
 		msg.Text = "/me " + msg.Text
 	}
-	rname := room.Name()
-	if rname == "" {
+	if msg.Name == "" {
+		msg.Name = from.Name()
+	}
+	if room == nil || room.Name() == "" {
 		return p.SendNMDC(&nmdcp.ChatMessage{
 			Name: msg.Name,
 			Text: msg.Text,
@@ -1152,7 +1161,7 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 		return nil // no echo
 	}
 	return p.SendNMDC(&nmdcp.PrivateMessage{
-		From: rname,
+		From: room.Name(),
 		To:   p.Name(),
 		Name: msg.Name,
 		Text: msg.Text,
@@ -1174,11 +1183,17 @@ func (p *nmdcPeer) PrivateMsg(from Peer, msg Message) error {
 	})
 }
 
-func (p *nmdcPeer) HubChatMsg(text string) error {
+func (p *nmdcPeer) HubChatMsg(m Message) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	return p.SendNMDC(&nmdcp.ChatMessage{Name: p.hub.conf.Name, Text: text})
+	if m.Name == "" {
+		m.Name = p.hub.conf.Name
+	}
+	if m.Me && !strings.HasPrefix(m.Text, "/me") {
+		m.Text = "/me " + m.Text
+	}
+	return p.SendNMDC(&nmdcp.ChatMessage{Name: m.Name, Text: m.Text})
 }
 
 func (p *nmdcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) error {

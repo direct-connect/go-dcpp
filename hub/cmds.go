@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -22,9 +24,18 @@ type Command struct {
 	Short   string
 	Long    string
 	Require string
-	Func    func(p Peer, args string) error
+	Func    interface{}
 	run     func(p Peer, args string)
+	opt     cmdOptions
 }
+
+type cmdOptions struct {
+	OnUser bool
+}
+
+type CommandFunc = func(p Peer, args string) error
+
+type RawCmd string
 
 const (
 	PermRoomsJoin = "rooms.join"
@@ -48,6 +59,7 @@ func (h *Hub) initCommands() {
 	h.RegisterCommand(Command{
 		Name: "history", Aliases: []string{"log"},
 		Short: "replay chat log history",
+		Menu:  []string{"Chat history"},
 		Func:  h.cmdChatLog,
 	})
 	h.RegisterCommand(Command{
@@ -72,6 +84,7 @@ func (h *Hub) initCommands() {
 	h.RegisterCommand(Command{
 		Name:    "rooms",
 		Short:   "list available rooms",
+		Menu:    []string{"Chat rooms"},
 		Require: PermRoomsList,
 		Func:    h.cmdRooms,
 	})
@@ -86,6 +99,7 @@ func (h *Hub) initCommands() {
 	h.RegisterCommand(Command{
 		Name: "getip", Aliases: []string{"gi"},
 		Short:   "returns IP of a user",
+		Menu:    []string{"IP"},
 		Require: PermIP,
 		Func:    h.cmdUserIP,
 	})
@@ -94,8 +108,16 @@ func (h *Hub) initCommands() {
 	h.RegisterCommand(Command{
 		Name:    "drop",
 		Short:   "drops a user from the hub",
+		Menu:    []string{"Drop"},
 		Require: PermDrop,
 		Func:    h.cmdDrop,
+	})
+	h.RegisterCommand(Command{
+		Name:    "banuserip",
+		Short:   "ban user's IP",
+		Menu:    []string{"Ban IP"},
+		Require: PermBanIP,
+		Func:    h.cmdBanUserIP,
 	})
 	h.RegisterCommand(Command{
 		Name:    "banip",
@@ -112,6 +134,7 @@ func (h *Hub) initCommands() {
 	h.RegisterCommand(Command{
 		Name: "listbanip", Aliases: []string{"infoban_ipban_"},
 		Short:   "list all IP bans",
+		Menu:    []string{"Bans", "List IPs"},
 		Require: PermBanIP,
 		Func:    h.cmdListBanIP,
 	})
@@ -181,7 +204,7 @@ func (h *Hub) cmdChatLog(p Peer, args string) error {
 		}
 		n = v
 	}
-	h.cmdOutput(p, "replaying last messages")
+	h.cmdOutputM(p, Message{Me: true, Text: "is replaying last messages"})
 	h.globalChat.ReplayChat(p, n)
 	return nil
 }
@@ -264,27 +287,19 @@ func (h *Hub) cmdBroadcast(p Peer, args string) error {
 	return nil
 }
 
-func (h *Hub) cmdUserIP(p Peer, args string) error {
-	p2 := h.PeerByName(args)
-	if p2 == nil {
-		return errors.New("no such user")
-	}
-	h.cmdOutput(p, "IP: "+addrString(p2.RemoteAddr()))
+func (h *Hub) cmdUserIP(p, p2 Peer) error {
+	addr := addrString(p2.RemoteAddr())
+	h.cmdOutputMu(p, p2, Message{Me: true, Text: "- " + addr})
 	return nil
 }
 
-func (h *Hub) cmdDrop(p Peer, args string) error {
-	p2 := h.PeerByName(args)
-	if p2 == nil {
-		return errors.New("no such user")
-	}
+func (h *Hub) cmdDrop(p, p2 Peer) error {
 	_ = p2.Close()
 	h.cmdOutput(p, "user dropped")
 	return nil
 }
 
-func (h *Hub) cmdBanIP(p Peer, args string) error {
-	ip := net.ParseIP(args)
+func (h *Hub) cmdBanIPa(p Peer, ip net.IP) error {
 	if ip == nil {
 		return errors.New("invalid IP format")
 	} else if h.IsHardBlockedIP(ip) {
@@ -294,6 +309,23 @@ func (h *Hub) cmdBanIP(p Peer, args string) error {
 	h.HardBlockIP(ip)
 	h.cmdOutput(p, "ip blocked")
 	return nil
+}
+
+func (h *Hub) cmdBanUserIP(p, p2 Peer) error {
+	addr, ok := p2.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		return errors.New("user is not using IP")
+	}
+	if err := h.cmdBanIPa(p, addr.IP); err != nil {
+		return err
+	}
+	_ = p2.Close()
+	return nil
+}
+
+func (h *Hub) cmdBanIP(p Peer, args string) error {
+	ip := net.ParseIP(args)
+	return h.cmdBanIPa(p, ip)
 }
 
 func (h *Hub) cmdUnBanIP(p Peer, args string) error {
@@ -366,8 +398,19 @@ func (h *Hub) cmdSample(p Peer, args string) error {
 	return nil
 }
 
+func (h *Hub) cmdOutputM(peer Peer, m Message) {
+	_ = peer.HubChatMsg(m)
+}
+
+func (h *Hub) cmdOutputMu(peer, from Peer, m Message) {
+	if m.Name == "" {
+		m.Name = from.Name()
+	}
+	_ = peer.ChatMsg(nil, from, m)
+}
+
 func (h *Hub) cmdOutput(peer Peer, out string) {
-	_ = peer.HubChatMsg(out)
+	h.cmdOutputM(peer, Message{Text: out})
 }
 
 func (h *Hub) cmdOutputf(peer Peer, format string, args ...interface{}) {
@@ -379,9 +422,192 @@ func (h *Hub) cmdOutputJSON(peer Peer, out interface{}) {
 	h.cmdOutput(peer, string(data))
 }
 
+var (
+	reflError  = reflect.TypeOf((*error)(nil)).Elem()
+	reflPeer   = reflect.TypeOf((*Peer)(nil)).Elem()
+	reflDur    = reflect.TypeOf(time.Duration(0))
+	reflRawCmd = reflect.TypeOf(RawCmd(""))
+	reflString = reflect.TypeOf("")
+	reflInt    = reflect.TypeOf(int(0))
+	reflUint   = reflect.TypeOf(uint(0))
+)
+
+func cmdParseString(text string) (string, string, error) {
+	if len(text) == 0 {
+		return "", text, errCmdInvalidArg
+	}
+	if text[0] != '"' && text[1] != '`' {
+		// unquoted string
+		i := strings.IndexByte(text, ' ')
+		if i < 0 {
+			return text, "", nil
+		}
+		return text[:i], text[i+1:], nil
+	}
+	// quoted string
+	v, rest, err := cmdUnquoteSplit(text)
+	if err != nil {
+		return "", "", errCmdInvalidArg
+	}
+	if rest == "" {
+		return v, "", nil
+	} else if rest[0] != ' ' {
+		return "", "", errCmdInvalidArg
+	}
+	return v, rest[1:], nil
+}
+
+func cmdParseInt(text string) (int, string, error) {
+	s, rest, err := cmdParseString(text)
+	if err != nil {
+		return 0, "", err
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, "", err
+	}
+	return int(v), rest, nil
+}
+
+func cmdParseUint(text string) (uint, string, error) {
+	s, rest, err := cmdParseString(text)
+	if err != nil {
+		return 0, "", err
+	}
+	v, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0, "", err
+	}
+	return uint(v), rest, nil
+}
+
+func cmdParseDur(text string) (time.Duration, string, error) {
+	s, rest, err := cmdParseString(text)
+	if err != nil {
+		return 0, "", err
+	}
+	v, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, "", err
+	}
+	return v, rest, nil
+}
+
+func (h *Hub) cmdParsePeer(text string) (Peer, string, error) {
+	if len(text) == 0 {
+		return nil, "", errCmdInvalidArg
+	}
+	v, rest, err := cmdParseString(text)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(v) == 4 {
+		// maybe SID
+		var sid SID
+		if err := sid.UnmarshalAdc([]byte(v)); err == nil {
+			if peer := h.peerBySID(sid); peer != nil {
+				return peer, rest, nil
+			}
+		}
+	}
+	peer := h.PeerByName(v)
+	if peer == nil {
+		return nil, "", errors.New("no such user: " + v)
+	}
+	return peer, rest, nil
+}
+
+func (h *Hub) toCommandFunc(o interface{}, opt *cmdOptions) CommandFunc {
+	if fnc, ok := o.(CommandFunc); ok {
+		return fnc
+	}
+	fncv := reflect.ValueOf(o)
+	rt := fncv.Type()
+	if rt.Kind() != reflect.Func {
+		panic("command handler should be a function")
+	}
+	if rt.NumOut() != 1 {
+		panic("expected exactly one output")
+	} else if rt.Out(0) != reflError {
+		panic("return type should be an error")
+	}
+	selfInd := -1
+	argc := rt.NumIn()
+	hasRaw := false
+	argt := make([]reflect.Type, 0, argc)
+	for i := 0; i < argc; i++ {
+		t := rt.In(i)
+		if selfInd < 0 && t == reflPeer {
+			selfInd = i
+		} else if t == reflRawCmd {
+			if i != argc-1 {
+				panic("raw command can only be the last argument")
+			}
+			hasRaw = true
+		} else {
+			switch t {
+			case reflPeer:
+				if argc == 1 || (argc == 2 && selfInd >= 0) {
+					opt.OnUser = true
+				}
+			case reflDur:
+			case reflInt, reflUint, reflString:
+			default:
+				panic(fmt.Errorf("unsupported type: %v", t))
+			}
+		}
+		argt = append(argt, t)
+	}
+	argOffs := 0
+	if selfInd >= 0 {
+		argOffs++
+	}
+	return func(p Peer, args string) error {
+		in := make([]reflect.Value, 0, len(argt))
+		for i, t := range argt {
+			if i == selfInd {
+				in = append(in, reflect.ValueOf(p))
+				continue
+			} else if hasRaw && i == argc-1 {
+				in = append(in, reflect.ValueOf(RawCmd(args)))
+				continue
+			}
+			var (
+				v   interface{}
+				err error
+			)
+			switch t {
+			case reflPeer:
+				v, args, err = h.cmdParsePeer(args)
+			case reflString:
+				v, args, err = cmdParseString(args)
+			case reflInt:
+				v, args, err = cmdParseInt(args)
+			case reflUint:
+				v, args, err = cmdParseUint(args)
+			case reflDur:
+				v, args, err = cmdParseDur(args)
+			default:
+				return fmt.Errorf("unsupported type: %v", t)
+			}
+			if err != nil {
+				i -= argOffs
+				return fmt.Errorf("arg %d: %v", i+1, err)
+			}
+			in = append(in, reflect.ValueOf(v))
+		}
+		ev := fncv.Call(in)[0]
+		if ev.IsNil() {
+			return nil
+		}
+		return ev.Interface().(error)
+	}
+}
+
 func (h *Hub) RegisterCommand(cmd Command) {
+	fnc := h.toCommandFunc(cmd.Func, &cmd.opt)
 	cmd.run = func(p Peer, args string) {
-		err := cmd.Func(p, args)
+		err := fnc(p, args)
 		if err != nil {
 			h.cmdOutput(p, "error: "+err.Error())
 		}
@@ -414,8 +640,8 @@ func (h *Hub) isCommand(peer Peer, text string) bool {
 	i := strings.IndexByte(cmd, ' ')
 	args := ""
 	if i > 0 {
-		cmd = cmd[:i]
 		args = cmd[i+1:]
+		cmd = cmd[:i]
 	}
 	if len(cmd) == 0 {
 		return false // allow any combinations of "+ ..." or "! ..."

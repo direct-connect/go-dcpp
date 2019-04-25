@@ -407,7 +407,7 @@ func (p *ircPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 		// no echo
 		return nil
 	}
-	if room.Name() != "" {
+	if room != nil && room.Name() != "" {
 		return nil // FIXME
 	}
 	m := &irc.Message{
@@ -445,7 +445,7 @@ func (p *ircPeer) PrivateMsg(from Peer, msg Message) error {
 	return p.writeMessage(m)
 }
 
-func (p *ircPeer) HubChatMsg(text string) error {
+func (p *ircPeer) HubChatMsg(m Message) error {
 	// TODO:
 	return nil
 }

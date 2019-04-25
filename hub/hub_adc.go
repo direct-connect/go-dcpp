@@ -483,10 +483,17 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 	for _, c := range h.ListCommands(peer.User()) {
+		cat := adc.CategoryHub
+		cmd := "HMSG !" + c.Name
+		if c.opt.OnUser {
+			cmd += `\s%[userSID]`
+			cat = adc.CategoryUser
+		}
+		cmd += "\n"
 		err := peer.c.WriteInfoMsg(adc.UserCommand{
 			Path:     c.Menu,
-			Command:  "HMSG !" + c.Name + "\n",
-			Category: adc.CategoryUser,
+			Command:  cmd,
+			Category: cat,
 		})
 		if err != nil {
 			return err
@@ -527,7 +534,7 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 
 func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	// TODO: disallow INF, STA and some others
-	peer := h.bySID(p.Targ)
+	peer := h.peerBySID(p.Targ)
 	if peer == nil {
 		r := h.roomBySID(p.Targ)
 		if r == nil {
@@ -1034,7 +1041,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	if room.Name() == "" {
+	if room == nil || room.Name() == "" {
 		return p.SendADCBroadcast(from.SID(), &adc.ChatMessage{
 			Text: msg.Text, Me: msg.Me,
 			TS: msg.Time.Unix(),
@@ -1063,13 +1070,16 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 	})
 }
 
-func (p *adcPeer) HubChatMsg(text string) error {
+func (p *adcPeer) HubChatMsg(m Message) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
+	if m.Time.IsZero() {
+		m.Time = time.Now()
+	}
 	return p.SendADCInfo(&adc.ChatMessage{
-		Text: text,
-		TS:   time.Now().Unix(),
+		Text: m.Text, Me: m.Me,
+		TS: m.Time.Unix(),
 	})
 }
 

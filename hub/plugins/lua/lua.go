@@ -251,7 +251,7 @@ func (s *Script) pushPeer(p hub.Peer) {
 		"sendGlobal": lua.Function(func(_ *lua.State) int {
 			text, _ := s.s.ToString(1)
 			s.s.Pop(1)
-			_ = p.HubChatMsg(text)
+			_ = p.HubChatMsg(hub.Message{Text: text})
 			return 0
 		}),
 	})

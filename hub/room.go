@@ -212,7 +212,7 @@ func (r *Room) ReplayChat(to Peer, n int) {
 				m.Name, m.Text,
 			)
 		}
-		err := to.HubChatMsg(txt)
+		err := to.HubChatMsg(Message{Text: txt, Time: m.Time})
 		if err != nil {
 			return
 		}

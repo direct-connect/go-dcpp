@@ -46,7 +46,7 @@ func (p *hubStats) Init(h *hub.Hub, path string) error {
 func (p *hubStats) cmdStats(peer hub.Peer, args string) error {
 	st := p.h.Stats()
 	data, _ := json.MarshalIndent(st, "", "  ")
-	_ = peer.HubChatMsg(string(data))
+	_ = peer.HubChatMsg(hub.Message{Text: string(data)})
 	return nil
 }
 
@@ -127,7 +127,7 @@ TLS verions:
 			)
 		}
 	}
-	_ = peer.HubChatMsg(buf.String())
+	_ = peer.HubChatMsg(hub.Message{Text: buf.String()})
 	return nil
 }
 
