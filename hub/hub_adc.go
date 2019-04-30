@@ -895,9 +895,41 @@ func (p *adcPeer) PeersJoin(peers []Peer) error {
 }
 
 func (p *adcPeer) PeersUpdate(peers []Peer) error {
-	// same as join
 	// TODO: diff infos
-	return p.PeersJoin(peers)
+	return p.peersUpdate(peers)
+}
+
+func (u UserInfo) toADC(cid CID, user *User) adc.User {
+	out := adc.User{
+		Name:           u.Name,
+		Id:             cid,
+		Application:    u.App.Name,
+		Version:        u.App.Version,
+		HubsNormal:     u.HubsNormal,
+		HubsRegistered: u.HubsRegistered,
+		HubsOperator:   u.HubsOperator,
+		Slots:          u.Slots,
+		ShareSize:      int64(u.Share),
+		Email:          u.Email,
+	}
+	adcUserType(&out, user, &u)
+	if u.TLS {
+		out.Features = append(out.Features, adc.FeaADC0)
+	}
+	if u.IPv4 {
+		out.Features = append(out.Features, adc.FeaTCP4)
+	}
+	if u.IPv6 {
+		out.Features = append(out.Features, adc.FeaTCP6)
+	}
+	return out
+}
+
+func (p *adcPeer) fixUserInfo(u *adc.User) {
+	if u.Application != "" && p.Info().Application == "" {
+		// doesn't support AP field
+		u.Application, u.Version = "", u.Application+" "+u.Version
+	}
 }
 
 func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
@@ -911,32 +943,10 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 		} else {
 			// TODO: same address from multiple clients behind NAT, so we addend the name
 			addr, _, _ := net.SplitHostPort(peer.RemoteAddr().String())
-			info := peer.UserInfo()
 			// TODO: once we support name changes, we should make the user
 			//       virtually leave and rejoin with a new CID
-			cid := adc.CID(tiger.HashBytes([]byte(info.Name + "\x00" + addr)))
-			u = adc.User{
-				Name:           info.Name,
-				Id:             cid,
-				Application:    info.App.Name,
-				Version:        info.App.Version,
-				HubsNormal:     info.HubsNormal,
-				HubsRegistered: info.HubsRegistered,
-				HubsOperator:   info.HubsOperator,
-				Slots:          info.Slots,
-				ShareSize:      int64(info.Share),
-				Email:          info.Email,
-			}
-			adcUserType(&u, peer.User(), &info)
-			if info.TLS {
-				u.Features = append(u.Features, adc.FeaADC0)
-			}
-			if info.IPv4 {
-				u.Features = append(u.Features, adc.FeaTCP4)
-			}
-			if info.IPv6 {
-				u.Features = append(u.Features, adc.FeaTCP6)
-			}
+			cid := adc.CID(tiger.HashBytes([]byte(peer.Name() + "\x00" + addr)))
+			u = peer.UserInfo().toADC(cid, peer.User())
 			if t, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
 				if ip4 := t.IP.To4(); ip4 != nil {
 					u.Ip4 = ip4.String()
@@ -945,10 +955,7 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 				}
 			}
 		}
-		if u.Application != "" && p.Info().Application == "" {
-			// doesn't support AP field
-			u.Application, u.Version = "", u.Application+" "+u.Version
-		}
+		p.fixUserInfo(&u)
 		if !p.Online() {
 			return errConnectionClosed
 		}
@@ -958,6 +965,29 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 		} else {
 			err = p.SendADCBroadcast(peer.SID(), &u)
 		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *adcPeer) peersUpdate(peers []Peer) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
+	for _, peer := range peers {
+		var u adc.User
+		if p2, ok := peer.(*adcPeer); ok {
+			u = p2.Info()
+		} else {
+			u = peer.UserInfo().toADC(CID{}, peer.User())
+		}
+		p.fixUserInfo(&u)
+		if !p.Online() {
+			return errConnectionClosed
+		}
+		err := p.SendADCBroadcast(peer.SID(), &u)
 		if err != nil {
 			return err
 		}
