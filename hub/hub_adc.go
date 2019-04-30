@@ -567,12 +567,9 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 		})
 	case adc.ConnectRequest:
 		info := from.Info()
-		pinf := peer.UserInfo()
-		var ip string
-		if pinf.IPv6 && info.Ip6 != "" {
+		ip := info.Ip4
+		if info.Ip6 != "" {
 			ip = info.Ip6
-		} else if pinf.IPv4 {
-			ip = info.Ip4
 		}
 		if ip == "" {
 			return
