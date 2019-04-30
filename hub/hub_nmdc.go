@@ -420,6 +420,21 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		if err != nil {
 			return err
 		}
+		if peer.User().HasPerm(PermIP) {
+			for _, p := range peers {
+				addr, ok := p.RemoteAddr().(*net.TCPAddr)
+				if !ok {
+					continue
+				}
+				err = c.WriteMsg(&nmdcp.UserIP{
+					Name: p.Name(),
+					IP:   addr.IP.String(),
+				})
+				if err != nil {
+					return err
+				}
+			}
+		}
 	}
 	_ = c.SetWriteDeadline(time.Now().Add(writeTimeout))
 	return c.Flush()
