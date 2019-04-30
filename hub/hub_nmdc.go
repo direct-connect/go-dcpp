@@ -291,8 +291,8 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			return errConnInsecure
 		}
 		// give the user a minute to enter a password
-		_ = c.SetWriteDeadline(time.Now().Add(time.Minute))
 		deadline = time.Now().Add(time.Minute)
+		_ = c.SetWriteDeadline(deadline)
 		err = c.WriteOneMsg(&nmdcp.GetPass{})
 		if err != nil {
 			return err
@@ -317,7 +317,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		deadline = time.Now().Add(time.Second * 5)
 	}
 
-	_ = c.SetWriteDeadline(time.Now().Add(writeTimeout))
+	_ = c.SetWriteDeadline(deadline)
 	err = c.WriteOneMsg(&nmdcp.Hello{
 		Name: nmdcp.Name(peer.info.user.Name),
 	})
@@ -359,10 +359,6 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 
 	peer.setUserInfo(&peer.info.user)
 
-	//err = c.WriteLine(peer.info.raw)
-	//if err != nil {
-	//	return err
-	//}
 	err = c.WriteMsg(&nmdcp.HubTopic{
 		Text: h.conf.Desc,
 	})
@@ -394,19 +390,27 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
-	var ops nmdcp.Names
+	botlist := peer.fea.Has(nmdcp.ExtBotList)
+	var ops, bots nmdcp.Names
 	for _, p := range peers {
-		u := p.User()
-		if u == nil {
-			continue
-		}
-		if u.Has(FlagOpIcon) {
+		if u := p.User(); u != nil && u.Has(FlagOpIcon) {
 			ops = append(ops, p.Name())
+		}
+		if botlist {
+			if info := p.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
+				bots = append(bots, p.Name())
+			}
 		}
 	}
 	err = c.WriteMsg(&nmdcp.OpList{ops})
 	if err != nil {
 		return err
+	}
+	if botlist {
+		err = c.WriteMsg(&nmdcp.BotList{bots})
+		if err != nil {
+			return err
+		}
 	}
 	if peer.fea.Has(nmdcp.ExtUserIP2) {
 		err = c.WriteMsg(&nmdcp.UserIP{
@@ -1032,18 +1036,18 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 			myinfo := peer.UserInfo().toNMDC()
 			cmds = []nmdcp.Message{&myinfo}
 		}
-		if p.fea.Has(nmdcp.ExtBotList) {
-			if info := peer.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
-				cmds = append(cmds, &nmdcp.BotList{nmdcp.Names{peer.Name()}})
-			}
-		}
-		if peer.User().Has(FlagOpIcon) {
-			// operator flag is sent as a separate command
-			cmds = append(cmds, &nmdcp.OpList{nmdcp.Names{peer.Name()}})
-		}
 		if initial {
 			err = p.c.WriteMsg(cmds...)
 		} else {
+			if p.fea.Has(nmdcp.ExtBotList) {
+				if info := peer.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
+					cmds = append(cmds, &nmdcp.BotList{nmdcp.Names{peer.Name()}})
+				}
+			}
+			if peer.User().Has(FlagOpIcon) {
+				// operator flag is sent as a separate command
+				cmds = append(cmds, &nmdcp.OpList{nmdcp.Names{peer.Name()}})
+			}
 			err = p.SendNMDC(cmds...)
 		}
 		if err != nil {
