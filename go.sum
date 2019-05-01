@@ -45,6 +45,8 @@ github.com/direct-connect/go-dc v0.7.1 h1:wb07NZE6pajqAgwqjjQD1Om19zV2J94sxDhalv
 github.com/direct-connect/go-dc v0.7.1/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
 github.com/direct-connect/go-dc v0.7.2 h1:tcYyMyW9Nw7OtrVtwUZRXF6SwC9G1Qowcjm63ShstXI=
 github.com/direct-connect/go-dc v0.7.2/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
+github.com/direct-connect/go-dc v0.7.3 h1:rLhI/8O50h/8dH2hXew4nmC6Io+grCCd963Pi4s0xuk=
+github.com/direct-connect/go-dc v0.7.3/go.mod h1:AwUTf54jhNPJvs+QNHoZxEb3p0LS8ik+2t0R8b4+MdI=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.3.3/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/eapache/go-resiliency v1.1.0/go.mod h1:kFI+JgMyC7bLPUVY133qvEBtVayf5mFgVsvEsIPBvNs=

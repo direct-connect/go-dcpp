@@ -23,6 +23,8 @@ var (
 
 const lineDelim = 0x0a
 
+const writeBuffer = 64 * 1024
+
 type Route interface {
 	WriteMessage(msg Message) error
 	Flush() error
@@ -77,7 +79,7 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	c := &Conn{
 		conn: conn,
 	}
-	c.w = lineproto.NewWriter(conn)
+	c.w = lineproto.NewWriterSize(conn, writeBuffer)
 	c.r = lineproto.NewReader(conn, lineDelim)
 	if Debug {
 		c.w.OnLine(func(line []byte) (bool, error) {

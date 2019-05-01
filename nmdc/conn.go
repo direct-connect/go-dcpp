@@ -23,6 +23,8 @@ var (
 	DefaultFallbackEncoding encoding.Encoding
 )
 
+const writeBuffer = 64 * 1024
+
 var dialer = net.Dialer{}
 
 // Dial connects to a specified address.
@@ -78,7 +80,7 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	c := &Conn{
 		conn: conn,
 	}
-	c.w = nmdc.NewWriter(conn)
+	c.w = nmdc.NewWriterSize(conn, writeBuffer)
 	c.r = nmdc.NewReader(conn)
 	c.r.OnUnknownEncoding = c.onUnknownEncoding
 	if DefaultFallbackEncoding != nil {
