@@ -459,7 +459,6 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 	peer.c.SetWriteTimeout(-1)
 	go peer.writer(writeTimeout)
 
-	var total uint
 	cnt := make(map[string]uint)
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -480,7 +479,6 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		}
 		select {
 		case <-ticker.C:
-			total = 0
 			for k := range cnt {
 				cnt[k] = 0
 			}
@@ -489,19 +487,18 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		n := cnt[typ]
 		n++
 		cnt[typ] = n
-		if total > nmdcMaxPerMin {
-			max := uint(nmdcMaxPerMin)
-			if v, ok := nmdcMaxPerMinCmd[typ]; ok {
-				max = v
+
+		max := uint(nmdcMaxPerMin)
+		if v, ok := nmdcMaxPerMinCmd[typ]; ok {
+			max = v
+		}
+		if n >= max {
+			countM(cntNMDCCommandsDrop, typ, 1)
+			if n == max {
+				log.Println("spam:", peer.Name(), typ, msg)
 			}
-			if n >= max {
-				countM(cntNMDCCommandsDrop, typ, 1)
-				if n == max {
-					log.Println("spam:", peer.Name(), typ, msg)
-				}
-				// TODO: temp ban?
-				continue
-			}
+			// TODO: temp ban?
+			continue
 		}
 		if err = h.nmdcHandle(peer, msg); err != nil {
 			countM(cntNMDCCommandsDrop, typ, 1)
