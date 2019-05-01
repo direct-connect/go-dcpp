@@ -215,6 +215,14 @@ var (
 		Name: "dc_nmdc_extension",
 		Help: "The total number of NMDC connections with a given extension",
 	}, []string{"ext"})
+	numNMDCWriteQueue = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "dc_nmdc_write_queue",
+		Help: "The number of NMDC messages queued for write",
+	})
+	durNMDCWrite = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "dc_nmdc_write_sec",
+		Help: "The time to write NMDC message batch",
+	})
 
 	sizeADCLinesR = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "dc_adc_lines_read",

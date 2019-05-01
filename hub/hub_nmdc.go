@@ -35,6 +35,8 @@ var nmdcMaxPerMinCmd = map[string]uint{
 	(&nmdcp.TTHSearchActive{}).Type():  15,
 	(&nmdcp.Search{}).Type():           15,
 	(&nmdcp.SR{}).Type():               150,
+	(&nmdcp.ConnectToMe{}).Type():      20,
+	(&nmdcp.RevConnectToMe{}).Type():   20,
 }
 
 func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
@@ -495,7 +497,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		if n >= max {
 			countM(cntNMDCCommandsDrop, typ, 1)
 			if n == max {
-				log.Println("spam:", peer.Name(), typ, msg)
+				log.Println("flood:", peer.Name(), typ, msg)
 			}
 			// TODO: temp ban?
 			continue
@@ -785,6 +787,7 @@ type nmdcPeer struct {
 
 	write struct {
 		wake chan struct{}
+		cnt  uint32 // atomic
 		sync.Mutex
 		buf []nmdcp.Message
 	}
@@ -896,40 +899,71 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 	defer ticker.Stop()
 
 	var buf2 []nmdcp.Message
+	resetBuf := func(buf []nmdcp.Message) {
+		for i := range buf {
+			buf[i] = nil
+		}
+		buf2 = buf[:0]
+	}
+	logErr := func(err error) {
+		if p.Online() {
+			log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+		}
+		return
+	}
+	var deadline time.Time
 	for {
-		var err error
 		select {
 		case <-p.close.done:
 			return
 		case <-ticker.C:
 			// keep alive
 			_ = p.c.SetWriteDeadline(time.Now().Add(timeout))
-			err = p.c.WriteLine([]byte("|"))
+			err := p.c.WriteLine([]byte("|"))
+			if err != nil {
+				logErr(err)
+				return
+			}
+			err = p.c.Flush()
+			if err != nil {
+				logErr(err)
+				return
+			}
+			_ = p.c.SetWriteDeadline(time.Time{})
 		case <-p.write.wake:
 			p.write.Lock()
 			buf := p.write.buf
 			p.write.buf = buf2
+			atomic.StoreUint32(&p.write.cnt, 0)
 			p.write.Unlock()
+			numNMDCWriteQueue.Observe(float64(len(buf)))
 			if len(buf) == 0 {
-				buf2 = buf[:0]
+				resetBuf(buf)
 				continue
 			}
-			_ = p.c.SetWriteDeadline(time.Now().Add(timeout))
-			err = p.c.WriteMsg(buf...)
-			for i := range buf {
-				buf[i] = nil
+			start := time.Now()
+			if start.After(deadline) || deadline.Sub(start) < (timeout*3)/4 {
+				// set only if an old deadline is stale
+				deadline = start.Add(timeout)
+				_ = p.c.SetWriteDeadline(deadline)
 			}
-			buf2 = buf[:0]
-		}
-		if err == nil {
+			err := p.c.WriteMsg(buf...)
+			durNMDCWrite.Observe(time.Since(start).Seconds())
+			resetBuf(buf)
+			if err != nil {
+				logErr(err)
+				return
+			}
+			if atomic.LoadUint32(&p.write.cnt) > 0 && len(p.write.wake) != 0 {
+				continue // do not flush, continue batching
+			}
 			err = p.c.Flush()
-		}
-		_ = p.c.SetWriteDeadline(time.Time{})
-		if err != nil {
-			if p.Online() {
-				log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+			if err != nil {
+				logErr(err)
+				return
 			}
-			return
+			_ = p.c.SetWriteDeadline(time.Time{})
+			deadline = time.Time{}
 		}
 	}
 }
@@ -944,6 +978,7 @@ func (p *nmdcPeer) SendNMDC(m ...nmdcp.Message) error {
 		return errConnectionClosed
 	}
 	p.write.buf = append(p.write.buf, m...)
+	atomic.AddUint32(&p.write.cnt, 1)
 	p.write.Unlock()
 	select {
 	case p.write.wake <- struct{}{}:

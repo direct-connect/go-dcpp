@@ -2,5 +2,5 @@ package version
 
 const (
 	Name = "go-dcpp"
-	Vers = "0.16.2"
+	Vers = "0.16.3"
 )
