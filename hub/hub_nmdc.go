@@ -26,12 +26,15 @@ var (
 
 const (
 	nmdcFakeToken = "nmdc"
-	nmdcMaxPerSec = 10
+	nmdcMaxPerMin = 30
 )
 
-var nmdcMaxPerSecCmd = map[string]uint{
-	(&nmdcp.SR{}).Type():     50,
-	(&nmdcp.MyINFO{}).Type(): 2,
+var nmdcMaxPerMinCmd = map[string]uint{
+	(&nmdcp.MyINFO{}).Type():           30,
+	(&nmdcp.TTHSearchPassive{}).Type(): 15,
+	(&nmdcp.TTHSearchActive{}).Type():  15,
+	(&nmdcp.Search{}).Type():           15,
+	(&nmdcp.SR{}).Type():               150,
 }
 
 func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
@@ -458,7 +461,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 
 	var total uint
 	cnt := make(map[string]uint)
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
 		msg, err := peer.c.ReadMsg(time.Time{})
@@ -486,9 +489,9 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		n := cnt[typ]
 		n++
 		cnt[typ] = n
-		if total > nmdcMaxPerSec {
-			max := uint(nmdcMaxPerSec)
-			if v, ok := nmdcMaxPerSecCmd[typ]; ok {
+		if total > nmdcMaxPerMin {
+			max := uint(nmdcMaxPerMin)
+			if v, ok := nmdcMaxPerMinCmd[typ]; ok {
 				max = v
 			}
 			if n >= max {
