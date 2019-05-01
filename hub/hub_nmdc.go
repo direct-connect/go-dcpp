@@ -907,6 +907,7 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 	}
 	logErr := func(err error) {
 		if p.Online() {
+			cntNMDCWriteErr.Add(1)
 			log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
 		}
 		return
@@ -948,16 +949,18 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 				_ = p.c.SetWriteDeadline(deadline)
 			}
 			err := p.c.WriteMsg(buf...)
-			durNMDCWrite.Observe(time.Since(start).Seconds())
 			resetBuf(buf)
 			if err != nil {
+				durNMDCWrite.Observe(time.Since(start).Seconds())
 				logErr(err)
 				return
 			}
 			if atomic.LoadUint32(&p.write.cnt) > 0 && len(p.write.wake) != 0 {
+				durNMDCWrite.Observe(time.Since(start).Seconds())
 				continue // do not flush, continue batching
 			}
 			err = p.c.Flush()
+			durNMDCWrite.Observe(time.Since(start).Seconds())
 			if err != nil {
 				logErr(err)
 				return

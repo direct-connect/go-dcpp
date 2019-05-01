@@ -219,6 +219,10 @@ var (
 		Name: "dc_nmdc_write_queue",
 		Help: "The number of NMDC messages queued for write",
 	})
+	cntNMDCWriteErr = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dc_nmdc_write_err",
+		Help: "The total number of NMDC write errors",
+	})
 	durNMDCWrite = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name: "dc_nmdc_write_sec",
 		Help: "The time to write NMDC message batch",
