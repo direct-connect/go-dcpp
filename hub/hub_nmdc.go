@@ -203,7 +203,6 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 		cntPings.Add(1)
 		cntPingsNMDC.Add(1)
 		// it's a pinger - don't bother binding the nickname
-		delete(peer.fea, nmdcp.ExtBotINFO)
 		peer.fea.Set(nmdcp.ExtHubINFO)
 
 		err = h.nmdcAccept(peer)

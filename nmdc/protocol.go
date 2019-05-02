@@ -36,7 +36,7 @@ func (c *Conn) SendClientHandshake(deadline time.Time, ext ...string) (*nmdc.Loc
 	return &lock, nil
 }
 
-func (c *Conn) SendClientInfo(deadline time.Time, info *nmdc.MyINFO) error {
+func (c *Conn) sendClientInfo(deadline time.Time, info *nmdc.MyINFO) error {
 	err := c.WriteMsg(&nmdc.Version{Vers: "1,0091"})
 	if err != nil {
 		return err
@@ -49,15 +49,27 @@ func (c *Conn) SendClientInfo(deadline time.Time, info *nmdc.MyINFO) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *Conn) SendClientInfo(deadline time.Time, info *nmdc.MyINFO) error {
+	err := c.sendClientInfo(deadline, info)
+	if err != nil {
+		return err
+	}
 	return c.Flush()
 }
 
 func (c *Conn) SendPingerInfo(deadline time.Time, info *nmdc.MyINFO) error {
-	err := c.WriteMsg(&nmdc.BotINFO{String: nmdc.String(info.Name)})
+	err := c.sendClientInfo(deadline, info)
 	if err != nil {
 		return err
 	}
-	return c.SendClientInfo(deadline, info)
+	err = c.WriteMsg(&nmdc.BotINFO{String: nmdc.String(info.Name)})
+	if err != nil {
+		return err
+	}
+	return c.Flush()
 }
 
 func (c *Conn) ReadValidateNick(deadline time.Time) (*nmdc.ValidateNick, error) {
