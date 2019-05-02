@@ -359,12 +359,8 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 			}
 		case *nmdc.UserIP:
 		// TODO: some implementations seem to end the list with this message
-		case *nmdc.RawMessage:
-			// TODO: change to ForceMove type, once supported
-			switch msg.Typ {
-			case "ForceMove":
-				hub.Redirect = string(msg.Data)
-			}
+		case *nmdc.ForceMove:
+			hub.Redirect = string(msg.Address)
 		}
 	}
 }
