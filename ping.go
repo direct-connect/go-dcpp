@@ -76,6 +76,7 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 			},
 			Users:    len(hub.Users),
 			UserList: make([]HubUser, 0, len(hub.Users)),
+			Redirect: hub.Redirect,
 		}
 		if info.Desc == "" {
 			info.Desc = hub.Topic
@@ -175,6 +176,7 @@ type HubInfo struct {
 	Users    int       `json:"users" xml:"Users,attr"`
 	Files    uint64    `json:"files,omitempty" xml:"Files,attr,omitempty"`
 	Share    uint64    `json:"share,omitempty" xml:"Shared,attr,omitempty"`
+	Redirect string    `json:"redirect,omitempty" xml:"Redirect,attr,omitempty"`
 	UserList []HubUser `json:"userlist,omitempty" xml:"User,attr,omitempty"`
 }
 

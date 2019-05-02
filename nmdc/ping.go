@@ -35,6 +35,7 @@ type HubInfo struct {
 	Users    []nmdc.MyINFO
 	Ops      []string
 	Bots     []string
+	Redirect string
 }
 
 func (h *HubInfo) decodeWith(enc encoding.Encoding) error {
@@ -244,6 +245,9 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 			if listStarted || listEnd {
 				return &hub, nil
 			}
+			if hub.Redirect != "" {
+				return &hub, nil
+			}
 			if lastMsg != "" {
 				err = fmt.Errorf("connection closed: %s", lastMsg)
 				if strings.Contains(lastMsg, "registered users only") {
@@ -354,7 +358,13 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 				return &hub, nil
 			}
 		case *nmdc.UserIP:
-			// TODO: some implementations seem to end the list with this message
+		// TODO: some implementations seem to end the list with this message
+		case *nmdc.RawMessage:
+			// TODO: change to ForceMove type, once supported
+			switch msg.Typ {
+			case "ForceMove":
+				hub.Redirect = string(msg.Data)
+			}
 		}
 	}
 }

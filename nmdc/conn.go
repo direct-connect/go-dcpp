@@ -176,6 +176,10 @@ func (c *Conn) TextEncoder() *encoding.Encoder {
 	return c.w.Encoder()
 }
 
+func (c *Conn) TextDecoder() *encoding.Decoder {
+	return c.r.Decoder()
+}
+
 func (c *Conn) setEncoding(enc encoding.Encoding, event bool) {
 	if enc != nil {
 		e := enc.NewEncoder()
