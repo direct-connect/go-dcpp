@@ -222,7 +222,7 @@ func (h *Hub) poweredBy() string {
 	if i := strings.LastIndexByte(uptime, '.'); i > 0 {
 		uptime = uptime[:i] + "s"
 	}
-	return strings.Join([]string{"Powered by", app, vers + ",", "uptime:", uptime}, " ")
+	return strings.Join([]string{"Powered by", app, vers, "(uptime:", uptime + ")"}, " ")
 }
 
 func (h *Hub) ListenAndServe(addr string) error {

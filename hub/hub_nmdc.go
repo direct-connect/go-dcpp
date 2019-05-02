@@ -25,6 +25,10 @@ var (
 )
 
 const (
+	debugAllowInsecure = false
+)
+
+const (
 	nmdcFakeToken = "nmdc"
 	nmdcMaxPerMin = 30
 )
@@ -291,7 +295,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	if user != nil && rec != nil {
-		if c := peer.ConnInfo(); c != nil && !c.Secure {
+		if c := peer.ConnInfo(); c != nil && !c.Secure && !debugAllowInsecure {
 			return errConnInsecure
 		}
 		// give the user a minute to enter a password
@@ -1084,6 +1088,8 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 
 func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	var err error
+	botlist := p.fea.Has(nmdcp.ExtBotList)
+	permIP := p.User().HasPerm(PermIP)
 	for _, peer := range peers {
 		if !p.Online() {
 			return errConnectionClosed
@@ -1107,7 +1113,7 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 		if initial {
 			err = p.c.WriteMsg(cmds...)
 		} else {
-			if p.fea.Has(nmdcp.ExtBotList) {
+			if botlist {
 				if info := peer.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
 					cmds = append(cmds, &nmdcp.BotList{nmdcp.Names{peer.Name()}})
 				}
@@ -1115,6 +1121,14 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 			if peer.User().Has(FlagOpIcon) {
 				// operator flag is sent as a separate command
 				cmds = append(cmds, &nmdcp.OpList{nmdcp.Names{peer.Name()}})
+			}
+			if permIP {
+				if addr, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
+					cmds = append(cmds, &nmdcp.UserIP{
+						Name: peer.Name(),
+						IP:   addr.IP.String(),
+					})
+				}
 			}
 			err = p.SendNMDC(cmds...)
 		}
