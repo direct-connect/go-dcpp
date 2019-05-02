@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -175,6 +176,10 @@ func (st *Stats) DefaultAddr() string {
 	return st.Addr[0]
 }
 
+func (h *Hub) Uptime() time.Duration {
+	return time.Since(h.created)
+}
+
 func (h *Hub) Stats() Stats {
 	h.peers.RLock()
 	users := len(h.peers.byName)
@@ -191,6 +196,7 @@ func (h *Hub) Stats() Stats {
 		Enc:      "utf-8",
 		Soft:     h.conf.Soft,
 		Keyprint: h.conf.Keyprint,
+		Uptime:   uint64(h.Uptime().Seconds()),
 	}
 	if h.conf.Addr != "" {
 		st.Addr = append(st.Addr, h.conf.Addr)
@@ -207,6 +213,16 @@ func (h *Hub) nextSID() SID {
 
 func (h *Hub) HubUser() *Bot {
 	return h.hubUser
+}
+
+func (h *Hub) poweredBy() string {
+	app := h.conf.Soft.Name
+	vers := h.conf.Soft.Version
+	uptime := h.Uptime().String()
+	if i := strings.LastIndexByte(uptime, '.'); i > 0 {
+		uptime = uptime[:i] + "s"
+	}
+	return strings.Join([]string{"Powered by", app, vers + ",", "uptime:", uptime}, " ")
 }
 
 func (h *Hub) ListenAndServe(addr string) error {

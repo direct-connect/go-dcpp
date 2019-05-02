@@ -370,6 +370,10 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
+	err = peer.HubChatMsg(Message{Text: h.poweredBy()})
+	if err != nil {
+		return err
+	}
 	err = h.sendMOTD(peer)
 	if err != nil {
 		return err

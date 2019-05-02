@@ -361,7 +361,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	err = peer.c.WriteInfoMsg(adc.Status{
 		Sev:  adc.Success,
 		Code: 0,
-		Msg:  "powered by Gophers",
+		Msg:  h.poweredBy(),
 	})
 
 	// send user list (except his own info)
