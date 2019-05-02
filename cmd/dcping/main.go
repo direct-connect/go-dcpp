@@ -254,7 +254,7 @@ func init() {
 				}); err != nil {
 					panic(err)
 				}
-			case "xml":
+			case "xml", "xml-line":
 				var out hublist.Hub
 				status := "Online"
 				if err != nil {
