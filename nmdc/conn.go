@@ -23,7 +23,7 @@ var (
 	DefaultFallbackEncoding encoding.Encoding
 )
 
-const writeBuffer = 64 * 1024
+const writeBuffer = 0
 
 var dialer = net.Dialer{}
 

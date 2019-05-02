@@ -23,7 +23,7 @@ var (
 
 const lineDelim = 0x0a
 
-const writeBuffer = 64 * 1024
+const writeBuffer = 0
 
 type Route interface {
 	WriteMessage(msg Message) error
