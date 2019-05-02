@@ -46,7 +46,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		FeaUCM0: true,
 		FeaBZIP: true,
 		FeaSEGA: true,
-		extZLIF: true,
+		FeaZLIF: true,
 		extONID: true,
 		extASCH: true,
 		extNAT0: true,

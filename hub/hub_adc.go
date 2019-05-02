@@ -207,6 +207,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 		adc.FeaPING: true,
 		adc.FeaUCMD: true,
 		adc.FeaUCM0: true,
+		adc.FeaZLIF: true,
 	}
 
 	mutual := hubFeatures.Intersect(sup.Features)
@@ -214,6 +215,17 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 		return nil, fmt.Errorf("client does not support BASE")
 	} else if !mutual.IsSet(adc.FeaTIGR) {
 		return nil, fmt.Errorf("client does not support TIGR")
+	}
+
+	if mutual.IsSet(adc.FeaZLIF) {
+		err = c.WriteInfoMsg(adc.ZOn{})
+		if err != nil {
+			return nil, err
+		}
+		err = c.ZOn()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// send features supported by the hub

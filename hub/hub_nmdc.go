@@ -322,9 +322,21 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	}
 
 	_ = c.SetWriteDeadline(deadline)
-	err = c.WriteOneMsg(&nmdcp.Hello{
+	err = c.WriteMsg(&nmdcp.Hello{
 		Name: nmdcp.Name(peer.info.user.Name),
 	})
+	if err != nil {
+		return err
+	}
+	if peer.fea.Has(nmdcp.ExtZPipe0) {
+		err = c.WriteMsg(&nmdcp.RawMessage{Typ: "ZOn"})
+		if err != nil {
+			return err
+		}
+		err = c.ZOn() // flushes
+	} else {
+		err = c.Flush()
+	}
 	if err != nil {
 		return err
 	}

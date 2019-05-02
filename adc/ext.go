@@ -15,7 +15,7 @@ var (
 	extONID = Feature{'O', 'N', 'I', 'D'} // Online services identification
 	FeaBZIP = Feature{'B', 'Z', 'I', 'P'} // bzip2 compression of filelist, adds virtual files.xml.bz2 file
 	FeaTS   = Feature{'T', 'S', '0', '0'} // Unix timestamps in messages
-	extZLIF = Feature{'Z', 'L', 'I', 'F'} // Compressed communication (Full)
+	FeaZLIF = Feature{'Z', 'L', 'I', 'F'} // Compressed communication (Full), adds ZON
 	extZLIG = Feature{'Z', 'L', 'I', 'G'} // Compressed communication (Get)
 	extPING = Feature{'P', 'I', 'N', 'G'} // Pinger extension (additional info about hub)
 	FeaSEGA = Feature{'S', 'E', 'G', 'A'} // Grouping of file extensions in search

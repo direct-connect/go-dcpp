@@ -143,6 +143,10 @@ func (c *Conn) SetWriteTimeout(dt time.Duration) {
 	}
 }
 
+func (c *Conn) ZOn() error {
+	return c.w.EnableZlib()
+}
+
 // Close closes the connection.
 func (c *Conn) Close() error {
 	if c.closed != nil {
