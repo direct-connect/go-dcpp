@@ -333,7 +333,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	if peer.fea.Has(nmdcp.ExtZPipe0) {
-		err = c.WriteMsg(&nmdcp.RawMessage{Typ: "ZOn"})
+		err = c.WriteMsg(&nmdcp.ZOn{})
 		if err != nil {
 			return err
 		}
