@@ -404,18 +404,21 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	_ = c.SetWriteDeadline(time.Now().Add(writeTimeout))
 	// send user list (except his own info)
 	peers := h.Peers()
-	err = peer.peersJoin(peers, true)
+	err = peer.peersJoin(&PeersJoinEvent{Peers: peers}, true)
 	if err != nil {
 		return err
 	}
 
 	// write his info
-	err = peer.peersJoin([]Peer{peer}, true)
+	err = peer.peersJoin(&PeersJoinEvent{Peers: []Peer{peer}}, true)
 	if err != nil {
 		return err
 	}
 	botlist := peer.fea.Has(nmdcp.ExtBotList)
 	var ops, bots nmdcp.Names
+	if u := peer.User(); u != nil && u.Has(FlagOpIcon) {
+		ops = append(ops, peer.Name())
+	}
 	for _, p := range peers {
 		if u := p.User(); u != nil && u.Has(FlagOpIcon) {
 			ops = append(ops, p.Name())
@@ -426,12 +429,12 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 			}
 		}
 	}
-	err = c.WriteMsg(&nmdcp.OpList{ops})
+	err = c.WriteMsg(&nmdcp.OpList{Names: ops})
 	if err != nil {
 		return err
 	}
-	if botlist {
-		err = c.WriteMsg(&nmdcp.BotList{bots})
+	if botlist && len(bots) != 0 {
+		err = c.WriteMsg(&nmdcp.BotList{Names: bots})
 		if err != nil {
 			return err
 		}
@@ -561,7 +564,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		return nil
 	case *nmdcp.GetNickList:
 		list := h.Peers()
-		_ = peer.PeersJoin(list)
+		_ = peer.PeersJoin(&PeersJoinEvent{Peers: list})
 		return nil
 	case *nmdcp.ConnectToMe:
 		targ := h.PeerByName(string(msg.Targ))
@@ -785,8 +788,7 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 }
 
 var (
-	_ Peer        = (*nmdcPeer)(nil)
-	_ Broadcaster = (*nmdcPeer)(nil)
+	_ Peer = (*nmdcPeer)(nil)
 )
 
 func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
@@ -1030,35 +1032,13 @@ func (p *nmdcPeer) verifyAddr(addr string) error {
 	return nil
 }
 
-func (p *nmdcPeer) BroadcastJoinTo(peers []Peer) {
-	info, enc := p.rawInfo()
-	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.c.TextEncoder() == nil {
-			_ = p2.SendNMDC(info)
-			continue
-		}
-		_ = p2.PeersJoin([]Peer{p})
-	}
+func (p *nmdcPeer) PeersJoin(e *PeersJoinEvent) error {
+	return p.peersJoin(e, false)
 }
 
-func (p *nmdcPeer) BroadcastUpdateTo(peers []Peer) {
-	info, enc := p.rawInfo()
-	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p.c.TextEncoder() == nil {
-			_ = p2.SendNMDC(info)
-			continue
-		}
-		_ = p2.PeersUpdate([]Peer{p})
-	}
-}
-
-func (p *nmdcPeer) PeersJoin(peers []Peer) error {
-	return p.peersJoin(peers, false)
-}
-
-func (p *nmdcPeer) PeersUpdate(peers []Peer) error {
+func (p *nmdcPeer) PeersUpdate(e *PeersUpdateEvent) error {
 	// same as join
-	return p.PeersJoin(peers)
+	return p.PeersJoin((*PeersJoinEvent)(e))
 }
 
 func (u UserInfo) toNMDC() nmdcp.MyINFO {
@@ -1072,7 +1052,7 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 	if u.TLS {
 		flag |= nmdcp.FlagTLS
 	}
-	conn := "LAN(T3)"            // TODO
+	conn := "100"                // TODO
 	mode := nmdcp.UserModeActive // TODO
 	if u.Kind == UserBot || u.Kind == UserHub {
 		conn = "" // empty conn indicates a bot
@@ -1092,98 +1072,194 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 	}
 }
 
-func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
-	var err error
-	botlist := p.fea.Has(nmdcp.ExtBotList)
-	permIP := p.User().HasPerm(PermIP)
-	var ips []nmdcp.UserAddress
-	for _, peer := range peers {
-		if !p.Online() {
-			return errConnectionClosed
+type nmdcRaw struct {
+	input    []nmdcp.Message
+	utf8     *nmdcRawEnc
+	fallback *nmdcRawEnc
+}
+
+func (r *nmdcRaw) Encode(enc *encoding.Encoder, fnc func() []nmdcp.Message) ([]nmdcp.Message, error) {
+	ptr := &r.utf8
+	if enc != nil {
+		// TODO: handle multiple encoding if necessary
+		ptr = &r.fallback
+	}
+	raw := *ptr
+	if raw != nil {
+		return raw.cmds, raw.err
+	}
+	raw = &nmdcRawEnc{}
+	*ptr = raw
+	cmds := r.input
+	if cmds == nil {
+		cmds = fnc()
+		r.input = cmds
+	}
+	err := raw.encode(enc, cmds)
+	if err != nil {
+		raw.err = err
+		return nil, err
+	}
+	return raw.cmds, nil
+}
+
+type nmdcRawEnc struct {
+	err  error
+	cmds []nmdcp.Message
+}
+
+func (r *nmdcRawEnc) encode(enc *encoding.Encoder, m []nmdcp.Message) error {
+	r.cmds = make([]nmdcp.Message, 0, len(m))
+	buf := bytes.NewBuffer(nil)
+	for _, m := range m {
+		if raw, ok := m.(*nmdcp.RawMessage); ok {
+			r.cmds = append(r.cmds, raw)
+			continue
 		}
-		var cmds []nmdcp.Message
-		if p2, ok := peer.(*nmdcPeer); ok {
-			if data, enc := p2.rawInfo(); enc == nil && p.c.TextEncoder() == nil {
-				// UTF-8 encoded version (precomputed)
-				cmds = []nmdcp.Message{data}
-			} else {
-				// other encoding - re-encode NMDC info
-				info := p2.Info()
-				cmds = []nmdcp.Message{&info}
-			}
-		}
-		if len(cmds) == 0 {
-			// other protocols - translate info to NMDC
-			myinfo := peer.UserInfo().toNMDC()
-			cmds = []nmdcp.Message{&myinfo}
-		}
-		if initial {
-			err = p.c.WriteMsg(cmds...)
-		} else {
-			if botlist {
-				if info := peer.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
-					cmds = append(cmds, &nmdcp.BotList{nmdcp.Names{peer.Name()}})
-				}
-			}
-			if peer.User().Has(FlagOpIcon) {
-				// operator flag is sent as a separate command
-				cmds = append(cmds, &nmdcp.OpList{nmdcp.Names{peer.Name()}})
-			}
-			if permIP {
-				if addr, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
-					ips = append(ips, nmdcp.UserAddress{
-						Name: peer.Name(),
-						IP:   addr.IP.String(),
-					})
-				}
-			}
-			err = p.SendNMDC(cmds...)
-		}
-		if err != nil {
+		buf.Reset()
+		if err := m.MarshalNMDC(enc, buf); err != nil {
+			r.err = err
 			return err
 		}
-	}
-	if len(ips) != 0 {
-		return p.SendNMDC(&nmdcp.UserIP{List: ips})
+		data := append([]byte{}, buf.Bytes()...)
+		r.cmds = append(r.cmds, &nmdcp.RawMessage{Typ: m.Type(), Data: data})
 	}
 	return nil
 }
 
-func (p *nmdcPeer) BroadcastLeaveTo(peers []Peer) {
-	enc := p.c.TextEncoder()
-	q := &nmdcp.Quit{
-		Name: nmdcp.Name(p.Name()),
-	}
-	buf := bytes.NewBuffer(nil)
-	buf.Grow(len(q.Name))
-	err := q.MarshalNMDC(enc, buf)
-	if err != nil {
-		panic(err)
-	}
-	quit := &nmdcp.RawMessage{Typ: q.Type(), Data: buf.Bytes()}
+func nmdcPeersJoinCmds(enc *encoding.Encoder, peers []Peer) []nmdcp.Message {
+	cmds := make([]nmdcp.Message, 0, len(peers))
 	for _, p2 := range peers {
-		if p2, ok := p2.(*nmdcPeer); ok && enc == nil && p2.c.TextEncoder() == nil {
-			_ = p2.SendNMDC(quit)
-			continue
+		if p2n, ok := p2.(*nmdcPeer); ok {
+			raw, enc2 := p2n.rawInfo()
+			if (enc == nil && enc2 == nil) || (enc != nil && enc2 != nil) {
+				// same encoding
+				cmds = append(cmds, raw)
+			} else {
+				myinfo := p2n.Info()
+				cmds = append(cmds, &myinfo)
+			}
+		} else {
+			myinfo := p2.UserInfo().toNMDC()
+			cmds = append(cmds, &myinfo)
 		}
-		_ = p2.PeersLeave([]Peer{p})
 	}
+	return cmds
 }
 
-func (p *nmdcPeer) PeersLeave(peers []Peer) error {
-	if len(peers) == 0 {
+func nmdcPeersOpCmds(peers []Peer) []nmdcp.Message {
+	var ops nmdcp.Names
+	for _, p2 := range peers {
+		if p2.User().Has(FlagOpIcon) {
+			// operator flag is sent as a separate command
+			ops = append(ops, p2.Name())
+		}
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	return []nmdcp.Message{&nmdcp.OpList{Names: ops}}
+}
+
+func nmdcPeersBotsCmds(peers []Peer) []nmdcp.Message {
+	var bots nmdcp.Names
+	for _, p2 := range peers {
+		if info := p2.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
+			bots = append(bots, p2.Name())
+		}
+	}
+	if len(bots) == 0 {
+		return nil
+	}
+	return []nmdcp.Message{&nmdcp.BotList{Names: bots}}
+}
+
+func nmdcPeersIPCmds(peers []Peer) []nmdcp.Message {
+	var ips []nmdcp.UserAddress
+	for _, p2 := range peers {
+		if addr, ok := p2.RemoteAddr().(*net.TCPAddr); ok {
+			ips = append(ips, nmdcp.UserAddress{
+				Name: p2.Name(),
+				IP:   addr.IP.String(),
+			})
+		}
+	}
+	if len(ips) == 0 {
+		return nil
+	}
+	return []nmdcp.Message{&nmdcp.UserIP{List: ips}}
+}
+
+func (p *nmdcPeer) peersJoin(e *PeersJoinEvent, initial bool) error {
+	enc := p.c.TextEncoder()
+
+	cmds, err := e.nmdcInfos.Encode(enc, func() []nmdcp.Message {
+		return nmdcPeersJoinCmds(enc, e.Peers)
+	})
+	if err != nil {
+		return err
+	}
+	if initial {
+		// will send ips, ops and bots manually
+		return p.c.WriteMsg(cmds...)
+	}
+	cmds = cmds[:len(cmds):len(cmds)] // realloc on append
+
+	// operators flag is a separate command
+	opsCmd, err := e.nmdcOps.Encode(enc, func() []nmdcp.Message {
+		return nmdcPeersOpCmds(e.Peers)
+	})
+	if err != nil {
+		return err
+	}
+	cmds = append(cmds, opsCmd...)
+
+	// if supported, send a bot list
+	if p.fea.Has(nmdcp.ExtBotList) {
+		botsCmd, err := e.nmdcBots.Encode(enc, func() []nmdcp.Message {
+			return nmdcPeersBotsCmds(e.Peers)
+		})
+		if err != nil {
+			return err
+		}
+		cmds = append(cmds, botsCmd...)
+	}
+
+	// send IPs if the user is an operator
+	if p.fea.Has(nmdcp.ExtUserIP2) && p.User().HasPerm(PermIP) {
+		ipsCmd, err := e.nmdcIPs.Encode(enc, func() []nmdcp.Message {
+			return nmdcPeersIPCmds(e.Peers)
+		})
+		if err != nil {
+			return err
+		}
+		cmds = append(cmds, ipsCmd...)
+	}
+	return p.SendNMDC(cmds...)
+}
+
+func nmdcPeersLeaveCmds(peers []Peer) []nmdcp.Message {
+	cmds := make([]nmdcp.Message, 0, len(peers))
+	for _, p2 := range peers {
+		cmds = append(cmds, &nmdcp.Quit{
+			Name: nmdcp.Name(p2.Name()),
+		})
+	}
+	return cmds
+}
+
+func (p *nmdcPeer) PeersLeave(e *PeersLeaveEvent) error {
+	if e == nil || len(e.Peers) == 0 {
 		return nil
 	} else if !p.Online() {
 		return errConnectionClosed
 	}
-	cmds := make([]nmdcp.Message, 0, len(peers))
-	for _, peer := range peers {
-		if !p.Online() {
-			return errConnectionClosed
-		}
-		cmds = append(cmds, &nmdcp.Quit{
-			Name: nmdcp.Name(peer.Name()),
-		})
+	enc := p.c.TextEncoder()
+	cmds, err := e.nmdcQuit.Encode(enc, func() []nmdcp.Message {
+		return nmdcPeersLeaveCmds(e.Peers)
+	})
+	if err != nil {
+		return err
 	}
 	return p.SendNMDC(cmds...)
 }

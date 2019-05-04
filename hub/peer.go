@@ -51,11 +51,11 @@ type Peer interface {
 	UserInfo() UserInfo
 
 	// PeersJoin sends a set of "peer join" events to this peer.
-	PeersJoin(peers []Peer) error
+	PeersJoin(e *PeersJoinEvent) error
 	// PeersUpdate sends a set of "peer info update" events to this peer.
-	PeersUpdate(peers []Peer) error
+	PeersUpdate(e *PeersUpdateEvent) error
 	// PeersLeave sends a set of "peer leave" events to this peer.
-	PeersLeave(peers []Peer) error
+	PeersLeave(e *PeersLeaveEvent) error
 
 	// PrivateMsg sends a private message for this peer.
 	PrivateMsg(from Peer, m Message) error
@@ -78,35 +78,28 @@ type Peer interface {
 	Search(ctx context.Context, req SearchRequest, out Search) error
 }
 
-type Broadcaster interface {
-	Peer
-	// BroadcastJoinTo is an optimized version of a "peer join" broadcast loop.
-	// Implementation gets a chance to pre-compute on-wire encoding of commands for more
-	// efficient broadcasts.
-	//
-	// The simplest implementation is:
-	// 	for _, p2 := range peers {
-	//		_ = p2.PeersJoin([]Peer{p})
-	//	}
-	BroadcastJoinTo(peers []Peer)
-	// BroadcastUpdateTo is an optimized version of a "peer info update" broadcast loop.
-	// Implementation gets a chance to pre-compute on-wire encoding of commands for more
-	// efficient broadcasts.
-	//
-	// The simplest implementation is:
-	// 	for _, p2 := range peers {
-	//		_ = p2.PeersUpdate([]Peer{p})
-	//	}
-	BroadcastUpdateTo(peers []Peer)
-	// BroadcastLeaveTo is an optimized version of a "peer leave" broadcast loop.
-	// Implementation gets a chance to pre-compute on-wire encoding of commands for more
-	// efficient broadcasts.
-	//
-	// The simplest implementation is:
-	// 	for _, p2 := range peers {
-	//		_ = p2.PeersLeave([]Peer{p})
-	//	}
-	BroadcastLeaveTo(peers []Peer)
+type PeersJoinEvent struct {
+	Peers []Peer
+
+	nmdcInfos nmdcRaw
+	nmdcOps   nmdcRaw
+	nmdcBots  nmdcRaw
+	nmdcIPs   nmdcRaw
+}
+
+type PeersUpdateEvent struct {
+	Peers []Peer
+
+	nmdcInfos nmdcRaw
+	nmdcOps   nmdcRaw
+	nmdcBots  nmdcRaw
+	nmdcIPs   nmdcRaw
+}
+
+type PeersLeaveEvent struct {
+	Peers []Peer
+
+	nmdcQuit nmdcRaw
 }
 
 func (h *Hub) newBasePeer(p *BasePeer, c *ConnInfo) {

@@ -554,12 +554,9 @@ func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
-	if p, ok := peer.(Broadcaster); ok {
-		p.BroadcastJoinTo(notify)
-		return
-	}
+	e := &PeersJoinEvent{Peers: []Peer{peer}}
 	for _, p2 := range notify {
-		_ = p2.PeersJoin([]Peer{peer})
+		_ = p2.PeersJoin(e)
 	}
 }
 
@@ -567,12 +564,9 @@ func (h *Hub) broadcastUserUpdate(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
-	if p, ok := peer.(Broadcaster); ok {
-		p.BroadcastUpdateTo(notify)
-		return
-	}
+	e := &PeersUpdateEvent{Peers: []Peer{peer}}
 	for _, p2 := range notify {
-		_ = p2.PeersUpdate([]Peer{peer})
+		_ = p2.PeersUpdate(e)
 	}
 }
 
@@ -581,12 +575,9 @@ func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
 	if notify == nil {
 		notify = h.Peers()
 	}
-	if p, ok := peer.(Broadcaster); ok {
-		p.BroadcastLeaveTo(notify)
-		return
-	}
+	e := &PeersLeaveEvent{Peers: []Peer{peer}}
 	for _, p2 := range notify {
-		_ = p2.PeersLeave([]Peer{peer})
+		_ = p2.PeersLeave(e)
 	}
 }
 

@@ -280,7 +280,7 @@ waitJoin:
 	if err != nil {
 		return err
 	}
-	err = peer.PeersJoin(h.Peers())
+	err = peer.PeersJoin(&PeersJoinEvent{Peers: h.Peers()})
 	if err != nil {
 		return err
 	}
@@ -344,8 +344,8 @@ func (p *ircPeer) Close() error {
 	)
 }
 
-func (p *ircPeer) PeersJoin(peers []Peer) error {
-	for _, peer := range peers {
+func (p *ircPeer) PeersJoin(e *PeersJoinEvent) error {
+	for _, peer := range e.Peers {
 		m := &irc.Message{
 			Command: "JOIN",
 			Params:  []string{ircHubChan},
@@ -367,12 +367,12 @@ func (p *ircPeer) PeersJoin(peers []Peer) error {
 	return nil
 }
 
-func (p *ircPeer) PeersUpdate(peers []Peer) error {
+func (p *ircPeer) PeersUpdate(e *PeersUpdateEvent) error {
 	return nil // no updates
 }
 
-func (p *ircPeer) PeersLeave(peers []Peer) error {
-	for _, peer := range peers {
+func (p *ircPeer) PeersLeave(e *PeersLeaveEvent) error {
+	for _, peer := range e.Peers {
 		m := &irc.Message{
 			Command: "PART",
 			Params:  []string{ircHubChan, "disconnect"},

@@ -16,6 +16,10 @@ type Bot struct {
 	p *botPeer
 }
 
+func (b *Bot) Name() string {
+	return b.p.Name()
+}
+
 func (b *Bot) SendGlobal(m Message) error {
 	if !b.p.Online() {
 		return errConnectionClosed
@@ -94,15 +98,15 @@ func (p *botPeer) UserInfo() UserInfo {
 	}
 }
 
-func (p *botPeer) PeersJoin(peers []Peer) error {
+func (p *botPeer) PeersJoin(e *PeersJoinEvent) error {
 	return nil
 }
 
-func (p *botPeer) PeersUpdate(peers []Peer) error {
+func (p *botPeer) PeersUpdate(e *PeersUpdateEvent) error {
 	return nil
 }
 
-func (p *botPeer) PeersLeave(peers []Peer) error {
+func (p *botPeer) PeersLeave(e *PeersLeaveEvent) error {
 	return nil
 }
 

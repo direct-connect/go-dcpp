@@ -377,14 +377,14 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	})
 
 	// send user list (except his own info)
-	err = peer.peersJoin(h.Peers(), true)
+	err = peer.peersJoin(&PeersJoinEvent{Peers: h.Peers()}, true)
 	if err != nil {
 		unbind()
 		return err
 	}
 
 	// write his info and flush
-	err = peer.peersJoin([]Peer{peer}, true)
+	err = peer.peersJoin(&PeersJoinEvent{Peers: []Peer{peer}}, true)
 	if err != nil {
 		unbind()
 		return err
@@ -899,13 +899,13 @@ func (p *adcPeer) Close() error {
 	)
 }
 
-func (p *adcPeer) PeersJoin(peers []Peer) error {
-	return p.peersJoin(peers, false)
+func (p *adcPeer) PeersJoin(e *PeersJoinEvent) error {
+	return p.peersJoin(e, false)
 }
 
-func (p *adcPeer) PeersUpdate(peers []Peer) error {
+func (p *adcPeer) PeersUpdate(e *PeersUpdateEvent) error {
 	// TODO: diff infos
-	return p.peersUpdate(peers)
+	return p.peersUpdate(e)
 }
 
 func (u UserInfo) toADC(cid CID, user *User) adc.User {
@@ -941,11 +941,11 @@ func (p *adcPeer) fixUserInfo(u *adc.User) {
 	}
 }
 
-func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
+func (p *adcPeer) peersJoin(e *PeersJoinEvent, initial bool) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	for _, peer := range peers {
+	for _, peer := range e.Peers {
 		var u adc.User
 		if p2, ok := peer.(*adcPeer); ok {
 			u = p2.Info()
@@ -981,11 +981,11 @@ func (p *adcPeer) peersJoin(peers []Peer, initial bool) error {
 	return nil
 }
 
-func (p *adcPeer) peersUpdate(peers []Peer) error {
+func (p *adcPeer) peersUpdate(e *PeersUpdateEvent) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	for _, peer := range peers {
+	for _, peer := range e.Peers {
 		var u adc.User
 		if p2, ok := peer.(*adcPeer); ok {
 			u = p2.Info()
@@ -1004,11 +1004,11 @@ func (p *adcPeer) peersUpdate(peers []Peer) error {
 	return nil
 }
 
-func (p *adcPeer) PeersLeave(peers []Peer) error {
+func (p *adcPeer) PeersLeave(e *PeersLeaveEvent) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
-	for _, peer := range peers {
+	for _, peer := range e.Peers {
 		if !p.Online() {
 			return errConnectionClosed
 		}
