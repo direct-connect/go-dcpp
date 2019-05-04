@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 )
 
 const (
+	userNameMin = 3
 	userNameMax = 256
 )
 
@@ -140,6 +142,7 @@ type ProfileDatabase interface {
 var (
 	errNameEmpty         = errors.New("name should not be empty")
 	errNameTooLong       = errors.New("name is too long")
+	errNameTooShort      = errors.New("name is too short")
 	errNameInvalidPrefix = errors.New("name start with an invalid character")
 	errNamePadding       = errors.New("name should not start or end with spaces")
 	errNameInvalidChars  = errors.New("name contains invalid characters (' ', '<', '>', etc)")
@@ -151,6 +154,8 @@ func (h *Hub) validateUserName(name string) error {
 	}
 	if len(name) > userNameMax {
 		return errNameTooLong
+	} else if len(name) < userNameMin {
+		return errNameTooShort
 	}
 	switch name[0] {
 	case ' ', '#', '!', '+', '/':
@@ -160,6 +165,17 @@ func (h *Hub) validateUserName(name string) error {
 		return errNamePadding
 	}
 	if strings.ContainsAny(name, "\x00 <>") {
+		return errNameInvalidChars
+	}
+	if strings.IndexFunc(name, func(r rune) bool {
+		if r < ' ' {
+			return true
+		}
+		if !unicode.IsGraphic(r) {
+			return true
+		}
+		return false
+	}) >= 0 {
 		return errNameInvalidChars
 	}
 	if h.fallback != nil {
