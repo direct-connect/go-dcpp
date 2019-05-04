@@ -63,8 +63,8 @@ func NewHub(conf Config) (*Hub, error) {
 		}
 		h.fallback = enc
 	}
-	h.peers.reserved = make(map[string]struct{})
-	h.peers.byName = make(map[string]Peer)
+	h.peers.reserved = make(map[nameKey]struct{})
+	h.peers.byName = make(map[nameKey]Peer)
 	h.peers.bySID = make(map[SID]Peer)
 	h.rooms.init()
 	h.globalChat = h.newRoom("")
@@ -85,6 +85,13 @@ func NewHub(conf Config) (*Hub, error) {
 }
 
 const shareDiv = 1024 * 1024
+
+// nameKey is a lowercase name.
+type nameKey string
+
+func toNameKey(name string) nameKey {
+	return nameKey(strings.ToLower(name))
+}
 
 type Hub struct {
 	created time.Time
@@ -111,10 +118,10 @@ type Hub struct {
 		sync.RWMutex
 		// reserved map is used to temporary bind a username.
 		// The name should be removed from this map as soon as a byName entry is added.
-		reserved map[string]struct{}
+		reserved map[nameKey]struct{}
 
 		// byName tracks peers by their name.
-		byName map[string]Peer
+		byName map[nameKey]Peer
 		bySID  map[SID]Peer
 
 		adcPeers // ADC specific
@@ -449,8 +456,9 @@ func (h *Hub) listPeers() []Peer {
 }
 
 func (h *Hub) PeerByName(name string) Peer {
+	key := toNameKey(name)
 	h.peers.RLock()
-	p := h.peers.byName[name]
+	p := h.peers.byName[key]
 	h.peers.RUnlock()
 	return p
 }
@@ -465,9 +473,10 @@ func (h *Hub) peerBySID(sid SID) Peer {
 // nameAvailable checks if a name can be bound. Returns false if a name is already in use.
 // The callback can be passed to be executed under peers read lock.
 func (h *Hub) nameAvailable(name string, fnc func()) bool {
+	key := toNameKey(name)
 	h.peers.RLock()
-	_, sameName1 := h.peers.reserved[name]
-	_, sameName2 := h.peers.byName[name]
+	_, sameName1 := h.peers.reserved[key]
+	_, sameName2 := h.peers.byName[key]
 	if fnc != nil {
 		fnc()
 	}
@@ -485,9 +494,10 @@ func (h *Hub) nameAvailable(name string, fnc func()) bool {
 //
 // The second callback is executed after the name is unbound.
 func (h *Hub) reserveName(name string, bind func() bool, unbind func()) (func(), bool) {
+	key := toNameKey(name)
 	h.peers.Lock()
-	_, sameName1 := h.peers.reserved[name]
-	_, sameName2 := h.peers.byName[name]
+	_, sameName1 := h.peers.reserved[key]
+	_, sameName2 := h.peers.byName[key]
 	if sameName1 || sameName2 {
 		h.peers.Unlock()
 		return nil, false
@@ -496,11 +506,11 @@ func (h *Hub) reserveName(name string, bind func() bool, unbind func()) (func(),
 		h.peers.Unlock()
 		return nil, false
 	}
-	h.peers.reserved[name] = struct{}{}
+	h.peers.reserved[key] = struct{}{}
 	h.peers.Unlock()
 	return func() {
 		h.peers.Lock()
-		delete(h.peers.reserved, name)
+		delete(h.peers.reserved, key)
 		if unbind != nil {
 			unbind()
 		}
@@ -516,10 +526,11 @@ func (h *Hub) acceptPeer(peer Peer, pre, post func()) {
 	sid := peer.SID()
 	u := peer.UserInfo()
 
+	key := toNameKey(u.Name)
 	h.peers.Lock()
 	defer h.peers.Unlock()
 	// cleanup temporary bindings
-	delete(h.peers.reserved, u.Name)
+	delete(h.peers.reserved, key)
 
 	if pre != nil {
 		pre()
@@ -527,7 +538,7 @@ func (h *Hub) acceptPeer(peer Peer, pre, post func()) {
 
 	// add user to the hub
 	h.peers.bySID[sid] = peer
-	h.peers.byName[u.Name] = peer
+	h.peers.byName[key] = peer
 	h.invalidateList()
 	h.globalChat.Join(peer)
 	cntPeers.Add(1)
@@ -594,8 +605,9 @@ func (h *Hub) sendMOTD(peer Peer) error {
 }
 
 func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
+	key := toNameKey(peer.Name())
 	h.peers.Lock()
-	delete(h.peers.byName, peer.Name())
+	delete(h.peers.byName, key)
 	delete(h.peers.bySID, sid)
 	h.invalidateList()
 	if notify == nil {
@@ -610,8 +622,9 @@ func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
 }
 
 func (h *Hub) leaveCID(peer Peer, sid SID, cid CID) {
+	key := toNameKey(peer.Name())
 	h.peers.Lock()
-	delete(h.peers.byName, peer.Name())
+	delete(h.peers.byName, key)
 	delete(h.peers.bySID, sid)
 	delete(h.peers.byCID, cid)
 	h.invalidateList()
