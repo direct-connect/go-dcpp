@@ -414,7 +414,6 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
-	botlist := peer.fea.Has(nmdcp.ExtBotList)
 	var ops, bots nmdcp.Names
 	if u := peer.User(); u != nil && u.Has(FlagOpIcon) {
 		ops = append(ops, peer.Name())
@@ -423,7 +422,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		if u := p.User(); u != nil && u.Has(FlagOpIcon) {
 			ops = append(ops, p.Name())
 		}
-		if botlist {
+		if peer.ext.botlist {
 			if info := p.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
 				bots = append(bots, p.Name())
 			}
@@ -433,13 +432,13 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
-	if botlist && len(bots) != 0 {
+	if peer.ext.botlist && len(bots) != 0 {
 		err = c.WriteMsg(&nmdcp.BotList{Names: bots})
 		if err != nil {
 			return err
 		}
 	}
-	if peer.fea.Has(nmdcp.ExtUserIP2) {
+	if peer.ext.userip2 {
 		err = c.WriteMsg(&nmdcp.UserIP{
 			List: []nmdcp.UserAddress{{
 				Name: peer.Name(),
@@ -799,6 +798,9 @@ func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick s
 		c: c, ip: ip,
 		fea: fea,
 	}
+	peer.ext.userip2 = fea.Has(nmdcp.ExtUserIP2)
+	peer.ext.botlist = fea.Has(nmdcp.ExtBotList)
+	peer.ext.tths = fea.Has(nmdcp.ExtTTHS)
 	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.write.wake = make(chan struct{}, 1)
 	peer.info.user.Name = nick
@@ -823,6 +825,11 @@ type nmdcPeer struct {
 		user nmdcp.MyINFO
 		buf  *bytes.Buffer
 		raw  *nmdcp.RawMessage
+	}
+	ext struct {
+		userip2 bool
+		botlist bool
+		tths    bool
 	}
 
 	search struct {
@@ -1215,7 +1222,7 @@ func (p *nmdcPeer) peersJoin(e *PeersJoinEvent, initial bool) error {
 	cmds = append(cmds, opsCmd...)
 
 	// if supported, send a bot list
-	if p.fea.Has(nmdcp.ExtBotList) {
+	if p.ext.botlist {
 		botsCmd, err := e.nmdcBots.Encode(enc, func() []nmdcp.Message {
 			return nmdcPeersBotsCmds(e.Peers)
 		})
@@ -1226,7 +1233,7 @@ func (p *nmdcPeer) peersJoin(e *PeersJoinEvent, initial bool) error {
 	}
 
 	// send IPs if the user is an operator
-	if p.fea.Has(nmdcp.ExtUserIP2) && p.User().HasPerm(PermIP) {
+	if p.ext.userip2 && p.User().HasPerm(PermIP) {
 		ipsCmd, err := e.nmdcIPs.Encode(enc, func() []nmdcp.Message {
 			return nmdcPeersIPCmds(e.Peers)
 		})
@@ -1487,7 +1494,7 @@ func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) er
 	}
 	p.setActiveSearch(out, req)
 	if req, ok := req.(TTHSearch); ok {
-		if p.fea.Has(nmdcp.ExtTTHS) {
+		if p.ext.tths {
 			return p.SendNMDC(&nmdcp.TTHSearchPassive{
 				User: out.Peer().Name(),
 				TTH:  TTH(req),
