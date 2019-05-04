@@ -348,6 +348,7 @@ func (h *Hub) cmdListBanIP(p Peer, args string) error {
 		buf.WriteString(ip.String() + "\n")
 		return true
 	})
+	h.cmdOutput(p, buf.String())
 	return nil
 }
 
