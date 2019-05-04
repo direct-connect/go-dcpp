@@ -327,7 +327,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 				HubsOperator:   0,
 				Slots:          conf.Slots,
 				ShareSize:      conf.Share,
-				Conn:           "Cable",
+				Conn:           "100",
 				Flag:           nmdc.FlagStatusServer,
 			})
 			if err != nil {

@@ -141,7 +141,7 @@ handshake:
 		Mode:       nmdcp.UserModePassive,
 		HubsNormal: 1,
 		Slots:      1,
-		Conn:       "LAN(T3)",
+		Conn:       "100",
 		ShareSize:  13 * 1023 * 1023 * 1023,
 	})
 	if err != nil {
