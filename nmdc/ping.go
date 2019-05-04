@@ -98,6 +98,8 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	c.r.OnRawMessage(func(cmd, args []byte) (bool, error) {
 		if bytes.Equal(cmd, []byte("HubINFO")) {
 			hubInfo = append([]byte{}, args...)
+		} else if bytes.Equal(cmd, []byte("UserCommand")) {
+			return false, nil
 		}
 		return true, nil
 	})
