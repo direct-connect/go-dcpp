@@ -1403,6 +1403,9 @@ func (p *nmdcPeer) newSearch() Search {
 
 type nmdcSearch struct {
 	p *nmdcPeer
+
+	rawSP     nmdcRaw
+	rawSearch nmdcRaw
 }
 
 func (s *nmdcSearch) Peer() Peer {
@@ -1487,26 +1490,22 @@ func (p *nmdcPeer) setActiveSearch(out Search, req SearchRequest) {
 	p.search.sorted = append(p.search.sorted, s)
 }
 
-func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
-	if !p.Online() {
-		return errConnectionClosed
-	}
-	p.setActiveSearch(out, req)
-	if req, ok := req.(TTHSearch); ok {
-		if p.ext.tths {
-			return p.SendNMDC(&nmdcp.TTHSearchPassive{
-				User: out.Peer().Name(),
-				TTH:  TTH(req),
-			})
+func (p *nmdcPeer) searchCmdTTH(from Peer, req TTH) nmdcp.Message {
+	if p.ext.tths {
+		return &nmdcp.TTHSearchPassive{
+			User: from.Name(),
+			TTH:  TTH(req),
 		}
-		return p.SendNMDC(&nmdcp.Search{
-			User:     out.Peer().Name(),
-			DataType: nmdcp.DataTypeTTH, TTH: (*TTH)(&req),
-		})
 	}
+	return &nmdcp.Search{
+		User:     from.Name(),
+		DataType: nmdcp.DataTypeTTH, TTH: (*TTH)(&req),
+	}
+}
 
+func (p *nmdcPeer) searchCmdOther(from Peer, req SearchRequest) *nmdcp.Search {
 	msg := &nmdcp.Search{
-		User:     out.Peer().Name(),
+		User:     from.Name(),
 		DataType: nmdcp.DataTypeAny,
 	}
 	var name NameSearch
@@ -1546,5 +1545,42 @@ func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) er
 		return nil // ignore
 	}
 	msg.Pattern += strings.Join(name.And, " ")
+	return msg
+}
+
+func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
+	p.setActiveSearch(out, req)
+	if req, ok := req.(TTHSearch); ok {
+		if ns, ok := out.(*nmdcSearch); ok {
+			enc := ns.p.c.TextEncoder()
+			raw := &ns.rawSearch
+			if p.ext.tths {
+				raw = &ns.rawSP
+			}
+			cmds, err := raw.Encode(enc, func() []nmdcp.Message {
+				return []nmdcp.Message{p.searchCmdTTH(out.Peer(), TTH(req))}
+			})
+			if err != nil {
+				return err
+			}
+			return p.SendNMDC(cmds...)
+		}
+		cmd := p.searchCmdTTH(out.Peer(), TTH(req))
+		return p.SendNMDC(cmd)
+	}
+	if ns, ok := out.(*nmdcSearch); ok {
+		enc := ns.p.c.TextEncoder()
+		cmds, err := ns.rawSearch.Encode(enc, func() []nmdcp.Message {
+			return []nmdcp.Message{p.searchCmdOther(out.Peer(), req)}
+		})
+		if err != nil {
+			return err
+		}
+		return p.SendNMDC(cmds...)
+	}
+	msg := p.searchCmdOther(out.Peer(), req)
 	return p.SendNMDC(msg)
 }
