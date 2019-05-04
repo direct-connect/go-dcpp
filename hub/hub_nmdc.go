@@ -438,22 +438,28 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	}
 	if peer.fea.Has(nmdcp.ExtUserIP2) {
 		err = c.WriteMsg(&nmdcp.UserIP{
-			Name: peer.Name(),
-			IP:   peer.ip.String(),
+			List: []nmdcp.UserAddress{{
+				Name: peer.Name(),
+				IP:   peer.ip.String(),
+			}},
 		})
 		if err != nil {
 			return err
 		}
 		if peer.User().HasPerm(PermIP) {
+			var ips []nmdcp.UserAddress
 			for _, p := range peers {
 				addr, ok := p.RemoteAddr().(*net.TCPAddr)
 				if !ok {
 					continue
 				}
-				err = c.WriteMsg(&nmdcp.UserIP{
+				ips = append(ips, nmdcp.UserAddress{
 					Name: p.Name(),
 					IP:   addr.IP.String(),
 				})
+			}
+			if len(ips) != 0 {
+				err = c.WriteMsg(&nmdcp.UserIP{List: ips})
 				if err != nil {
 					return err
 				}
@@ -1090,6 +1096,7 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 	var err error
 	botlist := p.fea.Has(nmdcp.ExtBotList)
 	permIP := p.User().HasPerm(PermIP)
+	var ips []nmdcp.UserAddress
 	for _, peer := range peers {
 		if !p.Online() {
 			return errConnectionClosed
@@ -1124,7 +1131,7 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 			}
 			if permIP {
 				if addr, ok := peer.RemoteAddr().(*net.TCPAddr); ok {
-					cmds = append(cmds, &nmdcp.UserIP{
+					ips = append(ips, nmdcp.UserAddress{
 						Name: peer.Name(),
 						IP:   addr.IP.String(),
 					})
@@ -1135,6 +1142,9 @@ func (p *nmdcPeer) peersJoin(peers []Peer, initial bool) error {
 		if err != nil {
 			return err
 		}
+	}
+	if len(ips) != 0 {
+		return p.SendNMDC(&nmdcp.UserIP{List: ips})
 	}
 	return nil
 }
