@@ -1,6 +1,7 @@
 package version
 
 const (
-	Name = "go-dcpp"
-	Vers = "0.18.0"
+	Name    = "go-dcpp"
+	HubName = "GoHub"
+	Vers    = "0.18.0"
 )

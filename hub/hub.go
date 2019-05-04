@@ -39,7 +39,7 @@ func NewHub(conf Config) (*Hub, error) {
 		conf.Name = "GoHub"
 	}
 	if conf.Soft.Name == "" {
-		conf.Soft.Name = version.Name
+		conf.Soft.Name = version.HubName
 	}
 	if conf.Soft.Version == "" {
 		conf.Soft.Version = version.Vers
