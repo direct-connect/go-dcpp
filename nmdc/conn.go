@@ -205,7 +205,7 @@ func (c *Conn) SetFallbackEncoding(enc encoding.Encoding) {
 }
 
 func (c *Conn) ZOn() error {
-	return c.w.EnableZlib()
+	return c.w.ZOn()
 }
 
 // Close closes the connection.

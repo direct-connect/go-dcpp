@@ -333,10 +333,6 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	if peer.fea.Has(nmdcp.ExtZPipe0) {
-		err = c.WriteMsg(&nmdcp.ZOn{})
-		if err != nil {
-			return err
-		}
 		err = c.ZOn() // flushes
 	} else {
 		err = c.Flush()
