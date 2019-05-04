@@ -821,6 +821,7 @@ type nmdcPeer struct {
 		buf []nmdcp.Message
 	}
 	info struct {
+		share uint64 // atomic
 		sync.RWMutex
 		user nmdcp.MyINFO
 		buf  *bytes.Buffer
@@ -840,10 +841,7 @@ type nmdcPeer struct {
 }
 
 func (p *nmdcPeer) Searchable() bool {
-	p.info.RLock()
-	share := p.info.user.ShareSize
-	p.info.RUnlock()
-	return share > 0
+	return atomic.LoadUint64(&p.info.share) > 0
 }
 
 type nmdcSearchRun struct {
@@ -872,6 +870,7 @@ func (p *nmdcPeer) setUserInfo(u *nmdcp.MyINFO) {
 		panic(err)
 	}
 	p.info.raw = &nmdcp.RawMessage{Typ: u.Type(), Data: p.info.buf.Bytes()}
+	atomic.StoreUint64(&p.info.share, u.ShareSize)
 }
 
 func (p *nmdcPeer) UserInfo() UserInfo {
