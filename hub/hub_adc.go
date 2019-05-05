@@ -894,7 +894,7 @@ func (p *adcPeer) sendErrorNow(sev adc.Severity, code int, err error) error {
 }
 
 func (p *adcPeer) Close() error {
-	return p.closeWith(
+	return p.closeWith(p,
 		p.c.Close,
 		func() error {
 			p.hub.leaveCID(p, p.sid, p.info.cid)

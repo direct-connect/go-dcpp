@@ -910,7 +910,7 @@ func (p *nmdcPeer) Info() nmdcp.MyINFO {
 }
 
 func (p *nmdcPeer) closeOn(list []Peer) error {
-	return p.closeWith(
+	return p.closeWith(p,
 		p.c.Close,
 		func() error {
 			p.hub.leave(p, p.sid, list)

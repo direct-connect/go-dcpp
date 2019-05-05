@@ -39,7 +39,7 @@ func (b *Bot) SendPrivate(to Peer, m Message) error {
 }
 
 func (b *Bot) Close() error {
-	return b.p.closeWith()
+	return b.p.closeWith(b.p)
 }
 
 func (h *Hub) newBot(name string, kind UserKind, soft dc.Software) (*Bot, error) {

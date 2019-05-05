@@ -10,6 +10,7 @@ type hooks struct {
 	onConnected    []func(c net.Conn) bool
 	onDisconnected []func(c net.Conn)
 	onJoined       []func(p Peer) bool
+	onLeave        []func(p Peer)
 	onChat         []func(p Peer, m Message) bool
 }
 
@@ -28,6 +29,12 @@ func (h *Hub) OnDisconnected(fnc func(c net.Conn)) {
 func (h *Hub) OnJoined(fnc func(p Peer) bool) {
 	h.hooks.Lock()
 	h.hooks.onJoined = append(h.hooks.onJoined, fnc)
+	h.hooks.Unlock()
+}
+
+func (h *Hub) OnLeave(fnc func(p Peer)) {
+	h.hooks.Lock()
+	h.hooks.onLeave = append(h.hooks.onLeave, fnc)
 	h.hooks.Unlock()
 }
 
@@ -65,6 +72,14 @@ func (h *Hub) callOnJoined(p Peer) bool {
 		}
 	}
 	return true
+}
+
+func (h *Hub) callOnLeave(p Peer) {
+	h.hooks.RLock()
+	defer h.hooks.RUnlock()
+	for _, fnc := range h.hooks.onLeave {
+		fnc(p)
+	}
 }
 
 func (h *Hub) callOnChat(p Peer, m Message) bool {

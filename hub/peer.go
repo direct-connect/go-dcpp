@@ -175,15 +175,19 @@ func (p *BasePeer) RemoteAddr() net.Addr {
 	return p.cinfo.Remote
 }
 
-func (p *BasePeer) closeWith(closers ...func() error) error {
+func (p *BasePeer) closeWith(pr Peer, closers ...func() error) error {
 	if !p.Online() {
 		return nil
 	}
 	p.close.Lock()
-	defer p.close.Unlock()
 	if !p.Online() {
+		p.close.Unlock()
 		return nil
 	}
+	defer func() {
+		p.close.Unlock()
+		p.hub.callOnLeave(pr)
+	}()
 	close(p.close.done)
 	p.offline.Set(true)
 	var first error

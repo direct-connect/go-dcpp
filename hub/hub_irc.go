@@ -336,7 +336,7 @@ func (p *ircPeer) UserInfo() UserInfo {
 }
 
 func (p *ircPeer) Close() error {
-	return p.closeWith(
+	return p.closeWith(p,
 		p.conn.Close,
 		func() error {
 			p.hub.leave(p, p.sid, nil)
