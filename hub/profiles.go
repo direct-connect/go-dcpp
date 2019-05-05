@@ -121,6 +121,9 @@ type UserProfile struct {
 }
 
 func (p *UserProfile) ID() string {
+	if p == nil {
+		return ""
+	}
 	return p.id
 }
 
