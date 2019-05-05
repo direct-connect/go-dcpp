@@ -27,3 +27,5 @@ require (
 	golang.org/x/text v0.3.2
 	golang.org/x/tools v0.0.0-20190503185657-3b6f9c0030f7 // indirect
 )
+
+replace github.com/Shopify/go-lua => github.com/direct-connect/go-lua v0.0.0-20190505214648-cdda08bfc989

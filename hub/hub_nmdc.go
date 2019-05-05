@@ -25,7 +25,7 @@ var (
 )
 
 const (
-	debugAllowInsecure = false
+	debugAllowInsecure = true
 )
 
 const (
@@ -783,6 +783,37 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 	return nil
 }
 
+func (h *Hub) sendNMDCTo(p Peer, m nmdcp.Message) error {
+	switch m := m.(type) {
+	case *nmdcp.ChatMessage:
+		from := h.PeerByName(m.Name)
+		if from == nil {
+			return fmt.Errorf("cannot find the message author: '%s'", m.Name)
+		}
+		if np, ok := p.(*nmdcPeer); ok {
+			return np.SendNMDC(m)
+		}
+		msg := Message{Time: time.Now(), Name: m.Name, Text: m.Text}
+		_ = p.ChatMsg(nil, from, msg)
+		return nil
+	default:
+		if np, ok := p.(*nmdcPeer); ok {
+			return np.SendNMDC(m)
+		}
+		log.Printf("TODO: Hub.SendNMDC(%T, %T)", p, m)
+		return nil
+	}
+}
+
+func (h *Hub) SendNMDCTo(p Peer, msgs ...nmdcp.Message) error {
+	for _, m := range msgs {
+		if err := h.sendNMDCTo(p, m); err != nil && err != errConnectionClosed {
+			return err
+		}
+	}
+	return nil
+}
+
 var (
 	_ Peer      = (*nmdcPeer)(nil)
 	_ PeerTopic = (*nmdcPeer)(nil)
@@ -1048,6 +1079,14 @@ func (p *nmdcPeer) PeersJoin(e *PeersJoinEvent) error {
 func (p *nmdcPeer) PeersUpdate(e *PeersUpdateEvent) error {
 	// same as join
 	return p.PeersJoin((*PeersJoinEvent)(e))
+}
+
+func NMDCUserInfo(p Peer) nmdcp.MyINFO {
+	if np, ok := p.(*nmdcPeer); ok {
+		return np.Info()
+	}
+	u := p.UserInfo()
+	return u.toNMDC()
 }
 
 func (u UserInfo) toNMDC() nmdcp.MyINFO {
@@ -1323,21 +1362,26 @@ func (p *nmdcPeer) LeaveRoom(room *Room) error {
 	)
 }
 
-func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
-	if !p.Online() {
-		return errConnectionClosed
-	}
+func ToNMDCChatMsg(from Peer, msg Message) *nmdcp.ChatMessage {
 	if msg.Me && !strings.HasPrefix(msg.Text, "/me") {
 		msg.Text = "/me " + msg.Text
 	}
 	if msg.Name == "" {
 		msg.Name = from.Name()
 	}
+	return &nmdcp.ChatMessage{
+		Name: msg.Name,
+		Text: msg.Text,
+	}
+}
+
+func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
+	m := ToNMDCChatMsg(from, msg)
 	if room == nil || room.Name() == "" {
-		return p.SendNMDC(&nmdcp.ChatMessage{
-			Name: msg.Name,
-			Text: msg.Text,
-		})
+		return p.SendNMDC(m)
 	}
 	if from == p {
 		return nil // no echo
@@ -1345,8 +1389,8 @@ func (p *nmdcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	return p.SendNMDC(&nmdcp.PrivateMessage{
 		From: room.Name(),
 		To:   p.Name(),
-		Name: msg.Name,
-		Text: msg.Text,
+		Name: m.Name,
+		Text: m.Text,
 	})
 }
 

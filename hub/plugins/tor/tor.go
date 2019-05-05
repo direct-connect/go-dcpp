@@ -56,7 +56,7 @@ func (p *plugin) Init(h *hub.Hub, path string) error {
 }
 
 func (p *plugin) startTor() error {
-	fmt.Println("Tor version:", ltor.ProviderVersion())
+	log.Println("Tor version:", ltor.ProviderVersion())
 
 	torDir := filepath.Join(p.path, torDir)
 	if _, err := os.Stat(torDir); os.IsNotExist(err) {
@@ -100,7 +100,7 @@ func (p *plugin) listenAndServe() error {
 			return err
 		}
 		key = k
-		fmt.Printf("Loaded Tor private key: %s\n", keyFile)
+		log.Printf("Loaded Tor private key: %s\n", keyFile)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -121,12 +121,12 @@ func (p *plugin) listenAndServe() error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Saved Tor private key: %s\n", keyFile)
+			log.Printf("Saved Tor private key: %s\n", keyFile)
 		}
 	}
 	p.onion = onion
 	addr := fmt.Sprintf("%v.onion:%d", onion.ID, torPort)
-	fmt.Printf("Tor address: %s\n", addr)
+	log.Printf("Tor address: %s\n", addr)
 	p.h.AddAddress(addr)
 	go p.serve(onion)
 	return nil

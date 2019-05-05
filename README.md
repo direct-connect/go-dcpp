@@ -1,8 +1,8 @@
-# Go Hub
+# GoHub
 
 [![Github Release](https://img.shields.io/github/release/direct-connect/go-dcpp.svg)](https://github.com/direct-connect/go-dcpp/releases)
 
-Direct Connect hub implementation for ADC and NMDC protocols.
+Direct Connect hub implementation for ADC and NMDC protocols (and beyond).
 
 Requires Go 1.12+.
 
@@ -11,19 +11,20 @@ Requires Go 1.12+.
 - Fully multi-threaded.
 - Support NMDC, ADC and IRC users on the same hub.
 - Uses a single port for all protocols (protocol auto-detection).
-- Search between NMDC and ADC.
+- Search and chat between NMDC and ADC.
 - Supports TLS for ADC (`adcs://`) and NMDC (`nmdcs://`).
 - Automatic TLS certificate generation.
 - HTTP(S) pinger support.
-- User registration.
-- User profiles and operators.
+- User registration, profiles and operators.
 - User commands.
 - Chat rooms.
 - Go plugins.
+- LUA scripts.
+- PtokaX LUA scripts support.
+- Flood filters.
 
 **TODO:**
 
-- Scripts.
 - Spam filters.
 - Get certificates from LetsEncrypt.
 
@@ -68,7 +69,7 @@ This will create a file called `hub.yml` with the default configuration.
 
 To create a user with admin permissions:
 ```
-./go-hub user add Bob password root 
+./go-hub user add "Bob" "MyPass" root 
 ```
 
 To run the hub:

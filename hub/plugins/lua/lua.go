@@ -2,12 +2,14 @@ package lua
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,26 @@ const apiVersion = "0.1.0"
 
 func init() {
 	hub.RegisterPlugin(&plugin{})
+}
+
+var (
+	apis []API
+)
+
+func RegisterAPI(api API) {
+	apis = append(apis, api)
+}
+
+type Instance interface {
+	Start()
+	Close() error
+}
+
+type API interface {
+	Name() string
+	Version() hub.Version
+	Compatible(s *Script) bool
+	New(s *Script) Instance
 }
 
 type plugin struct {
@@ -46,8 +68,7 @@ func (p *plugin) loadScripts(path string) error {
 	p.scripts = make(map[string]*Script)
 
 	path = filepath.Join(path, "scripts")
-	fmt.Println("\nlua: loading scripts in:", path)
-	defer fmt.Println()
+	log.Println("lua: loading scripts in:", path)
 	d, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -66,15 +87,19 @@ func (p *plugin) loadScripts(path string) error {
 			if !strings.HasSuffix(name, ".lua") {
 				continue
 			}
-			fmt.Println("lua: loading script:", name)
+			log.Println("lua: loading script:", name)
 			s, err := p.loadScript(filepath.Join(path, name))
 			if err != nil {
-				return err
+				return fmt.Errorf("lua: %v", err)
 			}
-			fmt.Printf("lua: loaded plugin: %q (v%s)\n",
-				s.getString("script", "name"),
-				s.getString("script", "version"),
-			)
+			pname := s.getString("script", "name")
+			vers := s.getString("script", "version")
+			if pname != "" || vers != "" {
+				log.Printf("lua: loaded plugin: %q (v%s)\n",
+					s.getString("script", "name"),
+					s.getString("script", "version"),
+				)
+			}
 		}
 	}
 }
@@ -105,12 +130,29 @@ func (p *plugin) Close() error {
 
 type M = map[string]interface{}
 
+type UserData struct {
+	Ptr interface{}
+}
+
 type Script struct {
 	h    *hub.Hub
 	p    *plugin
 	mu   sync.Mutex
 	file string
 	s    *lua.State
+	apis []Instance
+}
+
+func (s *Script) Hub() *hub.Hub {
+	return s.h
+}
+
+func (s *Script) State() *lua.State {
+	return s.s
+}
+
+func (s *Script) Name() string {
+	return s.file
 }
 
 func (s *Script) setString(k, v string) {
@@ -126,12 +168,17 @@ func (s *Script) getString(path ...string) string {
 func (s *Script) getPath(path ...string) {
 	s.s.Global(path[0])
 	for _, k := range path[1:] {
+		if s.s.IsNil(-1) {
+			s.s.PushNil()
+			return
+		}
 		s.s.Field(-1, k)
 	}
 }
 
 func (s *Script) popString() string {
 	str, _ := s.s.ToString(-1)
+	s.s.Pop(1)
 	return str
 }
 
@@ -145,24 +192,53 @@ func (s *Script) popDur() time.Duration {
 	return d
 }
 
+func (s *Script) pushSlice(a []interface{}) {
+	s.s.CreateTable(len(a), 0)
+	for i, v := range a {
+		s.s.PushInteger(i + 1)
+		s.Push(v)
+		s.s.RawSet(-3)
+	}
+}
+
 func (s *Script) pushStringMap(m map[string]string) {
-	s.s.NewTable()
+	s.s.CreateTable(0, len(m))
 	for k, v := range m {
+		s.s.PushString(k)
 		s.s.PushString(v)
-		s.s.SetField(-2, k)
+		s.s.RawSet(-3)
 	}
 }
 
 func (s *Script) pushRawFuncMap(m map[string]lua.Function) {
-	s.s.NewTable()
+	s.s.CreateTable(0, len(m))
 	for k, v := range m {
+		s.s.PushString(k)
 		s.s.PushGoFunction(v)
-		s.s.SetField(-2, k)
+		s.s.RawSet(-3)
 	}
 }
 
-func (s *Script) push(v interface{}) {
+func (s *Script) pushMap(m map[string]interface{}) {
+	s.s.CreateTable(0, len(m))
+	gi := s.s.Top()
+	for k, v := range m {
+		s.s.PushString(k)
+		s.Push(v)
+		s.s.RawSet(-3)
+	}
+	if s.s.Top() != gi {
+		panic("invalid stack")
+	}
+}
+
+func (s *Script) Push(v interface{}) {
 	switch v := v.(type) {
+	case UserData:
+		s.s.PushUserData(v.Ptr)
+		if s.s.TypeOf(-1) != lua.TypeUserData {
+			panic("invalid type: " + lua.TypeNameOf(s.s, -1))
+		}
 	case lua.Function:
 		s.s.PushGoFunction(v)
 	case map[string]interface{}:
@@ -172,11 +248,7 @@ func (s *Script) push(v interface{}) {
 	case map[string]string:
 		s.pushStringMap(v)
 	case []interface{}:
-		s.s.NewTable()
-		for i, a := range v {
-			s.push(a)
-			s.s.SetField(-2, strconv.Itoa(i))
-		}
+		s.pushSlice(v)
 	case string:
 		s.s.PushString(v)
 	case int:
@@ -194,35 +266,37 @@ func (s *Script) push(v interface{}) {
 	case hub.Peer:
 		s.pushPeer(v)
 	default:
+		if k := reflect.TypeOf(v).Kind(); k == reflect.Ptr {
+			s.Push(UserData{Ptr: v})
+			return
+		}
 		// TODO: reflect
 		data, _ := json.Marshal(v)
+		log.Printf("TODO: lua.pushJSON(%T -> %q)", v, string(data))
 		var m map[string]interface{}
 		_ = json.Unmarshal(data, &m)
 		s.pushMap(m)
 	}
 }
 
-func (s *Script) pushMap(m map[string]interface{}) {
-	s.s.NewTable()
-	for k, v := range m {
-		s.push(v)
-		s.s.SetField(-2, k)
-	}
+func (s *Script) Set(k string, o interface{}) {
+	s.Push(o)
+	s.s.SetGlobal(k)
 }
 
-func (s *Script) setStringMap(k string, m map[string]string) {
+func (s *Script) SetStringMap(k string, m map[string]string) {
 	s.pushStringMap(m)
 	s.s.SetGlobal(k)
 }
 
-func (s *Script) setRawFuncMap(k string, m map[string]lua.Function) {
+func (s *Script) SetRawFuncMap(k string, m map[string]lua.Function) {
 	s.pushRawFuncMap(m)
 	s.s.SetGlobal(k)
 }
 
 func (s *Script) pushPeer(p hub.Peer) {
 	if p == nil {
-		s.push(nil)
+		s.Push(nil)
 		return
 	}
 	u := p.UserInfo()
@@ -257,12 +331,31 @@ func (s *Script) pushPeer(p hub.Peer) {
 	})
 }
 
+type Func struct {
+	s   *Script
+	f   interface{}
+	ret int
+}
+
+func (f *Func) Call(args ...interface{}) {
+	f.s.callLUA(f.f, f.ret, args...)
+}
+
+func (s *Script) ToFuncOn(st *lua.State, index int, ret int) *Func {
+	f := st.ToValue(index)
+	return &Func{s: s, f: f, ret: ret}
+}
+
+func (s *Script) ToFunc(index int, ret int) *Func {
+	return s.ToFuncOn(s.s, index, ret)
+}
+
 func (s *Script) callLUA(fnc interface{}, ret int, args ...interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.s.PushLightUserData(fnc)
 	for _, arg := range args {
-		s.push(arg)
+		s.Push(arg)
 	}
 	s.s.Call(len(args), ret)
 }
@@ -270,15 +363,15 @@ func (s *Script) callLUA(fnc interface{}, ret int, args ...interface{}) {
 func (s *Script) setupGlobals() {
 	lua.OpenLibraries(s.s)
 	st := s.h.Stats()
-	s.setStringMap("versions", map[string]string{
+	s.SetStringMap("versions", map[string]string{
 		"hub":        st.Soft.Version,
 		"hub_api":    apiVersion,
 		"lua_plugin": s.p.Version().Vers3(),
 	})
-	s.setRawFuncMap("hub", map[string]lua.Function{
+	s.SetRawFuncMap("hub", map[string]lua.Function{
 		"info": func(_ *lua.State) int {
 			st := s.h.Stats()
-			s.push(st)
+			s.Push(st)
 			return 1
 		},
 		"userByName": func(_ *lua.State) int {
@@ -293,7 +386,7 @@ func (s *Script) setupGlobals() {
 			for _, p := range s.h.Peers() {
 				out = append(out, p)
 			}
-			s.push(out)
+			s.Push(out)
 			return 1
 		},
 		"sendGlobal": func(_ *lua.State) int {
@@ -361,8 +454,25 @@ func (s *Script) setupGlobals() {
 			return 0
 		},
 	})
+	for _, a := range apis {
+		if a.Compatible(s) {
+			api := a.New(s)
+			s.apis = append(s.apis, api)
+		}
+	}
 }
 
 func (s *Script) ExecFile(path string) error {
-	return lua.DoFile(s.s, path)
+	if err := lua.DoFile(s.s, path); err != nil {
+		if err == lua.SyntaxError {
+			if e, ok := s.s.ToString(1); ok && e != "" {
+				return errors.New(e)
+			}
+		}
+		return err
+	}
+	for _, api := range s.apis {
+		api.Start()
+	}
+	return nil
 }

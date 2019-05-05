@@ -6,4 +6,5 @@ import (
 
 	// LUA is loaded the last
 	_ "github.com/direct-connect/go-dcpp/hub/plugins/lua"
+	_ "github.com/direct-connect/go-dcpp/hub/plugins/lua/px"
 )
