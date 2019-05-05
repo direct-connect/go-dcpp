@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/direct-connect/go-dcpp/hub"
 
@@ -24,6 +25,7 @@ const (
 	tableUsers       = "users"
 	tableUsersByName = "usersByName" // TODO: replace with secondary index once it's supported
 	tableProfiles    = "profiles"
+	tableBans        = "bans"
 )
 
 func Open(typ, path string) (hub.Database, error) {
@@ -54,6 +56,7 @@ type tupleDatabase struct {
 	users       tuple.TableInfo
 	usersByName tuple.TableInfo
 	profiles    tuple.TableInfo
+	bans        tuple.TableInfo
 }
 
 func (db *tupleDatabase) Close() error {
@@ -69,6 +72,9 @@ func (db *tupleDatabase) openTables() error {
 		return err
 	}
 	if err := db.openProfiles(ctx); err != nil {
+		return err
+	}
+	if err := db.openBans(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -215,6 +221,20 @@ func (db *tupleDatabase) createProfilesV2(ctx context.Context, tx tuple.Tx) erro
 	})
 }
 
+func (db *tupleDatabase) createBansV2(ctx context.Context, tx tuple.Tx) error {
+	return db.createTable(ctx, tx, tuple.Header{
+		Name: tableBans,
+		Key: []tuple.KeyField{
+			{Name: "key", Type: values.BytesType{}},
+		},
+		Data: []tuple.Field{
+			{Name: "hard", Type: values.BoolType{}},
+			{Name: "until", Type: values.TimeType{}},
+			{Name: "reason", Type: values.StringType{}},
+		},
+	})
+}
+
 func (db *tupleDatabase) inTx(ctx context.Context, rw bool, fnc func(ctx context.Context, tx tuple.Tx) error) error {
 	tx, err := db.db.Tx(rw)
 	if err != nil {
@@ -285,6 +305,25 @@ func (db *tupleDatabase) openProfiles(ctx context.Context) error {
 		return err
 	}
 	db.profiles = prof
+	return nil
+}
+
+func (db *tupleDatabase) openBans(ctx context.Context) error {
+	bans, err := db.db.Table(ctx, tableBans)
+	if err == nil {
+		db.bans = bans
+		return nil
+	} else if err != tuple.ErrTableNotFound {
+		return err
+	}
+	if err := db.inTx(ctx, true, db.createBansV2); err != nil {
+		return err
+	}
+	bans, err = db.db.Table(ctx, tableBans)
+	if err != nil {
+		return err
+	}
+	db.bans = bans
 	return nil
 }
 
@@ -649,4 +688,176 @@ func (db *tupleDatabase) ListProfiles() ([]string, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func decodeBan(key tuple.Key, data tuple.Data) (*hub.Ban, error) {
+	k, ok := key[0].(values.Bytes)
+	if !ok {
+		return nil, fmt.Errorf("expected bytes ban key, got: %T", key[0])
+	}
+	skey := hub.BanKey(k)
+	b := hub.Ban{Key: skey}
+
+	if len(data) != 3 {
+		return nil, fmt.Errorf("expected ban rows with 3 data fields, got: %d", len(data))
+	}
+	hard, ok := data[0].(values.Bool)
+	if !ok {
+		return nil, fmt.Errorf("expected bool value, got: %T", data[0])
+	}
+	b.Hard = bool(hard)
+	until, ok := data[1].(values.Time)
+	if !ok {
+		return nil, fmt.Errorf("expected time value, got: %T", data[1])
+	}
+	b.Until = time.Time(until)
+	reason, ok := data[2].(values.String)
+	if !ok {
+		return nil, fmt.Errorf("expected string value, got: %T", data[2])
+	}
+	b.Reason = string(reason)
+	return &b, nil
+}
+
+func (db *tupleDatabase) ListBans() ([]hub.Ban, error) {
+	tx, err := db.db.Tx(false)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Close()
+
+	tbl, err := db.bans.Open(tx)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.TODO()
+
+	it := tbl.Scan(nil)
+
+	var list []hub.Ban
+	if it.Next(ctx) {
+		b, err := decodeBan(it.Key(), it.Data())
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *b)
+	}
+	return list, it.Err()
+}
+
+func (db *tupleDatabase) GetBan(key hub.BanKey) (*hub.Ban, error) {
+	tx, err := db.db.Tx(false)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Close()
+
+	tbl, err := db.bans.Open(tx)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.TODO()
+
+	k := tuple.Key{values.Bytes(key)}
+	data, err := tbl.GetTuple(ctx, k)
+	if err == tuple.ErrNotFound {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	it := tbl.Scan(nil)
+
+	var list []hub.Ban
+	if it.Next(ctx) {
+		b, err := decodeBan(it.Key(), it.Data())
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, *b)
+	}
+	return decodeBan(k, data)
+}
+
+func (db *tupleDatabase) PutBans(bans []hub.Ban) error {
+	tx, err := db.db.Tx(true)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
+
+	tbl, err := db.bans.Open(tx)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.TODO()
+
+	for _, b := range bans {
+		t := tuple.Tuple{
+			Key: tuple.Key{values.Bytes(b.Key)},
+			Data: tuple.Data{
+				values.Bool(b.Hard),
+				values.Time(b.Until),
+				values.String(b.Reason),
+			},
+		}
+		err = tbl.UpdateTuple(ctx, t, &tuple.UpdateOpt{Upsert: true})
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (db *tupleDatabase) DelBans(keys []hub.BanKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	tx, err := db.db.Tx(true)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
+
+	tbl, err := db.bans.Open(tx)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.TODO()
+
+	tkeys := make(tuple.Keys, 0, len(keys))
+	for _, k := range keys {
+		tkeys = append(tkeys, tuple.Key{values.Bytes(k)})
+	}
+	err = tbl.DeleteTuples(ctx, &tuple.Filter{
+		KeyFilter: tkeys,
+	})
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (db *tupleDatabase) ClearBans() error {
+	tx, err := db.db.Tx(true)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
+
+	tbl, err := db.bans.Open(tx)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.TODO()
+	err = tbl.DeleteTuples(ctx, nil)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

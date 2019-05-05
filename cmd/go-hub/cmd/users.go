@@ -3,37 +3,23 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/direct-connect/go-dcpp/hub"
-	"github.com/direct-connect/go-dcpp/hub/hubdb"
 )
 
 func init() {
-	var db hub.Database
 	cmdUsers := &cobra.Command{
 		Use:     "users [command]",
 		Aliases: []string{"user", "u"},
 		Short:   "user-related commands",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			conf, err := readConfig(false)
-			if err != nil {
-				return err
-			} else if conf.Database.Type == "" || conf.Database.Type == "mem" {
-				return errors.New("database type should be specified in config")
-			}
-			log.Printf("using database: %s (%s)\n", conf.Database.Path, conf.Database.Type)
-			db, err = hubdb.Open(conf.Database.Type, conf.Database.Path)
-			if err != nil {
-				return err
-			}
-			return nil
+			return OpenDB()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			list, err := db.ListUsers()
+			list, err := hubDB.ListUsers()
 			if err != nil {
 				return err
 			}
@@ -48,10 +34,7 @@ func init() {
 			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			if db == nil {
-				return nil
-			}
-			return db.Close()
+			return CloseDB()
 		},
 	}
 	Root.AddCommand(cmdUsers)
@@ -85,7 +68,7 @@ func init() {
 			if profile != "" {
 				def := hub.DefaultProfiles()
 				if _, ok := def[profile]; !ok {
-					m, err := db.GetProfile(profile)
+					m, err := hubDB.GetProfile(profile)
 					if err != nil {
 						return err
 					} else if m == nil {
@@ -93,7 +76,7 @@ func init() {
 					}
 				}
 			}
-			err := db.CreateUser(hub.UserRecord{
+			err := hubDB.CreateUser(hub.UserRecord{
 				Name: name, Pass: pass, Profile: profile,
 			})
 			if err != nil {
@@ -120,14 +103,14 @@ func init() {
 			}
 			def := hub.DefaultProfiles()
 			if _, ok := def[profile]; !ok {
-				m, err := db.GetProfile(profile)
+				m, err := hubDB.GetProfile(profile)
 				if err != nil {
 					return err
 				} else if m == nil {
 					return errors.New("profile does not exist")
 				}
 			}
-			return db.UpdateUser(name, func(u *hub.UserRecord) (bool, error) {
+			return hubDB.UpdateUser(name, func(u *hub.UserRecord) (bool, error) {
 				if u == nil {
 					return false, errors.New("user does not exist")
 				}
@@ -153,7 +136,7 @@ func init() {
 			if name == "" {
 				return errors.New("name should not be empty")
 			}
-			return db.DeleteUser(name)
+			return hubDB.DeleteUser(name)
 		},
 	}
 	cmdUsers.AddCommand(cmdDel)

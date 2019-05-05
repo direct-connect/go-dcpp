@@ -9,31 +9,18 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/direct-connect/go-dcpp/hub"
-	"github.com/direct-connect/go-dcpp/hub/hubdb"
 )
 
 func init() {
-	var db hub.Database
 	cmdProf := &cobra.Command{
 		Use:     "profiles [command]",
 		Aliases: []string{"profile", "prof", "p"},
 		Short:   "profile-related commands",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			conf, err := readConfig(false)
-			if err != nil {
-				return err
-			} else if conf.Database.Type == "" || conf.Database.Type == "mem" {
-				return errors.New("database type should be specified in config")
-			}
-			log.Printf("using database: %s (%s)\n", conf.Database.Path, conf.Database.Type)
-			db, err = hubdb.Open(conf.Database.Type, conf.Database.Path)
-			if err != nil {
-				return err
-			}
-			return nil
+			return OpenDB()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			list, err := db.ListProfiles()
+			list, err := hubDB.ListProfiles()
 			if err != nil {
 				return err
 			}
@@ -41,7 +28,7 @@ func init() {
 			var last error
 			def := hub.DefaultProfiles()
 			for _, name := range list {
-				m, err := db.GetProfile(name)
+				m, err := hubDB.GetProfile(name)
 				if err != nil {
 					fmt.Printf("%s\t\t-\t\tERR\n", name)
 					log.Println("error:", err)
@@ -77,10 +64,7 @@ func init() {
 			return last
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			if db == nil {
-				return nil
-			}
-			return db.Close()
+			return CloseDB()
 		},
 	}
 	Root.AddCommand(cmdProf)
@@ -113,7 +97,7 @@ func init() {
 			if len(args) > 1 && args[1] != "" {
 				parent := args[1]
 				if _, ok := def[parent]; !ok {
-					m, err := db.GetProfile(parent)
+					m, err := hubDB.GetProfile(parent)
 					if err != nil {
 						return err
 					} else if m == nil {
@@ -122,7 +106,7 @@ func init() {
 				}
 				m[hub.ProfileParent] = parent
 			}
-			return db.PutProfile(name, m)
+			return hubDB.PutProfile(name, m)
 		},
 	}
 	cmdProf.AddCommand(cmdAdd)
@@ -139,7 +123,7 @@ func init() {
 			if name == "" {
 				return errors.New("name should not be empty")
 			}
-			return db.DelProfile(name)
+			return hubDB.DelProfile(name)
 		},
 	}
 	cmdProf.AddCommand(cmdDel)

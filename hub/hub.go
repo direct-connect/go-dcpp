@@ -136,7 +136,7 @@ type Hub struct {
 	rooms      rooms
 	plugins    plugins
 	hooks      hooks
-	ipFilter   ipFilter
+	bans       bans
 	profiles   profiles
 }
 
@@ -295,10 +295,13 @@ func (h *Hub) Start() error {
 	if err := h.loadProfiles(); err != nil {
 		return err
 	}
+	if err := h.loadBans(); err != nil {
+		return err
+	}
 	if err := h.initPlugins(); err != nil {
 		return err
 	}
-	go h.ipFilter.run(h.closed)
+	go h.bans.run(h.closed)
 	return nil
 }
 

@@ -21,7 +21,11 @@ const (
 	userNameMax = 256
 )
 
+type BanKey string
+
 type Ban struct {
+	Key    BanKey
+	Hard   bool
 	Until  time.Time
 	Reason string
 }
@@ -101,6 +105,7 @@ func (u *User) IsOwner() bool {
 type Database interface {
 	UserDatabase
 	ProfileDatabase
+	BanDatabase
 	Close() error
 }
 
@@ -137,6 +142,14 @@ type ProfileDatabase interface {
 	PutProfile(id string, m Map) error
 	DelProfile(id string) error
 	ListProfiles() ([]string, error)
+}
+
+type BanDatabase interface {
+	ListBans() ([]Ban, error)
+	GetBan(key BanKey) (*Ban, error)
+	PutBans(bans []Ban) error
+	DelBans(keys []BanKey) error
+	ClearBans() error
 }
 
 var (
@@ -248,6 +261,7 @@ func NewDatabase() Database {
 	return &memDB{
 		users:    make(map[string]UserRecord),
 		profiles: make(map[string]Map),
+		bans:     make(map[BanKey]Ban),
 	}
 }
 
@@ -255,6 +269,7 @@ type memDB struct {
 	mu       sync.RWMutex
 	users    map[string]UserRecord
 	profiles map[string]Map
+	bans     map[BanKey]Ban
 }
 
 func (*memDB) Close() error {
@@ -351,4 +366,49 @@ func (db *memDB) ListProfiles() ([]string, error) {
 	}
 	db.mu.RUnlock()
 	return list, nil
+}
+
+func (db *memDB) ListBans() ([]Ban, error) {
+	db.mu.RLock()
+	list := make([]Ban, 0, len(db.bans))
+	for _, b := range db.bans {
+		list = append(list, b)
+	}
+	db.mu.RUnlock()
+	return list, nil
+}
+
+func (db *memDB) GetBan(key BanKey) (*Ban, error) {
+	db.mu.RLock()
+	b, ok := db.bans[key]
+	db.mu.RUnlock()
+	if !ok {
+		return nil, nil
+	}
+	return &b, nil
+}
+
+func (db *memDB) PutBans(bans []Ban) error {
+	db.mu.Lock()
+	for _, b := range bans {
+		db.bans[b.Key] = b
+	}
+	db.mu.Unlock()
+	return nil
+}
+
+func (db *memDB) DelBans(keys []BanKey) error {
+	db.mu.Lock()
+	for _, k := range keys {
+		delete(db.bans, k)
+	}
+	db.mu.Unlock()
+	return nil
+}
+
+func (db *memDB) ClearBans() error {
+	db.mu.Lock()
+	db.bans = make(map[BanKey]Ban)
+	db.mu.Unlock()
+	return nil
 }

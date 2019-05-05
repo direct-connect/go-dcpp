@@ -1,6 +1,8 @@
 package hub
 
-import "sync"
+import (
+	"sync"
+)
 
 const (
 	PermOwner     = "owner"
