@@ -20,6 +20,10 @@ func (b *Bot) Name() string {
 	return b.p.Name()
 }
 
+func (b *Bot) UserInfo() UserInfo {
+	return b.p.UserInfo()
+}
+
 func (b *Bot) SendGlobal(m Message) error {
 	if !b.p.Online() {
 		return errConnectionClosed
@@ -42,7 +46,7 @@ func (b *Bot) Close() error {
 	return b.p.closeWith(b.p)
 }
 
-func (h *Hub) newBot(name string, kind UserKind, soft dc.Software) (*Bot, error) {
+func (h *Hub) newBot(name, desc, email string, kind UserKind, soft dc.Software) (*Bot, error) {
 	if err := h.validateUserName(name); err != nil {
 		return nil, err
 	} else if !h.nameAvailable(name, nil) {
@@ -55,7 +59,7 @@ func (h *Hub) newBot(name string, kind UserKind, soft dc.Software) (*Bot, error)
 		soft = h.getSoft()
 	}
 
-	p := &botPeer{kind: kind, soft: soft}
+	p := &botPeer{kind: kind, soft: soft, desc: desc, email: email}
 	addr := &net.TCPAddr{
 		IP: localhostIP,
 	}
@@ -77,13 +81,19 @@ func (h *Hub) newBot(name string, kind UserKind, soft dc.Software) (*Bot, error)
 }
 
 func (h *Hub) NewBot(name string, soft dc.Software) (*Bot, error) {
-	return h.newBot(name, UserBot, soft)
+	return h.NewBotDesc(name, "", "", soft)
+}
+
+func (h *Hub) NewBotDesc(name, desc, email string, soft dc.Software) (*Bot, error) {
+	return h.newBot(name, desc, email, UserBot, soft)
 }
 
 type botPeer struct {
 	BasePeer
-	kind UserKind
-	soft dc.Software
+	desc  string
+	email string
+	kind  UserKind
+	soft  dc.Software
 }
 
 func (*botPeer) Searchable() bool {
@@ -92,9 +102,13 @@ func (*botPeer) Searchable() bool {
 
 func (p *botPeer) UserInfo() UserInfo {
 	return UserInfo{
-		Name: p.Name(),
-		Kind: p.kind,
-		App:  p.soft,
+		Name:           p.Name(),
+		Kind:           p.kind,
+		App:            p.soft,
+		Desc:           p.desc,
+		Email:          p.email,
+		HubsNormal:     1,
+		HubsRegistered: 1,
 	}
 }
 

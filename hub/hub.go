@@ -80,7 +80,7 @@ func NewHub(conf Config) (*Hub, error) {
 	h.globalChat = h.newRoom("")
 
 	var err error
-	h.hubUser, err = h.newBot(conf.Name, UserHub, conf.Soft)
+	h.hubUser, err = h.newBot(conf.Name, conf.Desc, conf.Email, UserHub, conf.Soft)
 	if err != nil {
 		return nil, err
 	}
