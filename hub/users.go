@@ -98,6 +98,28 @@ func (u *User) HasPerm(perm string) bool {
 	return u.Profile().Has(perm)
 }
 
+func (u *User) IsOp() bool {
+	if u == nil {
+		return false
+	}
+	p := u.Profile()
+	if p == nil {
+		return false
+	}
+	return p.IsOwner() || p.HasParent(ProfileNameOperator)
+}
+
+func (u *User) IsRegistered() bool {
+	if u == nil {
+		return false
+	}
+	p := u.Profile()
+	if p == nil {
+		return false
+	}
+	return p.IsOwner() || p.HasParent(ProfileNameOperator) || p.HasParent(ProfileNameRegistered)
+}
+
 func (u *User) IsOwner() bool {
 	return u.Profile().IsOwner()
 }

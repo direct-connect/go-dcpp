@@ -146,6 +146,19 @@ func (p *UserProfile) SetParent(par *UserProfile) *UserProfile {
 	return par
 }
 
+func (p *UserProfile) HasParent(id string) bool {
+	for p != nil {
+		if p.ID() == id {
+			return true
+		}
+		p.mu.RLock()
+		par := p.parent
+		p.mu.RUnlock()
+		p = par
+	}
+	return false
+}
+
 func (p *UserProfile) Get(key string) (interface{}, bool) {
 	for p != nil {
 		p.mu.RLock()
@@ -183,5 +196,5 @@ func (p *UserProfile) Has(flag string) bool {
 }
 
 func (p *UserProfile) IsOwner() bool {
-	return p.Has(PermOwner)
+	return p.ID() == ProfileNameRoot || p.Has(PermOwner)
 }
