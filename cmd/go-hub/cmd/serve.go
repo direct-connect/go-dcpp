@@ -195,14 +195,14 @@ func init() {
 		h.MergeConfig(cmap)
 
 		if *fDebug {
-			fmt.Println("WARNING: protocol debug enabled")
+			log.Println("WARNING: protocol debug enabled")
 			nmdc.Debug = true
 			adc.Debug = true
 		}
 
 		if *fPProf {
 			const pprofPort = ":6060"
-			fmt.Println("enabling profiler on", pprofPort)
+			log.Println("enabling profiler on", pprofPort)
 			go func() {
 				if err := http.ListenAndServe(pprofPort, nil); err != nil {
 					log.Println("cannot enable profiler:", err)
@@ -211,7 +211,7 @@ func init() {
 		}
 		if true {
 			const promAddr = ":2112"
-			fmt.Println("serving metrics on", promAddr)
+			log.Println("serving metrics on", promAddr)
 			go func() {
 				if err := http.ListenAndServe(promAddr, promhttp.Handler()); err != nil {
 					log.Println("cannot serve metrics:", err)
@@ -219,7 +219,7 @@ func init() {
 			}()
 		}
 		if conf.Database.Type != "" && conf.Database.Type != "mem" {
-			fmt.Printf("using database: %s (%s)\n", conf.Database.Path, conf.Database.Type)
+			log.Printf("using database: %s (%s)\n", conf.Database.Path, conf.Database.Type)
 			db, err := hubdb.Open(conf.Database.Type, conf.Database.Path)
 			if err != nil {
 				return err
@@ -227,24 +227,22 @@ func init() {
 			defer db.Close()
 			h.SetDatabase(db)
 		} else {
-			fmt.Println("WARNING: using in-memory database")
+			log.Println("WARNING: using in-memory database")
 		}
 
 		if _, err := os.Stat(conf.Plugins.Path); err == nil {
-			fmt.Println("loading plugins in:", conf.Plugins.Path)
+			log.Println("loading plugins in:", conf.Plugins.Path)
 			if err := h.LoadPluginsInDir(conf.Plugins.Path); err != nil {
 				return err
 			}
 		}
 
-		fmt.Println()
 		if err := h.Start(); err != nil {
 			return err
 		}
 		defer h.Close()
-		fmt.Println()
 
-		fmt.Println("listening on", host)
+		log.Println("listening on", host)
 
 		fmt.Printf(`
 [ Hub URIs ]
@@ -278,7 +276,7 @@ http://%s%s
 		signal.Notify(ch, os.Interrupt)
 		go func() {
 			<-ch
-			fmt.Println("stopping server")
+			log.Println("stopping server")
 			_ = h.Close()
 		}()
 

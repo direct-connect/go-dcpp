@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/big"
 	"net"
 	"time"
@@ -83,7 +84,7 @@ func loadCert(conf *Config) (*tls.Certificate, string, error) {
 	)
 	if tc != nil {
 		cert, key, err = tc.Load()
-		fmt.Println("using certs:", tc.Cert, tc.Key)
+		log.Println("using certs:", tc.Cert, tc.Key)
 	} else {
 		tc = &TLSConfig{
 			Cert: "hub.cert",
@@ -91,7 +92,7 @@ func loadCert(conf *Config) (*tls.Certificate, string, error) {
 		}
 		conf.Serve.TLS = tc
 		cert, key, err = tc.Generate(conf.Serve.Host)
-		fmt.Println("generated cert for", conf.Serve.Host)
+		log.Println("generated cert for", conf.Serve.Host)
 	}
 	if err != nil {
 		return nil, "", err
