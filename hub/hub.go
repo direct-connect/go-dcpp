@@ -289,7 +289,7 @@ func (h *Hub) setTopic(topic string) {
 	h.conf.Lock()
 	h.conf.Topic = topic
 	h.conf.Unlock()
-	// TODO: broadcast new topic
+	h.broadcastTopic(topic)
 }
 
 func (h *Hub) setMOTD(motd string) {
@@ -624,6 +624,20 @@ func (h *Hub) acceptPeer(peer Peer, pre, post func()) {
 
 	if post != nil {
 		post()
+	}
+}
+
+func topicMsg(topic string) Message {
+	return Message{Text: "topic: " + topic, Me: true}
+}
+
+func (h *Hub) broadcastTopic(topic string) {
+	for _, p2 := range h.Peers() {
+		if pt, ok := p2.(PeerTopic); ok {
+			_ = pt.Topic(topic)
+		} else {
+			_ = p2.HubChatMsg(topicMsg(topic))
+		}
 	}
 }
 

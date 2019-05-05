@@ -78,6 +78,10 @@ type Peer interface {
 	Search(ctx context.Context, req SearchRequest, out Search) error
 }
 
+type PeerTopic interface {
+	Topic(topic string) error
+}
+
 type PeersJoinEvent struct {
 	Peers []Peer
 

@@ -784,7 +784,8 @@ func (h *Hub) nmdcSendUserCommand(peer *nmdcPeer) error {
 }
 
 var (
-	_ Peer = (*nmdcPeer)(nil)
+	_ Peer      = (*nmdcPeer)(nil)
+	_ PeerTopic = (*nmdcPeer)(nil)
 )
 
 func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick string, ip net.IP) *nmdcPeer {
@@ -1033,6 +1034,10 @@ func (p *nmdcPeer) verifyAddr(addr string) error {
 		return fmt.Errorf("invalid ip: %q vs %q", ip, p.ip.String())
 	}
 	return nil
+}
+
+func (p *nmdcPeer) Topic(topic string) error {
+	return p.SendNMDC(&nmdcp.HubTopic{Text: topic})
 }
 
 func (p *nmdcPeer) PeersJoin(e *PeersJoinEvent) error {

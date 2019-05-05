@@ -86,11 +86,15 @@ func (h *Hub) adcHandshake(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 		return nil, err
 	}
 	// connection is not yet valid and we haven't added the client to the hub yet
-	if err := h.adcStageIdentity(peer); err != nil {
+	if err = h.adcStageIdentity(peer); err != nil {
 		return nil, err
 	}
 	// TODO: identify pingers
 	// peer registered, now we can start serving things
+	if err = peer.HubChatMsg(topicMsg(h.getTopic())); err != nil {
+		_ = peer.Close()
+		return nil, err
+	}
 	if err = h.sendMOTD(peer); err != nil {
 		_ = peer.Close()
 		return nil, err
