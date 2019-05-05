@@ -3,5 +3,5 @@ package version
 const (
 	Name    = "go-dcpp"
 	HubName = "GoHub"
-	Vers    = "0.18.1"
+	Vers    = "0.19.0"
 )

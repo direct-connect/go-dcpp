@@ -52,7 +52,7 @@ func (h *Hub) newBot(name string, kind UserKind, soft dc.Software) (*Bot, error)
 		return nil, errNickTaken
 	}
 	if soft.Name == "" {
-		soft = h.conf.Soft
+		soft = h.getSoft()
 	}
 
 	p := &botPeer{kind: kind, soft: soft}

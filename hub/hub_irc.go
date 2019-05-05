@@ -177,13 +177,14 @@ func (h *Hub) ircAccept(peer *ircPeer) error {
 		Params: []string{
 			peer.Name(),
 			fmt.Sprintf("Welcome to the %s Internet Relay Chat Network %s",
-				h.conf.Name, peer.Name()),
+				h.getName(), peer.Name()),
 		},
 	})
 	if err != nil {
 		return err
 	}
-	vers := h.conf.Soft.Name + "-" + h.conf.Soft.Version
+	soft := h.getSoft()
+	vers := soft.Name + "-" + soft.Version
 
 	host, port, _ := net.SplitHostPort(peer.conn.LocalAddr().String())
 	err = peer.writeMessage(&irc.Message{

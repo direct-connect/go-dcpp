@@ -41,10 +41,13 @@ const (
 	PermRoomsJoin = "rooms.join"
 	PermRoomsList = "rooms.list"
 
-	PermBroadcast = "hub.broadcast"
-	PermDrop      = "user.drop"
-	PermIP        = "user.ip"
-	PermBanIP     = "ban.ip"
+	PermBroadcast   = "hub.broadcast"
+	PermConfigWrite = "config.write"
+	PermConfigRead  = "config.read"
+	PermTopic       = "hub.topic"
+	PermDrop        = "user.drop"
+	PermIP          = "user.ip"
+	PermBanIP       = "ban.ip"
 )
 
 func (h *Hub) initCommands() {
@@ -90,6 +93,25 @@ func (h *Hub) initCommands() {
 	})
 
 	// Operator commands
+	h.RegisterCommand(Command{
+		Name:    "set",
+		Short:   "set a config value",
+		Require: PermConfigWrite,
+		Func:    h.cmdConfigSet,
+	})
+	h.RegisterCommand(Command{
+		Name:    "config",
+		Aliases: []string{"get"},
+		Short:   "get a config value or list all config values",
+		Require: PermConfigRead,
+		Func:    h.cmdConfigGet,
+	})
+	h.RegisterCommand(Command{
+		Name:    "topic",
+		Short:   "sets a hub topic",
+		Require: PermTopic,
+		Func:    h.cmdTopic,
+	})
 	h.RegisterCommand(Command{
 		Name: "broadcast", Aliases: []string{"hub"},
 		Short:   "broadcast a chat message to all users",
@@ -282,8 +304,95 @@ func (h *Hub) cmdRooms(p Peer, args string) error {
 	return nil
 }
 
+func (h *Hub) cmdConfigEcho(p Peer, key string, val interface{}) {
+	buf := bytes.NewBuffer(nil)
+	buf.WriteString(key)
+	buf.WriteString(" = ")
+	if s, ok := val.(string); ok {
+		buf.WriteString(strconv.Quote(s))
+	} else {
+		fmt.Fprint(buf, val)
+	}
+	h.cmdOutputM(p, Message{Text: buf.String(), Me: true})
+}
+
+func (h *Hub) cmdTopic(p Peer, topic string) error {
+	h.SetConfigString(ConfigHubTopic, topic)
+	h.cmdConfigEcho(p, ConfigHubTopic, topic)
+	return nil
+}
+
 func (h *Hub) cmdBroadcast(p Peer, args string) error {
 	h.SendGlobalChat(args)
+	return nil
+}
+
+func (h *Hub) cmdConfigSet(p Peer, key, val string) error {
+	switch h.GetConfig(key).(type) {
+	case string:
+		h.SetConfigString(key, val)
+		h.cmdConfigEcho(p, key, val)
+	case int64:
+		v, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return err
+		}
+		h.SetConfigInt(key, v)
+		h.cmdConfigEcho(p, key, v)
+	case uint64:
+		v, err := strconv.ParseUint(val, 10, 64)
+		if err != nil {
+			return err
+		}
+		h.SetConfigUint(key, v)
+		h.cmdConfigEcho(p, key, v)
+	case bool:
+		v, err := strconv.ParseBool(val)
+		if err != nil {
+			return err
+		}
+		h.SetConfigBool(key, v)
+		h.cmdConfigEcho(p, key, v)
+	case float64:
+		v, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return err
+		}
+		h.SetConfigFloat(key, v)
+		h.cmdConfigEcho(p, key, v)
+	default:
+		h.SetConfig(key, val)
+		h.cmdConfigEcho(p, key, val)
+	}
+	return nil
+}
+
+func (h *Hub) cmdConfigGet(p Peer, args RawCmd) error {
+	if args == "" {
+		buf := bytes.NewBuffer(nil)
+		buf.WriteString("config:\n")
+		for _, k := range h.ConfigKeys() {
+			buf.WriteString(k)
+			buf.WriteString(" = ")
+			v := h.GetConfig(k)
+			if s, ok := v.(string); ok {
+				buf.WriteString(strconv.Quote(s))
+			} else {
+				fmt.Fprint(buf, v)
+			}
+			buf.WriteByte('\n')
+		}
+		h.cmdOutput(p, buf.String())
+		return nil
+	}
+	k, rest, err := cmdParseString(string(args))
+	if err != nil {
+		return err
+	} else if rest != "" {
+		return errors.New("expected zero or one argument")
+	}
+	h.cmdConfigEcho(p, k, h.GetConfig(k))
+
 	return nil
 }
 

@@ -119,9 +119,10 @@ func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
 }
 
 func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, string, error) {
+	soft := h.getSoft()
 	lock := &nmdcp.Lock{
 		Lock: "_godcpp", // TODO: randomize
-		PK:   h.conf.Soft.Name + " " + h.conf.Soft.Version,
+		PK:   soft.Name + " " + soft.Version,
 	}
 	err := c.WriteOneMsg(lock)
 	if err != nil {
@@ -284,7 +285,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 
 	c := peer.c
 	err := c.WriteMsg(&nmdcp.HubName{
-		String: nmdcp.String(h.conf.Name),
+		String: nmdcp.String(h.getName()),
 	})
 	if err != nil {
 		return err
@@ -376,7 +377,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	peer.setUserInfo(&peer.info.user)
 
 	err = c.WriteMsg(&nmdcp.HubTopic{
-		Text: h.conf.Desc,
+		Text: h.getTopic(),
 	})
 	if err != nil {
 		return err
@@ -1278,7 +1279,7 @@ func (p *nmdcPeer) JoinRoom(room *Room) error {
 		&nmdcp.MyINFO{
 			Name:       rname,
 			HubsNormal: room.Users(), // TODO: update
-			Client:     p.hub.conf.Soft,
+			Client:     p.hub.getSoft(),
 			Mode:       nmdcp.UserModeActive,
 			Flag:       nmdcp.FlagStatusServer,
 			Slots:      1,
@@ -1362,7 +1363,7 @@ func (p *nmdcPeer) HubChatMsg(m Message) error {
 		return errConnectionClosed
 	}
 	if m.Name == "" {
-		m.Name = p.hub.conf.Name
+		m.Name = p.hub.getName()
 	}
 	if m.Me && !strings.HasPrefix(m.Text, "/me") {
 		m.Text = "/me " + m.Text

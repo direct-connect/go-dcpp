@@ -11,7 +11,7 @@ import (
 var hubDB hub.Database
 
 func OpenDB() error {
-	conf, err := readConfig(false)
+	conf, _, err := readConfig(false)
 	if err != nil {
 		return err
 	} else if conf.Database.Type == "" || conf.Database.Type == "mem" {

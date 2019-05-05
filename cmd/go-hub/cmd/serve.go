@@ -80,14 +80,14 @@ func initConfig(path string) error {
 	return viper.WriteConfigAs(path)
 }
 
-func readConfig(create bool) (*Config, error) {
+func readConfig(create bool) (*Config, hub.Map, error) {
 	err := viper.ReadInConfig()
 	if err == nil {
 		log.Printf("loaded config: %s\n", viper.ConfigFileUsed())
 	}
 	if _, ok := err.(viper.ConfigFileNotFoundError); ok && create {
 		if err = initConfig(defaultConfig); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		err = viper.ReadInConfig()
 		if err == nil {
@@ -95,13 +95,17 @@ func readConfig(create bool) (*Config, error) {
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var c Config
 	if err := viper.Unmarshal(&c); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &c, nil
+	var m map[string]interface{}
+	if err := viper.Unmarshal(&m); err != nil {
+		return nil, nil, err
+	}
+	return &c, hub.Map(m), nil
 }
 
 func init() {
@@ -145,7 +149,7 @@ func init() {
 	Root.AddCommand(serveCmd)
 
 	serveCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		conf, err := readConfig(true)
+		conf, cmap, err := readConfig(true)
 		if err != nil {
 			return err
 		}
@@ -188,6 +192,7 @@ func init() {
 		if err != nil {
 			return err
 		}
+		h.MergeConfig(cmap)
 
 		if *fDebug {
 			fmt.Println("WARNING: protocol debug enabled")

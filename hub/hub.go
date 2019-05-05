@@ -21,6 +21,7 @@ import (
 type Config struct {
 	Name             string
 	Desc             string
+	Topic            string
 	Addr             string
 	Owner            string
 	Website          string
@@ -50,12 +51,21 @@ func NewHub(conf Config) (*Hub, error) {
 	if conf.TLS != nil {
 		conf.TLS.NextProtos = []string{"adc", "nmdc"}
 	}
+	if conf.Desc == "" {
+		conf.Desc = "Hybrid hub"
+	}
+	if conf.Topic == "" {
+		conf.Topic = conf.Desc
+	}
+	if conf.MOTD == "" {
+		conf.MOTD = "Welcome!"
+	}
 	h := &Hub{
 		created: time.Now(),
 		closed:  make(chan struct{}),
-		conf:    conf,
 		tls:     conf.TLS,
 	}
+	h.conf.Config = conf
 	if conf.FallbackEncoding != "" {
 		enc, err := htmlindex.Get(conf.FallbackEncoding)
 		if err != nil {
@@ -70,7 +80,7 @@ func NewHub(conf Config) (*Hub, error) {
 	h.globalChat = h.newRoom("")
 
 	var err error
-	h.hubUser, err = h.newBot(conf.Name, UserHub, h.conf.Soft)
+	h.hubUser, err = h.newBot(conf.Name, UserHub, conf.Soft)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +107,11 @@ type Hub struct {
 	created time.Time
 	closed  chan struct{}
 
-	conf  Config
+	conf struct {
+		sync.RWMutex
+		Config
+		m Map
+	}
 	addrs []string
 	tls   *tls.Config
 	httpData
@@ -191,6 +205,7 @@ func (h *Hub) Stats() Stats {
 	h.peers.RLock()
 	users := len(h.peers.byName)
 	h.peers.RUnlock()
+	h.conf.RLock()
 	st := Stats{
 		Name:     h.conf.Name,
 		Desc:     h.conf.Desc,
@@ -208,6 +223,7 @@ func (h *Hub) Stats() Stats {
 	if h.conf.Addr != "" {
 		st.Addr = append(st.Addr, h.conf.Addr)
 	}
+	h.conf.RUnlock()
 	st.Addr = append(st.Addr, h.addrs...)
 	return st
 }
@@ -222,14 +238,73 @@ func (h *Hub) HubUser() *Bot {
 	return h.hubUser
 }
 
+func (h *Hub) getSoft() dc.Software {
+	return h.conf.Soft // won't change
+}
+
+func (h *Hub) getName() string {
+	h.conf.RLock()
+	name := h.conf.Name
+	h.conf.RUnlock()
+	return name
+}
+
+func (h *Hub) getTopic() string {
+	h.conf.RLock()
+	topic := h.conf.Topic
+	if topic == "" {
+		topic = h.conf.Desc
+	}
+	h.conf.RUnlock()
+	return topic
+}
+
+func (h *Hub) getMOTD() string {
+	h.conf.RLock()
+	motd := h.conf.MOTD
+	if motd == "" {
+		motd = h.conf.Desc
+	}
+	if motd == "" {
+		motd = h.conf.Topic
+	}
+	h.conf.RUnlock()
+	return motd
+}
+
+func (h *Hub) setName(name string) {
+	h.conf.Lock()
+	h.conf.Name = name
+	h.conf.Unlock()
+	// TODO: rename the hub bot
+}
+
+func (h *Hub) setDesc(desc string) {
+	h.conf.Lock()
+	h.conf.Desc = desc
+	h.conf.Unlock()
+}
+
+func (h *Hub) setTopic(topic string) {
+	h.conf.Lock()
+	h.conf.Topic = topic
+	h.conf.Unlock()
+	// TODO: broadcast new topic
+}
+
+func (h *Hub) setMOTD(motd string) {
+	h.conf.Lock()
+	h.conf.MOTD = motd
+	h.conf.Unlock()
+}
+
 func (h *Hub) poweredBy() string {
-	app := h.conf.Soft.Name
-	vers := h.conf.Soft.Version
+	soft := h.getSoft()
 	uptime := h.Uptime().String()
 	if i := strings.LastIndexByte(uptime, '.'); i > 0 {
 		uptime = uptime[:i] + "s"
 	}
-	return strings.Join([]string{"Powered by", app, vers, "(uptime:", uptime + ")"}, " ")
+	return strings.Join([]string{"Powered by", soft.Name, soft.Version, "(uptime:", uptime + ")"}, " ")
 }
 
 func (h *Hub) ListenAndServe(addr string) error {
@@ -591,11 +666,7 @@ func (h *Hub) privateChat(from, to Peer, m Message) {
 }
 
 func (h *Hub) sendMOTD(peer Peer) error {
-	motd := h.conf.MOTD
-	if motd == "" {
-		motd = "Welcome!"
-	}
-	return peer.HubChatMsg(Message{Text: motd})
+	return peer.HubChatMsg(Message{Text: h.getMOTD()})
 }
 
 func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {

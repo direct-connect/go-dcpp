@@ -1031,12 +1031,13 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 	rsid := room.SID()
 	rname := room.Name()
 	h := tiger.HashBytes([]byte(rname)) // TODO: include hub name?
+	soft := p.hub.getSoft()
 	err := p.SendADCBroadcast(rsid, adc.User{
 		Id:          types.CID(h),
 		Name:        rname,
 		HubsNormal:  room.Users(), // TODO: update
-		Application: p.hub.conf.Soft.Name,
-		Version:     p.hub.conf.Soft.Version,
+		Application: soft.Name,
+		Version:     soft.Version,
 		Type:        adc.UserTypeOperator,
 		Slots:       1,
 	})
