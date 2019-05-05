@@ -328,7 +328,8 @@ func (h *Hub) cmdBroadcast(p Peer, args string) error {
 }
 
 func (h *Hub) cmdConfigSet(p Peer, key, val string) error {
-	switch h.GetConfig(key).(type) {
+	pv, _ := h.GetConfig(key)
+	switch pv.(type) {
 	case string:
 		h.SetConfigString(key, val)
 		h.cmdConfigEcho(p, key, val)
@@ -374,7 +375,7 @@ func (h *Hub) cmdConfigGet(p Peer, args RawCmd) error {
 		for _, k := range h.ConfigKeys() {
 			buf.WriteString(k)
 			buf.WriteString(" = ")
-			v := h.GetConfig(k)
+			v, _ := h.GetConfig(k)
 			if s, ok := v.(string); ok {
 				buf.WriteString(strconv.Quote(s))
 			} else {
@@ -391,7 +392,8 @@ func (h *Hub) cmdConfigGet(p Peer, args RawCmd) error {
 	} else if rest != "" {
 		return errors.New("expected zero or one argument")
 	}
-	h.cmdConfigEcho(p, k, h.GetConfig(k))
+	v, _ := h.GetConfig(k)
+	h.cmdConfigEcho(p, k, v)
 
 	return nil
 }

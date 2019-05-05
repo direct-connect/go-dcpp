@@ -79,11 +79,11 @@ func (h *Hub) setConfigMap(key string, val interface{}) {
 	h.conf.Unlock()
 }
 
-func (h *Hub) getConfigMap(key string) interface{} {
+func (h *Hub) getConfigMap(key string) (interface{}, bool) {
 	h.conf.RLock()
-	val := h.conf.m[key]
+	val, ok := h.conf.m[key]
 	h.conf.RUnlock()
-	return val
+	return val, ok
 }
 
 func (h *Hub) setConfig(key string, val interface{}, save bool) {
@@ -145,7 +145,7 @@ func (h *Hub) ConfigKeys() []string {
 	return keys
 }
 
-func (h *Hub) GetConfig(key string) interface{} {
+func (h *Hub) GetConfig(key string) (interface{}, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}
@@ -157,12 +157,16 @@ func (h *Hub) GetConfig(key string) interface{} {
 		ConfigHubOwner,
 		ConfigHubWebsite,
 		ConfigHubEmail:
-		return h.GetConfigString(key)
+		v, ok := h.GetConfigString(key)
+		if !ok {
+			return nil, false
+		}
+		return v, true
 	}
 	h.conf.RLock()
-	v := h.conf.m[key]
+	v, ok := h.conf.m[key]
 	h.conf.RUnlock()
-	return v
+	return v, ok && v != nil
 }
 
 func (h *Hub) setConfigString(key string, val string) {
@@ -200,52 +204,53 @@ func (h *Hub) SetConfigString(key string, val string) {
 	h.saveConfig(key, val)
 }
 
-func (h *Hub) GetConfigString(key string) string {
+func (h *Hub) GetConfigString(key string) (string, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}
 	switch key {
 	case ConfigHubName:
-		return h.getName()
+		return h.getName(), true
 	case ConfigHubDesc:
 		h.conf.RLock()
 		v := h.conf.Owner
 		h.conf.RUnlock()
-		return v
+		return v, true
 	case ConfigHubTopic:
 		h.conf.RLock()
 		v := h.conf.Topic
 		h.conf.RUnlock()
-		return v
+		return v, true
 	case ConfigHubMOTD:
 		h.conf.RLock()
 		v := h.conf.MOTD
 		h.conf.RUnlock()
-		return v
+		return v, true
 	case ConfigHubOwner:
 		h.conf.RLock()
 		v := h.conf.Owner
 		h.conf.RUnlock()
-		return v
+		return v, true
 	case ConfigHubWebsite:
 		h.conf.RLock()
 		v := h.conf.Website
 		h.conf.RUnlock()
-		return v
+		return v, true
 	case ConfigHubEmail:
 		h.conf.RLock()
 		v := h.conf.Email
 		h.conf.RUnlock()
-		return v
+		return v, true
 	default:
-		v := h.getConfigMap(key)
+		v, ok := h.getConfigMap(key)
+		if !ok || v == nil {
+			return "", false
+		}
 		switch v := v.(type) {
-		case nil:
-			return ""
 		case string:
-			return v
+			return v, true
 		default:
-			return fmt.Sprint(v)
+			return fmt.Sprint(v), true
 		}
 	}
 }
@@ -268,27 +273,30 @@ func (h *Hub) SetConfigBool(key string, val bool) {
 	h.saveConfig(key, val)
 }
 
-func (h *Hub) GetConfigBool(key string) bool {
+func (h *Hub) GetConfigBool(key string) (bool, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}
 	switch key {
 	default:
-		v := h.getConfigMap(key)
+		v, ok := h.getConfigMap(key)
+		if !ok || v == nil {
+			return false, false
+		}
 		switch v := v.(type) {
 		case bool:
-			return v
+			return v, true
 		case int64:
-			return v != 0
+			return v != 0, true
 		case uint64:
-			return v != 0
+			return v != 0, true
 		case float64:
-			return v != 0
+			return v != 0, true
 		case string:
 			b, _ := strconv.ParseBool(v)
-			return b
+			return b, true
 		default:
-			return false
+			return false, true
 		}
 	}
 }
@@ -311,30 +319,33 @@ func (h *Hub) SetConfigInt(key string, val int64) {
 	h.saveConfig(key, val)
 }
 
-func (h *Hub) GetConfigInt(key string) int64 {
+func (h *Hub) GetConfigInt(key string) (int64, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}
 	switch key {
 	default:
-		v := h.getConfigMap(key)
+		v, ok := h.getConfigMap(key)
+		if !ok || v == nil {
+			return 0, false
+		}
 		switch v := v.(type) {
 		case int64:
-			return v
+			return v, true
 		case uint64:
-			return int64(v)
+			return int64(v), true
 		case float64:
-			return int64(v)
+			return int64(v), true
 		case bool:
 			if v {
-				return 1
+				return 1, true
 			}
-			return 0
+			return 0, true
 		case string:
 			i, _ := strconv.ParseInt(v, 10, 64)
-			return i
+			return i, true
 		default:
-			return 0
+			return 0, true
 		}
 	}
 }
@@ -357,30 +368,33 @@ func (h *Hub) SetConfigUint(key string, val uint64) {
 	h.saveConfig(key, val)
 }
 
-func (h *Hub) GetConfigUint(key string) uint64 {
+func (h *Hub) GetConfigUint(key string) (uint64, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}
 	switch key {
 	default:
-		v := h.getConfigMap(key)
+		v, ok := h.getConfigMap(key)
+		if !ok || v == nil {
+			return 0, false
+		}
 		switch v := v.(type) {
 		case uint64:
-			return v
+			return v, true
 		case int64:
-			return uint64(v)
+			return uint64(v), true
 		case float64:
-			return uint64(v)
+			return uint64(v), true
 		case bool:
 			if v {
-				return 1
+				return 1, true
 			}
-			return 0
+			return 0, true
 		case string:
 			i, _ := strconv.ParseUint(v, 10, 64)
-			return i
+			return i, true
 		default:
-			return 0
+			return 0, true
 		}
 	}
 }
@@ -403,30 +417,33 @@ func (h *Hub) SetConfigFloat(key string, val float64) {
 	h.saveConfig(key, val)
 }
 
-func (h *Hub) GetConfigFloat(key string) float64 {
+func (h *Hub) GetConfigFloat(key string) (float64, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}
 	switch key {
 	default:
-		v := h.getConfigMap(key)
+		v, ok := h.getConfigMap(key)
+		if !ok || v == nil {
+			return 0, false
+		}
 		switch v := v.(type) {
 		case uint64:
-			return float64(v)
+			return float64(v), true
 		case int64:
-			return float64(v)
+			return float64(v), true
 		case float64:
-			return v
+			return v, true
 		case bool:
 			if v {
-				return 1
+				return 1, true
 			}
-			return 0
+			return 0, true
 		case string:
 			f, _ := strconv.ParseFloat(v, 64)
-			return f
+			return f, true
 		default:
-			return 0
+			return 0, true
 		}
 	}
 }
