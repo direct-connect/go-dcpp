@@ -221,12 +221,12 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 		return nil, fmt.Errorf("client does not support TIGR")
 	}
 
-	if mutual.IsSet(adc.FeaZLIF) {
+	if lvl := h.zlibLevel(); lvl != 0 && mutual.IsSet(adc.FeaZLIF) {
 		err = c.WriteInfoMsg(adc.ZOn{})
 		if err != nil {
 			return nil, err
 		}
-		err = c.ZOn()
+		err = c.ZOn(lvl)
 		if err != nil {
 			return nil, err
 		}

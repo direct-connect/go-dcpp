@@ -333,8 +333,8 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
-	if peer.fea.Has(nmdcp.ExtZPipe0) {
-		err = c.ZOn() // flushes
+	if lvl := h.zlibLevel(); lvl != 0 && peer.fea.Has(nmdcp.ExtZPipe0) {
+		err = c.ZOn(lvl) // flushes
 	} else {
 		err = c.Flush()
 	}

@@ -548,7 +548,7 @@ func cmdParseString(text string) (string, string, error) {
 	if len(text) == 0 {
 		return "", text, errCmdInvalidArg
 	}
-	if text[0] != '"' && text[1] != '`' {
+	if text[0] != '"' && text[0] != '`' {
 		// unquoted string
 		i := strings.IndexByte(text, ' ')
 		if i < 0 {

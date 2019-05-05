@@ -16,6 +16,10 @@ const (
 	ConfigHubMOTD    = "hub.motd"
 )
 
+const (
+	ConfigZlibLevel = "zlib.level"
+)
+
 var configAliases = map[string]string{
 	"name":    ConfigHubName,
 	"desc":    ConfigHubDesc,
@@ -132,6 +136,7 @@ func (h *Hub) ConfigKeys() []string {
 		ConfigHubOwner,
 		ConfigHubWebsite,
 		ConfigHubEmail,
+		ConfigZlibLevel,
 	}
 	h.conf.RLock()
 	for k := range h.conf.m {
@@ -158,6 +163,12 @@ func (h *Hub) GetConfig(key string) (interface{}, bool) {
 		ConfigHubWebsite,
 		ConfigHubEmail:
 		v, ok := h.GetConfigString(key)
+		if !ok {
+			return nil, false
+		}
+		return v, true
+	case ConfigZlibLevel:
+		v, ok := h.GetConfigInt(key)
 		if !ok {
 			return nil, false
 		}
@@ -309,6 +320,8 @@ func (h *Hub) setConfigInt(key string, val int64) {
 		return
 	}
 	switch key {
+	case ConfigZlibLevel:
+		h.setZlibLevel(int(val))
 	default:
 		h.setConfigMap(key, val)
 	}
@@ -324,6 +337,8 @@ func (h *Hub) GetConfigInt(key string) (int64, bool) {
 		key = alias
 	}
 	switch key {
+	case ConfigZlibLevel:
+		return int64(h.zlibLevel()), true
 	default:
 		v, ok := h.getConfigMap(key)
 		if !ok || v == nil {

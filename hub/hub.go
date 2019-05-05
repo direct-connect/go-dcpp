@@ -66,6 +66,7 @@ func NewHub(conf Config) (*Hub, error) {
 		tls:     conf.TLS,
 	}
 	h.conf.Config = conf
+	h.setZlibLevel(-1)
 	if conf.FallbackEncoding != "" {
 		enc, err := htmlindex.Get(conf.FallbackEncoding)
 		if err != nil {
@@ -145,6 +146,9 @@ type Hub struct {
 		names  map[string]struct{} // no aliases
 		byName map[string]*Command
 	}
+	zlib struct {
+		level int32
+	}
 
 	globalChat *Room
 	rooms      rooms
@@ -170,6 +174,20 @@ func (h *Hub) incShare(v uint64) {
 func (h *Hub) decShare(v uint64) {
 	atomic.AddInt64(&h.peers.share, -int64(v/shareDiv))
 	cntShare.Add(-float64(v))
+}
+
+func (h *Hub) zlibLevel() int {
+	return int(atomic.LoadInt32(&h.zlib.level))
+}
+
+func (h *Hub) setZlibLevel(level int) {
+	if level < -1 {
+		level = -1
+	}
+	if level > 9 {
+		level = 9
+	}
+	atomic.StoreInt32(&h.zlib.level, int32(level))
 }
 
 type Stats struct {

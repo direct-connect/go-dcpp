@@ -143,8 +143,8 @@ func (c *Conn) SetWriteTimeout(dt time.Duration) {
 	}
 }
 
-func (c *Conn) ZOn() error {
-	return c.w.EnableZlib()
+func (c *Conn) ZOn(lvl int) error {
+	return c.w.EnableZlibLevel(lvl)
 }
 
 // Close closes the connection.

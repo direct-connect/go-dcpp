@@ -204,8 +204,8 @@ func (c *Conn) SetFallbackEncoding(enc encoding.Encoding) {
 	c.fallback = enc
 }
 
-func (c *Conn) ZOn() error {
-	return c.w.ZOn()
+func (c *Conn) ZOn(lvl int) error {
+	return c.w.ZOnLevel(lvl)
 }
 
 // Close closes the connection.
