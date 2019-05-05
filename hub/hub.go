@@ -752,6 +752,7 @@ const (
 
 type UserInfo struct {
 	Name           string
+	Desc           string
 	Kind           UserKind
 	App            dc.Software
 	HubsNormal     int

@@ -768,6 +768,7 @@ func (p *adcPeer) UserInfo() UserInfo {
 		Name:  u.Name,
 		Share: uint64(u.ShareSize),
 		Email: u.Email,
+		Desc:  u.Desc,
 		App: dc.Software{
 			Name:    u.Application,
 			Version: u.Version,
@@ -924,6 +925,7 @@ func (u UserInfo) toADC(cid CID, user *User) adc.User {
 		Slots:          u.Slots,
 		ShareSize:      int64(u.Share),
 		Email:          u.Email,
+		Desc:           u.Desc,
 	}
 	adcUserType(&out, user, &u)
 	if u.TLS {
