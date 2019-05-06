@@ -337,8 +337,15 @@ type Func struct {
 	ret int
 }
 
+func (f *Func) CallRet(ret func(st *lua.State), args ...interface{}) {
+	f.s.luaCallRet(f.f, f.ret, ret, args...)
+}
+
 func (f *Func) Call(args ...interface{}) {
-	f.s.callLUA(f.f, f.ret, args...)
+	if f.ret != 0 {
+		panic("use CallRet to handle returns")
+	}
+	f.s.luaCall(f.f, f.ret, args...)
 }
 
 func (s *Script) ToFuncOn(st *lua.State, index int, ret int) *Func {
@@ -350,7 +357,20 @@ func (s *Script) ToFunc(index int, ret int) *Func {
 	return s.ToFuncOn(s.s, index, ret)
 }
 
-func (s *Script) callLUA(fnc interface{}, ret int, args ...interface{}) {
+func (s *Script) luaCallRet(fnc interface{}, ret int, post func(st *lua.State), args ...interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.s.PushLightUserData(fnc)
+	for _, arg := range args {
+		s.Push(arg)
+	}
+	s.s.Call(len(args), ret)
+	if post != nil {
+		post(s.s)
+	}
+}
+
+func (s *Script) luaCall(fnc interface{}, ret int, args ...interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.s.PushLightUserData(fnc)
@@ -397,7 +417,7 @@ func (s *Script) setupGlobals() {
 		},
 		"onTimer": func(_ *lua.State) int {
 			str, _ := s.s.ToString(1)
-			fnc := s.s.ToValue(2)
+			fnc := s.ToFunc(2, 0)
 			s.s.Pop(2)
 
 			dt, _ := time.ParseDuration(str)
@@ -408,48 +428,57 @@ func (s *Script) setupGlobals() {
 			go func() {
 				defer ticker.Stop()
 				for range ticker.C {
-					s.callLUA(fnc, 0)
+					fnc.Call()
 				}
 			}()
 			return 0
 		},
 		"onConnected": func(_ *lua.State) int {
-			fnc := s.s.ToValue(1)
+			fnc := s.ToFunc(1, 1)
 			s.s.Pop(1)
 			s.h.OnConnected(func(c net.Conn) bool {
-				s.callLUA(fnc, 1, c.RemoteAddr().String())
-				return s.popBool()
+				var out bool
+				fnc.CallRet(func(st *lua.State) {
+					out = s.popBool()
+				}, c.RemoteAddr().String())
+				return out
 			})
 			return 0
 		},
 		"onDisconnected": func(_ *lua.State) int {
-			fnc := s.s.ToValue(1)
+			fnc := s.ToFunc(1, 0)
 			s.s.Pop(1)
 			s.h.OnDisconnected(func(c net.Conn) {
-				s.callLUA(fnc, 0, c.RemoteAddr().String())
+				fnc.Call(c.RemoteAddr().String())
 			})
 			return 0
 		},
 		"onJoined": func(_ *lua.State) int {
-			fnc := s.s.ToValue(1)
+			fnc := s.ToFunc(1, 1)
 			s.s.Pop(1)
 			s.h.OnJoined(func(p hub.Peer) bool {
-				s.callLUA(fnc, 1, p)
-				return s.popBool()
+				var out bool
+				fnc.CallRet(func(st *lua.State) {
+					out = s.popBool()
+				}, p)
+				return out
 			})
 			return 0
 		},
 		"onChat": func(_ *lua.State) int {
-			fnc := s.s.ToValue(1)
+			fnc := s.ToFunc(1, 1)
 			s.s.Pop(1)
 			s.h.OnChat(func(p hub.Peer, m hub.Message) bool {
-				s.callLUA(fnc, 1, M{
+				var out bool
+				fnc.CallRet(func(st *lua.State) {
+					out = s.popBool()
+				}, M{
 					"ts":   m.Time.UTC().Unix(),
 					"name": m.Name,
 					"text": m.Text,
 					"user": p,
 				})
-				return s.popBool()
+				return out
 			})
 			return 0
 		},

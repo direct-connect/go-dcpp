@@ -25,10 +25,6 @@ var (
 )
 
 const (
-	debugAllowInsecure = true
-)
-
-const (
 	nmdcFakeToken = "nmdc"
 	nmdcMaxPerMin = 30
 )
@@ -296,7 +292,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	if user != nil && rec != nil {
-		if c := peer.ConnInfo(); c != nil && !c.Secure && !debugAllowInsecure {
+		if c := peer.ConnInfo(); c != nil && !c.Secure {
 			return errConnInsecure
 		}
 		// give the user a minute to enter a password

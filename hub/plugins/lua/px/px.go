@@ -1,9 +1,9 @@
 package px
 
 import (
+	lua "github.com/Shopify/go-lua"
 	"github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/hub"
-
 	hlua "github.com/direct-connect/go-dcpp/hub/plugins/lua"
 )
 
@@ -57,7 +57,7 @@ func (s *Script) Start() {
 	if start := s.globalFunc("OnStartup", 0); start != nil {
 		start.Call()
 	}
-	if onChat := s.globalFunc("ChatArrival", 0); onChat != nil {
+	if onChat := s.globalFunc("ChatArrival", lua.MultipleReturns); onChat != nil {
 		s.h.OnChat(func(p hub.Peer, m hub.Message) bool {
 			u := s.luaUserArg(p, false)
 
@@ -67,8 +67,13 @@ func (s *Script) Start() {
 				panic(err)
 			}
 
-			onChat.Call(u, string(data))
-			return true
+			var out bool
+			onChat.CallRet(func(st *lua.State) {
+				if top := st.Top(); top != 0 {
+					out = st.ToBoolean(top)
+				}
+			}, u, string(data))
+			return !out
 		})
 	}
 	if onJoin := s.globalFunc("UserConnected", 0); onJoin != nil {
