@@ -53,10 +53,13 @@ func (s *Script) Name() string {
 	return s.s.Name()
 }
 
-func (s *Script) Start() {
+func (s *Script) onStartup() {
 	if start := s.globalFunc("OnStartup", 0); start != nil {
 		start.Call()
 	}
+}
+
+func (s *Script) setupOnArrival() {
 	if onChat := s.globalFunc("ChatArrival", lua.MultipleReturns); onChat != nil {
 		s.h.OnChat(func(p hub.Peer, m hub.Message) bool {
 			u := s.luaUserArg(p, false)
@@ -76,8 +79,30 @@ func (s *Script) Start() {
 			return !out
 		})
 	}
-	if onJoin := s.globalFunc("UserConnected", 0); onJoin != nil {
+}
+
+func (s *Script) setupOnUsers() {
+	onJoinUser := s.globalFunc("UserConnected", 0)
+	onJoinReg := s.globalFunc("RegConnected", 0)
+	onJoinOp := s.globalFunc("OpConnected", 0)
+	if onJoinReg == nil && onJoinUser != nil {
+		onJoinReg = onJoinUser
+	}
+	if onJoinOp == nil && onJoinReg != nil {
+		onJoinOp = onJoinReg
+	}
+	if onJoinUser != nil || onJoinReg != nil || onJoinOp != nil {
 		s.h.OnJoined(func(p hub.Peer) bool {
+			fnc := onJoinUser
+			if pr := p.User(); pr.IsOp() {
+				fnc = onJoinReg
+			} else if pr.IsRegistered() {
+				fnc = onJoinOp
+			}
+			if fnc == nil {
+				return true
+			}
+
 			u := s.luaUserArg(p, false)
 
 			info := hub.NMDCUserInfo(p)
@@ -85,13 +110,32 @@ func (s *Script) Start() {
 			if err != nil {
 				panic(err)
 			}
-
-			onJoin.Call(u, string(data))
+			fnc.Call(u, string(data))
 			return true
 		})
 	}
-	if onLeave := s.globalFunc("UserDisconnected", 0); onLeave != nil {
+
+	onLeaveUser := s.globalFunc("UserDisconnected", 0)
+	onLeaveReg := s.globalFunc("RegDisconnected", 0)
+	onLeaveOp := s.globalFunc("OpDisconnected", 0)
+	if onLeaveReg == nil && onLeaveUser != nil {
+		onLeaveReg = onLeaveUser
+	}
+	if onLeaveOp == nil && onLeaveReg != nil {
+		onLeaveOp = onLeaveReg
+	}
+	if onLeaveUser != nil || onLeaveReg != nil || onLeaveOp != nil {
 		s.h.OnLeave(func(p hub.Peer) {
+			fnc := onLeaveUser
+			if pr := p.User(); pr.IsOp() {
+				fnc = onLeaveOp
+			} else if pr.IsRegistered() {
+				fnc = onLeaveReg
+			}
+			if fnc == nil {
+				return
+			}
+
 			u := s.luaUserArg(p, false)
 
 			info := hub.NMDCUserInfo(p)
@@ -99,10 +143,15 @@ func (s *Script) Start() {
 			if err != nil {
 				panic(err)
 			}
-
-			onLeave.Call(u, string(data))
+			fnc.Call(u, string(data))
 		})
 	}
+}
+
+func (s *Script) Start() {
+	s.onStartup()
+	s.setupOnUsers()
+	s.setupOnArrival()
 }
 
 func (s *Script) globalFunc(name string, ret int) *hlua.Func {
