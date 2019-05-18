@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cretz/bine/tor"
+	adcp "github.com/direct-connect/go-dc/adc"
 	"github.com/direct-connect/go-dcpp/adc"
 )
 
@@ -62,10 +63,10 @@ func NewHubProxy(addr string) (*HubProxy, error) {
 	if addr == "" {
 		return nil, errors.New("hub address should be set")
 	}
-	if !strings.HasPrefix(addr, adc.SchemaADC+"://") {
+	if !strings.HasPrefix(addr, adcp.SchemaADC+"://") {
 		return nil, errors.New("only adc is currently supported")
 	}
-	addr = strings.TrimPrefix(addr, adc.SchemaADC+"://")
+	addr = strings.TrimPrefix(addr, adcp.SchemaADC+"://")
 	return &HubProxy{addr: addr}, nil
 }
 

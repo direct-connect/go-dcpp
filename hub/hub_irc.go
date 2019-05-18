@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-irc/irc"
 
-	dc "github.com/direct-connect/go-dc"
+	"github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -327,7 +327,7 @@ func (p *ircPeer) readMessage() (*irc.Message, error) {
 func (p *ircPeer) UserInfo() UserInfo {
 	return UserInfo{
 		Name: p.Name(),
-		App: dc.Software{
+		App: types.Software{
 			// TODO: propagate the real IRC client version
 			Name:    "DC-IRC bridge",
 			Version: version.Vers,

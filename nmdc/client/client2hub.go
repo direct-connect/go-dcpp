@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	dc "github.com/direct-connect/go-dc"
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
+	"github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/nmdc"
 	"github.com/direct-connect/go-dcpp/version"
 )
@@ -131,7 +131,7 @@ handshake:
 
 	err = conn.SendClientInfo(deadline, &nmdcp.MyINFO{
 		Name: conf.Name,
-		Client: dc.Software{
+		Client: types.Software{
 			Name:    version.Name,
 			Version: version.Vers,
 		},

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	adcp "github.com/direct-connect/go-dc/adc"
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
-	"github.com/direct-connect/go-dcpp/adc"
 )
 
 var Debug bool
@@ -31,8 +31,8 @@ const (
 
 	nmdcSchema  = nmdcp.SchemeNMDC
 	nmdcsSchema = nmdcp.SchemeNMDCS
-	adcSchema   = adc.SchemaADC
-	adcsSchema  = adc.SchemaADCS
+	adcSchema   = adcp.SchemaADC
+	adcsSchema  = adcp.SchemaADCS
 )
 
 func dialContext(ctx context.Context, addr string) (net.Conn, error) {

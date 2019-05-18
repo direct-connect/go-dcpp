@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	dc "github.com/direct-connect/go-dc"
+	adcp "github.com/direct-connect/go-dc/adc"
 	nmdcp "github.com/direct-connect/go-dc/nmdc"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/nmdc"
@@ -56,8 +58,8 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 		})
 		if err == nmdc.ErrRegisteredOnly {
 			// TODO: should support error code in NMDC
-			err = adc.Error{Status: adc.Status{
-				Sev: adc.Fatal, Code: 26,
+			err = adcp.Error{Status: adcp.Status{
+				Sev: adcp.Fatal, Code: 26,
 				Msg: err.Error(),
 			}}
 		}
@@ -80,6 +82,11 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 		}
 		if info.Desc == "" {
 			info.Desc = hub.Topic
+		}
+		if hub.Redirect != "" {
+			if uri, err := dc.NormalizeAddr(hub.Redirect); err == nil && uri != addr {
+				info.Addr = append([]string{uri}, info.Addr...)
+			}
 		}
 		if hub.Addr != "" {
 			if uri, err := nmdcp.NormalizeAddr(hub.Addr); err == nil && uri != addr {
@@ -108,10 +115,10 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 				user.Client.Ext = append(user.Client.Ext, "TLS")
 			}
 			if u.Flag&nmdcp.FlagIPv4 != 0 {
-				user.Client.Ext = append(user.Client.Ext, adc.FeaTCP4.String())
+				user.Client.Ext = append(user.Client.Ext, adcp.FeaTCP4.String())
 			}
 			if u.Flag&nmdcp.FlagIPv6 != 0 {
-				user.Client.Ext = append(user.Client.Ext, adc.FeaTCP6.String())
+				user.Client.Ext = append(user.Client.Ext, adcp.FeaTCP6.String())
 			}
 			info.UserList = append(info.UserList, user)
 		}

@@ -616,7 +616,7 @@ func (h *Hub) cmdParsePeer(text string) (Peer, string, error) {
 	if len(v) == 4 {
 		// maybe SID
 		var sid SID
-		if err := sid.UnmarshalAdc([]byte(v)); err == nil {
+		if err := sid.UnmarshalADC([]byte(v)); err == nil {
 			if peer := h.peerBySID(sid); peer != nil {
 				return peer, rest, nil
 			}

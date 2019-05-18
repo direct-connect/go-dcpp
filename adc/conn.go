@@ -4,31 +4,20 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/url"
-	"sync"
 	"time"
 
-	"github.com/direct-connect/go-dc/lineproto"
+	"github.com/direct-connect/go-dc/adc"
 )
 
 var (
 	Debug bool
 )
 
-const lineDelim = 0x0a
-
 const writeBuffer = 0
-
-type Route interface {
-	WriteMessage(msg Message) error
-	Flush() error
-}
 
 var dialer = net.Dialer{}
 
@@ -51,9 +40,9 @@ func DialContext(ctx context.Context, addr string) (*Conn, error) {
 	}
 	secure := false
 	switch u.Scheme {
-	case SchemaADC:
+	case adc.SchemaADC:
 		// continue
-	case SchemaADCS:
+	case adc.SchemaADCS:
 		secure = true
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %q", u.Scheme)
@@ -79,16 +68,16 @@ func NewConn(conn net.Conn) (*Conn, error) {
 	c := &Conn{
 		conn: conn,
 	}
-	c.w = lineproto.NewWriterSize(conn, writeBuffer)
-	c.r = lineproto.NewReader(conn, lineDelim)
+	c.w = adc.NewWriterSize(conn, writeBuffer)
+	c.r = adc.NewReader(conn)
 	if Debug {
 		c.w.OnLine(func(line []byte) (bool, error) {
-			line = bytes.TrimSuffix(line, []byte{lineDelim})
+			line = bytes.TrimSuffix(line, []byte{'\n'})
 			log.Println("->", string(line))
 			return true, nil
 		})
 		c.r.OnLine(func(line []byte) (bool, error) {
-			line = bytes.TrimSuffix(line, []byte{lineDelim})
+			line = bytes.TrimSuffix(line, []byte{'\n'})
 			log.Println("<-", string(line))
 			return true, nil
 		})
@@ -100,14 +89,10 @@ func NewConn(conn net.Conn) (*Conn, error) {
 type Conn struct {
 	closed chan struct{}
 
-	// bin should be acquired as RLock on commands read/write
-	// and as Lock when switching to binary mode.
-	bin sync.RWMutex
-
 	conn net.Conn
 
-	w *lineproto.Writer
-	r *lineproto.Reader
+	w *adc.Writer
+	r *adc.Reader
 }
 
 func (c *Conn) OnLineR(fnc func(line []byte) (bool, error)) {
@@ -160,357 +145,76 @@ func (c *Conn) Close() error {
 }
 
 func (c *Conn) WriteKeepAlive() error {
-	return c.writeRawPacket([]byte{lineDelim})
+	return c.w.WriteKeepAlive()
 }
 
 // ReadPacket reads and decodes a single ADC command.
-func (c *Conn) ReadPacket(deadline time.Time) (Packet, error) {
-	p, err := c.readPacket(deadline)
-	if err != nil {
-		return nil, err
-	}
-	return DecodePacket(p)
-}
-
-// readPacket reads a single ADC packet (separated by 0x0a byte) without decoding it.
-func (c *Conn) readPacket(deadline time.Time) ([]byte, error) {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
+func (c *Conn) ReadPacket(deadline time.Time) (adc.Packet, error) {
 	if !deadline.IsZero() {
 		c.conn.SetReadDeadline(deadline)
 		defer c.conn.SetReadDeadline(time.Time{})
 	}
-	for {
-		s, err := c.r.ReadLine()
-		if err != nil {
-			return nil, err
-		} else if len(s) == 0 || s[len(s)-1] != lineDelim {
-			return nil, errors.New("invalid packet delimiter")
-		}
-		if len(s) > 1 {
-			return s, nil
-		}
-		// clients may send message containing only 0x0a byte
-		// to keep connection alive - we should ignore these messages
+	return c.r.ReadPacket()
+}
+
+// ReadPacketRaw reads and decodes a single ADC command. Caller must copy the payload.
+func (c *Conn) ReadPacketRaw(deadline time.Time) (adc.Packet, error) {
+	if !deadline.IsZero() {
+		c.conn.SetReadDeadline(deadline)
+		defer c.conn.SetReadDeadline(time.Time{})
 	}
+	return c.r.ReadPacketRaw()
 }
 
-func (c *Conn) ReadInfoMsg(deadline time.Time) (Message, error) {
-	cmd, err := c.ReadPacket(deadline)
-	if err != nil {
-		return nil, err
+func (c *Conn) ReadInfoMsg(deadline time.Time) (adc.Message, error) {
+	if !deadline.IsZero() {
+		c.conn.SetReadDeadline(deadline)
+		defer c.conn.SetReadDeadline(time.Time{})
 	}
-	cc, ok := cmd.(*InfoPacket)
-	if !ok {
-		return nil, fmt.Errorf("expected info command, got: %#v", cmd)
+	return c.r.ReadInfo()
+}
+
+func (c *Conn) ReadClientMsg(deadline time.Time) (adc.Message, error) {
+	if !deadline.IsZero() {
+		c.conn.SetReadDeadline(deadline)
+		defer c.conn.SetReadDeadline(time.Time{})
 	}
-	return UnmarshalMessage(cc.Name, cc.Data)
+	return c.r.ReadClient()
 }
 
-func (c *Conn) ReadClientMsg(deadline time.Time) (Message, error) {
-	cmd, err := c.ReadPacket(deadline)
-	if err != nil {
-		return nil, err
-	}
-	cc, ok := cmd.(*ClientPacket)
-	if !ok {
-		return nil, fmt.Errorf("expected client command, got: %#v", cmd)
-	}
-	return UnmarshalMessage(cc.Name, cc.Data)
+func (c *Conn) Broadcast(from SID) adc.WriteStream {
+	return c.w.Broadcast(from)
 }
 
-func (c *Conn) Broadcast(from SID) Route {
-	return broadcastRoute{c: c, sid: from}
+func (c *Conn) WriteInfoMsg(msg adc.Message) error {
+	return c.w.WriteInfoMsg(msg)
 }
 
-type broadcastRoute struct {
-	c   *Conn
-	sid SID
+func (c *Conn) WriteHubMsg(msg adc.Message) error {
+	return c.w.WriteHubMsg(msg)
 }
 
-func (r broadcastRoute) WriteMessage(msg Message) error {
-	return r.c.WriteBroadcast(r.sid, msg)
+func (c *Conn) WriteClientMsg(msg adc.Message) error {
+	return c.w.WriteClientMsg(msg)
 }
 
-func (r broadcastRoute) Flush() error {
-	return r.c.Flush()
+func (c *Conn) WriteBroadcast(id SID, msg adc.Message) error {
+	return c.w.WriteBroadcast(id, msg)
 }
 
-func (c *Conn) Direct(from, to SID) Route {
-	return directRoute{c: c, sid: from, targ: to}
+func (c *Conn) WriteDirect(id, targ SID, msg adc.Message) error {
+	return c.w.WriteDirect(id, targ, msg)
 }
 
-type directRoute struct {
-	c    *Conn
-	sid  SID
-	targ SID
+func (c *Conn) WriteEcho(id, targ SID, msg adc.Message) error {
+	return c.w.WriteEcho(id, targ, msg)
 }
 
-func (r directRoute) WriteMessage(msg Message) error {
-	return r.c.WriteDirect(r.sid, r.targ, msg)
-}
-
-func (r directRoute) Flush() error {
-	return r.c.Flush()
-}
-
-func (c *Conn) WriteInfoMsg(msg Message) error {
-	data, err := Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return c.WritePacket(&InfoPacket{
-		BasePacket{Name: msg.Cmd(), Data: data},
-	})
-}
-
-func (c *Conn) WriteHubMsg(msg Message) error {
-	data, err := Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return c.WritePacket(&HubPacket{
-		BasePacket{Name: msg.Cmd(), Data: data},
-	})
-}
-
-func (c *Conn) WriteClientMsg(msg Message) error {
-	data, err := Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return c.WritePacket(&ClientPacket{
-		BasePacket{Name: msg.Cmd(), Data: data},
-	})
-}
-
-func (c *Conn) WriteBroadcast(id SID, msg Message) error {
-	data, err := Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return c.WritePacket(&BroadcastPacket{
-		ID:         id,
-		BasePacket: BasePacket{Name: msg.Cmd(), Data: data},
-	})
-}
-
-func (c *Conn) WriteDirect(id, targ SID, msg Message) error {
-	data, err := Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return c.WritePacket(&DirectPacket{
-		ID: id, Targ: targ,
-		BasePacket: BasePacket{Name: msg.Cmd(), Data: data},
-	})
-}
-
-func (c *Conn) WriteEcho(id, targ SID, msg Message) error {
-	data, err := Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return c.WritePacket(&EchoPacket{
-		ID: id, Targ: targ,
-		BasePacket: BasePacket{Name: msg.Cmd(), Data: data},
-	})
-}
-
-func (c *Conn) WritePacket(p Packet) error {
-	data, err := p.MarshalPacket()
-	if err != nil {
-		return err
-	}
-	return c.writeRawPacket(data)
-}
-
-func (c *Conn) writeRawPacket(s []byte) error {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
-	return c.w.WriteLine(s)
+func (c *Conn) WritePacket(p adc.Packet) error {
+	return c.w.WritePacket(p)
 }
 
 // Flush the underlying buffer. Should be called after each WritePacket batch.
 func (c *Conn) Flush() error {
-	// make sure connection is not in binary mode
-	c.bin.RLock()
-	defer c.bin.RUnlock()
-
 	return c.w.Flush()
-}
-
-/*
-func (c *Conn) HubHandshake(f ModFeatures, sid SID, info HubInfo) (*User, error) {
-	const initialWait = time.Second * 5
-	// Read supported features from the client
-	cmd, err := c.ReadPacket(initialWait)
-	if err != nil {
-		return nil, err
-	} else if cmd.Kind() != kindHub || cmd.GetName() != CmdSupport {
-		return nil, fmt.Errorf("expected SUP command, got: %v, %v", cmd.Kind(), cmd.GetName())
-	}
-	f = f.SetFrom(supExtensionsHub2Cli)
-	var fea = make(ModFeatures)
-	if err = Unmarshal(string(cmd.Data()), &fea); err != nil {
-		return nil, err
-	}
-	c.fea = f.Intersect(fea)
-	if Debug {
-		log.Printf("features: %v, mutual: %v\n", fea, c.fea)
-	}
-	if !c.fea.IsSet(FeaTIGR) {
-		return nil, fmt.Errorf("client has no support for TIGR")
-	} else if !c.fea.IsSet(FeaBASE) {
-		return nil, fmt.Errorf("client has no support for BASE")
-	}
-	//c.zlibGet = c.fea[extZLIG]
-
-	// Send ours supported features
-	c.WritePacket(NewInfoCmd(CmdSupport, f))
-	// Assign SID to the client
-	c.WritePacket(NewInfoCmd(CmdSession, sid))
-	// Send hub info
-	c.WritePacket(NewInfoCmd(CmdInfo, info))
-	// Write OK status
-	c.WritePacket(NewInfoCmd(CmdStatus, Status{Msg: "Powered by Gophers"}))
-	if err := c.Flush(); err != nil {
-		return nil, err
-	}
-	cmd, err = c.ReadPacket(initialWait)
-	if err != nil {
-		return nil, err
-	}
-	ucmd, ok := cmd.(BroadcastPacket)
-	if !ok || ucmd.Name != CmdInfo {
-		return nil, fmt.Errorf("expected INF command, got: %v, %v", cmd.Kind(), cmd.GetName())
-	}
-	var user User
-	if err = Unmarshal(string(ucmd.Data), &user); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal user info: %v", err)
-	}
-	return &user, nil
-}
-
-func (c *Conn) ClientHandshake(toHub bool, f ModFeatures) error { // TODO: ctx
-	if len(f) == 0 {
-		if toHub {
-			f = supExtensionsCli2Hub.Clone()
-		} else {
-			f = supExtensionsCli2Cli.Clone()
-		}
-	}
-	if _, ok := f[extZLIG]; !ok {
-		f[extZLIG] = UseZLibGet
-	}
-	// Send supported features and initiate state machine
-	if toHub {
-		c.WritePacket(NewHubCmd(CmdSupport, f))
-	} else {
-		c.WritePacket(NewClientCmd(CmdSupport, f))
-	}
-	if err := c.Flush(); err != nil {
-		return err
-	}
-	const protocolWait = time.Second * 5
-	for {
-		cmd, err := c.ReadPacket(protocolWait)
-		if err != nil {
-			return err
-		} else if (toHub && cmd.Kind() != kindInfo) || (!toHub && cmd.Kind() != kindClient) {
-			return fmt.Errorf("unexpected command kind in Protocol, got: %v", cmd)
-		}
-		switch cmd.GetName() {
-		case CmdStatus:
-			fmt.Println("got status in Protocol:", cmd)
-		case CmdSupport: // Expect to get supported extensions back
-			var fea = make(ModFeatures)
-			Unmarshal(string(cmd.Data()), &fea)
-			c.fea = f.Intersect(fea)
-			fmt.Printf("features: %v, mutual: %v\n", fea, c.fea)
-			if !c.fea.IsSet(FeaTIGR) {
-				return fmt.Errorf("peer has no support for TIGR")
-			} else if !c.fea.IsSet(FeaBASE) && !c.fea.IsSet("BAS0") {
-				return fmt.Errorf("peer has no support for BASE")
-			}
-			c.zlibGet = c.fea[extZLIG]
-			if !toHub {
-				return nil
-			}
-		case CmdSession: // Hub must send a SID for us
-			if !toHub {
-				return fmt.Errorf("unexpected session in C-C connection: %v", cmd)
-			} else if len(cmd.Data()) != 4 {
-				return fmt.Errorf("wrong SID format: '%s'", cmd.Data())
-			}
-			if err := c.sid.UnmarshalAdc(string(cmd.Data())); err != nil {
-				return err
-			}
-			fmt.Println("SID:", c.sid)
-			return nil
-		default:
-			return fmt.Errorf("unexpected command in Protocol: %v", cmd)
-		}
-	}
-}
-*/
-
-// ReadBinary acquires an exclusive reader lock on the connection and switches it to binary mode.
-// Reader will be limited to exactly n bytes. Unread content will be discarded on close.
-//func (c *Conn) ReadBinary(n int64) io.ReadCloser {
-//	if n <= 0 {
-//		return ioutil.NopCloser(bytes.NewReader(nil))
-//	}
-//	// acquire exclusive connection lock
-//	c.bin.Lock()
-//	if Debug {
-//		log.Printf("<- [binary data: %d bytes]", n)
-//	}
-//	return &rawReader{c: c, r: io.LimitReader(c.r.r, n)}
-//}
-
-type rawReader struct {
-	c   *Conn
-	r   io.Reader
-	err error
-}
-
-func (r *rawReader) Read(p []byte) (int, error) {
-	if r.err != nil {
-		return 0, r.err
-	}
-	n, err := r.r.Read(p)
-	if err != nil {
-		r.err = err
-		r.close()
-	}
-	return n, err
-}
-
-func (r *rawReader) close() {
-	if r.err == nil {
-		r.err = io.EOF
-	}
-	// drain remaining data
-	_, _ = io.Copy(ioutil.Discard, r.r)
-	// unlock the connection
-	r.c.bin.Unlock()
-	r.c = nil
-	if Debug {
-		log.Println("<- [binary end]")
-	}
-}
-
-func (r *rawReader) Close() error {
-	if r.err == io.EOF {
-		return nil
-	} else if r.err != nil {
-		return r.err
-	}
-	r.close()
-	return nil
 }

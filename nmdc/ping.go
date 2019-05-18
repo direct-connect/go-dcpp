@@ -13,8 +13,8 @@ import (
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
 
-	dc "github.com/direct-connect/go-dc"
 	"github.com/direct-connect/go-dc/nmdc"
+	"github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -30,7 +30,7 @@ type HubInfo struct {
 	Failover []string
 	Encoding string
 	Owner    string
-	Server   dc.Software
+	Server   types.Software
 	Ext      []string
 	Users    []nmdc.MyINFO
 	Ops      []string
@@ -172,12 +172,12 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 			} else {
 				soft := msg.Soft.Name
 				if i := strings.LastIndex(soft, " "); i > 0 {
-					hub.Server = dc.Software{
+					hub.Server = types.Software{
 						Name:    soft[:i],
 						Version: soft[i+1:],
 					}
 				} else if i = strings.LastIndex(soft, "_"); i > 0 {
-					hub.Server = dc.Software{
+					hub.Server = types.Software{
 						Name:    soft[:i],
 						Version: soft[i+1:],
 					}
@@ -317,7 +317,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 			}
 			err = c.SendPingerInfo(time.Time{}, &nmdc.MyINFO{
 				Name: conf.Name,
-				Client: dc.Software{
+				Client: types.Software{
 					Name:    version.Name,
 					Version: version.Vers,
 				},

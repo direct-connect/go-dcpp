@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	adcp "github.com/direct-connect/go-dc/adc"
 	"github.com/direct-connect/go-dcpp/adc"
 )
 
@@ -18,7 +19,7 @@ var (
 
 func (p *Peer) CanDial() bool {
 	// online and active
-	return p.Online() && p.Info().Features.Has(adc.FeaTCP4)
+	return p.Online() && p.Info().Features.Has(adcp.FeaTCP4)
 }
 
 // Dial tries to dial the peer either in passive or active mode.
@@ -31,7 +32,7 @@ func (p *Peer) Dial(ctx context.Context) (*PeerConn, error) {
 }
 
 func (p *Peer) dialPassive(ctx context.Context) (*PeerConn, error) {
-	if !p.Info().Features.Has(adc.FeaTCP4) {
+	if !p.Info().Features.Has(adcp.FeaTCP4) {
 		return nil, ErrPeerPassive
 	}
 	sid := p.getSID()
@@ -44,8 +45,8 @@ func (p *Peer) dialPassive(ctx context.Context) (*PeerConn, error) {
 
 	token, caddr, errc := p.hub.revConnToken(ctx, p.Info().Id)
 
-	err := p.hub.writeDirect(*sid, adc.RevConnectRequest{
-		Proto: adc.ProtoADC, Token: token,
+	err := p.hub.writeDirect(*sid, adcp.RevConnectRequest{
+		Proto: adcp.ProtoADC, Token: token,
 	})
 	if err != nil {
 		return nil, err
@@ -70,28 +71,28 @@ func (p *Peer) dialPassive(ctx context.Context) (*PeerConn, error) {
 	}
 }
 
-func (p *Peer) clientExtensions() adc.ModFeatures {
-	return adc.ModFeatures{
+func (p *Peer) clientExtensions() adcp.ModFeatures {
+	return adcp.ModFeatures{
 		// should always be set for ADC
-		adc.FeaBASE: true,
-		adc.FeaBAS0: true,
-		adc.FeaTIGR: true,
+		adcp.FeaBASE: true,
+		adcp.FeaBAS0: true,
+		adcp.FeaTIGR: true,
 		// extensions
-		adc.FeaBZIP: true,
+		adcp.FeaBZIP: true,
 	}
 }
 
-func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adc.ModFeatures, error) {
+func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adcp.ModFeatures, error) {
 	// we are dialing - send things upfront
 
 	// send our features
 	ourFeatures := p.clientExtensions()
-	err := conn.WriteClientMsg(adc.Supported{
+	err := conn.WriteClientMsg(adcp.Supported{
 		Features: ourFeatures,
 	})
 
 	// send an identification as well
-	err = conn.WriteClientMsg(adc.User{
+	err = conn.WriteClientMsg(adcp.UserInfo{
 		Id: p.hub.CID(), Token: token,
 	})
 
@@ -107,12 +108,12 @@ func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adc.ModFeatures, 
 	if err != nil {
 		return nil, err
 	}
-	sup, ok := msg.(adc.Supported)
+	sup, ok := msg.(adcp.Supported)
 	if !ok {
 		return nil, fmt.Errorf("expected a list of peer's features, got: %#v", msg)
 	}
 	peerFeatures := sup.Features
-	if !peerFeatures.IsSet(adc.FeaBASE) || !peerFeatures.IsSet(adc.FeaTIGR) {
+	if !peerFeatures.IsSet(adcp.FeaBASE) || !peerFeatures.IsSet(adcp.FeaTIGR) {
 		return nil, fmt.Errorf("no basic features support for peer: %v", peerFeatures)
 	}
 
@@ -121,7 +122,7 @@ func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adc.ModFeatures, 
 	if err != nil {
 		return nil, err
 	}
-	u, ok := msg.(adc.User)
+	u, ok := msg.(adcp.UserInfo)
 	if !ok {
 		return nil, fmt.Errorf("expected a peer's identity, got: %#v", msg)
 	} else if u.Id != p.Info().Id {
@@ -130,7 +131,7 @@ func (p *Peer) handshakePassive(conn *adc.Conn, token string) (adc.ModFeatures, 
 	return ourFeatures.Intersect(peerFeatures), nil
 }
 
-func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, error) {
+func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adcp.ModFeatures, error) {
 	// we are accepting the connection, so wait for a message from peer
 	deadline := time.Now().Add(time.Second * 5)
 
@@ -139,18 +140,18 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 	if err != nil {
 		return nil, err
 	}
-	sup, ok := msg.(adc.Supported)
+	sup, ok := msg.(adcp.Supported)
 	if !ok {
 		return nil, fmt.Errorf("expected a list of peer's features, got: %#v", msg)
 	}
 	peerFeatures := sup.Features
-	if !peerFeatures.IsSet(adc.FeaBASE) || !peerFeatures.IsSet(adc.FeaTIGR) {
+	if !peerFeatures.IsSet(adcp.FeaBASE) || !peerFeatures.IsSet(adcp.FeaTIGR) {
 		return nil, fmt.Errorf("no basic features support for peer: %v", peerFeatures)
 	}
 
 	// send our features
 	ourFeatures := p.clientExtensions()
-	err = conn.WriteClientMsg(adc.Supported{
+	err = conn.WriteClientMsg(adcp.Supported{
 		Features: ourFeatures,
 	})
 	if err != nil {
@@ -166,7 +167,7 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 	if err != nil {
 		return nil, err
 	}
-	u, ok := msg.(adc.User)
+	u, ok := msg.(adcp.UserInfo)
 	if !ok {
 		return nil, fmt.Errorf("expected a peer's identity, got: %#v", msg)
 	} else if u.Id != p.Info().Id {
@@ -176,7 +177,7 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 	}
 
 	// identify ourselves
-	err = conn.WriteClientMsg(adc.User{
+	err = conn.WriteClientMsg(adcp.UserInfo{
 		Id: p.hub.CID(),
 	})
 	if err != nil {
@@ -192,7 +193,7 @@ func (p *Peer) handshakeActive(conn *adc.Conn, token string) (adc.ModFeatures, e
 
 type PeerConn struct {
 	p   *Peer
-	fea adc.ModFeatures
+	fea adcp.ModFeatures
 
 	mu   sync.Mutex
 	conn *adc.Conn
@@ -220,14 +221,14 @@ type File interface {
 	TTH() *adc.TTH
 }
 
-func (c *PeerConn) statFile(ctx context.Context, typ, path string) (*adc.SearchResult, error) {
+func (c *PeerConn) statFile(ctx context.Context, typ, path string) (*adcp.SearchResult, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		deadline = time.Now().Add(time.Second * 3)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	err := c.conn.WriteClientMsg(adc.GetInfoRequest{
+	err := c.conn.WriteClientMsg(adcp.GetInfoRequest{
 		Type: typ, Path: path,
 	})
 	if err != nil {
@@ -241,7 +242,7 @@ func (c *PeerConn) statFile(ctx context.Context, typ, path string) (*adc.SearchR
 	if err != nil {
 		return nil, err
 	}
-	res, ok := msg.(adc.SearchResult)
+	res, ok := msg.(adcp.SearchResult)
 	if !ok {
 		return nil, fmt.Errorf("expected file info (search) response, got: %#v", msg)
 	}
@@ -258,7 +259,7 @@ func (c *PeerConn) readFile(ctx context.Context, typ, path string, off, size int
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	err := c.conn.WriteClientMsg(adc.GetRequest{
+	err := c.conn.WriteClientMsg(adcp.GetRequest{
 		Type: typ, Path: path,
 		Start: off, Bytes: size,
 	})
@@ -273,7 +274,7 @@ func (c *PeerConn) readFile(ctx context.Context, typ, path string, off, size int
 	if err != nil {
 		return nil, err
 	}
-	res, ok := msg.(adc.GetResponse)
+	res, ok := msg.(adcp.GetResponse)
 	if !ok {
 		return nil, fmt.Errorf("expected file info (search) response, got: %#v", msg)
 	} else if res.Start != off {
@@ -312,26 +313,26 @@ func (c *PeerConn) GetFile(ctx context.Context, path string) (File, error) {
 }
 
 func (c *PeerConn) StatFileList(ctx context.Context, path string) (FileInfo, error) {
-	if !c.fea.IsSet(adc.FeaBZIP) {
+	if !c.fea.IsSet(adcp.FeaBZIP) {
 		// TODO: implement if it happens in the wild
 		return FileInfo{}, fmt.Errorf("bzip file list is not supported by peer")
 	}
-	return c.StatFile(ctx, adc.FileListBZIP)
+	return c.StatFile(ctx, adcp.FileListBZIP)
 }
 
 func (c *PeerConn) GetFileListBZIP(ctx context.Context) (io.ReadCloser, error) {
-	if !c.fea.IsSet(adc.FeaBZIP) {
+	if !c.fea.IsSet(adcp.FeaBZIP) {
 		// TODO: implement if it happens in the wild
 		return nil, fmt.Errorf("bzip file list is not supported by peer")
 	}
-	return c.readFile(ctx, "file", adc.FileListBZIP, 0, -1)
+	return c.readFile(ctx, "file", adcp.FileListBZIP, 0, -1)
 }
 
 type peerFile struct {
 	c    *PeerConn
 	typ  string
 	path string
-	info adc.SearchResult
+	info adcp.SearchResult
 
 	off int64
 	r   io.ReadCloser

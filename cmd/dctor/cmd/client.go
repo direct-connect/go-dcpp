@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cretz/bine/tor"
+	adcp "github.com/direct-connect/go-dc/adc"
 	"github.com/direct-connect/go-dcpp/adc"
 )
 
@@ -84,13 +85,13 @@ func NewClientProxy(onion string, d *tor.Dialer, torHub string) (*ClientProxy, e
 	if torHub == "" {
 		return nil, errors.New("onion hub address should be set")
 	}
-	if !strings.HasPrefix(torHub, adc.SchemaADC+"://") {
+	if !strings.HasPrefix(torHub, adcp.SchemaADC+"://") {
 		return nil, errors.New("only adc is currently supported")
 	}
 	if !strings.HasSuffix(torHub, torSuffix) {
 		return nil, errors.New("only .onion addresses are supported")
 	}
-	torHub = strings.TrimPrefix(torHub, adc.SchemaADC+"://")
+	torHub = strings.TrimPrefix(torHub, adcp.SchemaADC+"://")
 	torHub = strings.TrimSuffix(torHub, torSuffix)
 	return &ClientProxy{onion: onion, dialer: d, torHub: torHub}, nil
 }
@@ -244,28 +245,32 @@ type clientProxyConn struct {
 
 func (c *clientProxyConn) hubLoop() error {
 	for {
-		p, err := c.hc.ReadPacket(time.Time{})
+		p, err := c.hc.ReadPacketRaw(time.Time{})
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
 			return err
 		}
 
-		if cp, ok := p.(adc.PeerPacket); ok {
+		if cp, ok := p.(adcp.PeerPacket); ok {
 			msg := p.Message()
 			switch msg.Cmd() {
-			case (adc.Disconnect{}).Cmd():
+			case (adcp.Disconnect{}).Cmd():
 				c.mu.Lock()
 				delete(c.onions, cp.Source())
 				c.mu.Unlock()
-			case (adc.User{}).Cmd():
-				var m adc.UserMod
-				if err := adc.Unmarshal(msg.Data, &m); err != nil {
+			case (adcp.UserInfo{}).Cmd():
+				var m adcp.UserInfoMod
+				if err := cp.DecodeMessageTo(&m); err != nil {
 					return err
 				}
-				onion, ok := m[[2]byte{'E', 'A'}]
+				mp := make(map[[2]byte]string, len(m))
+				for _, f := range m {
+					mp[f.Tag] = f.Value
+				}
+				onion, ok := mp[[2]byte{'E', 'A'}]
 				if ok && strings.HasSuffix(onion, torSuffix) {
-					if id, ok := m[[2]byte{'I', 'D'}]; ok {
+					if id, ok := mp[[2]byte{'I', 'D'}]; ok {
 						log.Printf("user in: %s %s", id, onion)
 					}
 					c.mu.Lock()
@@ -273,9 +278,9 @@ func (c *clientProxyConn) hubLoop() error {
 						c.onions = make(map[adc.SID]torPeer)
 					}
 					// TODO: it can be an update, remember?
-					scid := m[[2]byte{'I', 'D'}]
+					scid := mp[[2]byte{'I', 'D'}]
 					var cid adc.CID
-					if err := cid.UnmarshalAdc([]byte(scid)); err != nil {
+					if err := cid.UnmarshalADC([]byte(scid)); err != nil {
 						return err
 					}
 					c.onions[cp.Source()] = torPeer{
@@ -283,9 +288,9 @@ func (c *clientProxyConn) hubLoop() error {
 					}
 					c.mu.Unlock()
 				}
-			case (adc.ConnectRequest{}).Cmd():
-				var m adc.ConnectRequest
-				if err := adc.Unmarshal(msg.Data, &m); err != nil {
+			case (adcp.ConnectRequest{}).Cmd():
+				var m adcp.ConnectRequest
+				if err := cp.DecodeMessageTo(&m); err != nil {
 					return err
 				}
 				l, err := net.Listen("tcp", "localhost:0")
@@ -301,12 +306,7 @@ func (c *clientProxyConn) hubLoop() error {
 				rport := m.Port
 				m.Port = l.Addr().(*net.TCPAddr).Port
 				log.Println("remap:", tp.onion, rport, "<-", "localhost", m.Port)
-				data, err := adc.Marshal(m)
-				if err != nil {
-					return err
-				}
-				msg.Data = data
-				p.SetMessage(msg)
+				p.SetMessage(m)
 				go func() {
 					if err := c.serveLocalCC(l, tp.onion, m.Token); err != nil {
 						log.Println("serveLocalCC:", err)
@@ -328,7 +328,7 @@ func (c *clientProxyConn) hubLoop() error {
 
 func (c *clientProxyConn) clientLoop() error {
 	for {
-		p, err := c.c.ReadPacket(time.Time{})
+		p, err := c.c.ReadPacketRaw(time.Time{})
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
@@ -337,14 +337,18 @@ func (c *clientProxyConn) clientLoop() error {
 
 		msg := p.Message()
 		switch msg.Cmd() {
-		case (adc.User{}).Cmd():
-			var m adc.UserMod
-			if err := adc.Unmarshal(msg.Data, &m); err != nil {
+		case (adcp.UserInfo{}).Cmd():
+			var m adcp.UserInfoMod
+			if err := p.DecodeMessageTo(&m); err != nil {
 				return err
 			}
-			if scid, ok := m[[2]byte{'I', 'D'}]; ok {
+			mp := make(map[[2]byte]string, len(m))
+			for _, f := range m {
+				mp[f.Tag] = f.Value
+			}
+			if scid, ok := mp[[2]byte{'I', 'D'}]; ok {
 				var cid adc.CID
-				err := cid.UnmarshalAdc([]byte(scid))
+				err := cid.UnmarshalADC([]byte(scid))
 				if err != nil {
 					return err
 				}
@@ -352,29 +356,28 @@ func (c *clientProxyConn) clientLoop() error {
 				c.cid = cid
 				c.mu.Unlock()
 			}
-			delete(m, [2]byte{'I', '4'})
-			delete(m, [2]byte{'I', '6'})
-			delete(m, [2]byte{'U', '4'})
-			delete(m, [2]byte{'U', '6'})
-			if _, ok := m[[2]byte{'I', 'D'}]; ok {
-				m[[2]byte{'I', '4'}] = "0.0.0.0"
-				m[[2]byte{'E', 'A'}] = c.p.onion + torSuffix
+			delete(mp, [2]byte{'I', '4'})
+			delete(mp, [2]byte{'I', '6'})
+			delete(mp, [2]byte{'U', '4'})
+			delete(mp, [2]byte{'U', '6'})
+			if _, ok := mp[[2]byte{'I', 'D'}]; ok {
+				mp[[2]byte{'I', '4'}] = "0.0.0.0"
+				mp[[2]byte{'E', 'A'}] = c.p.onion + torSuffix
+			}
+			m = make(adcp.UserInfoMod, 0, len(mp))
+			for k, v := range mp {
+				m = append(m, adcp.Field{Tag: k, Value: v})
 			}
 
 			log.Println("user out:", m)
 			// TODO: features
-			data, err := adc.Marshal(m)
-			if err != nil {
+			p.SetMessage(m)
+		case (adcp.ConnectRequest{}).Cmd():
+			var m adcp.ConnectRequest
+			if err := p.DecodeMessageTo(&m); err != nil {
 				return err
 			}
-			msg.Data = data
-			p.SetMessage(msg)
-		case (adc.ConnectRequest{}).Cmd():
-			var m adc.ConnectRequest
-			if err := adc.Unmarshal(msg.Data, &m); err != nil {
-				return err
-			}
-			if tp, ok := p.(adc.TargetPacket); ok {
+			if tp, ok := p.(adcp.TargetPacket); ok {
 				c.mu.RLock()
 				tp, ok := c.onions[tp.Target()]
 				c.mu.RUnlock()

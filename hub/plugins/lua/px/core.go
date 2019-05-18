@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	dc "github.com/direct-connect/go-dc"
 	"github.com/direct-connect/go-dc/nmdc"
+	"github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/hub"
 	hlua "github.com/direct-connect/go-dcpp/hub/plugins/lua"
 
@@ -123,7 +123,7 @@ func (b *pxBot) Close() error {
 }
 
 func (s *Script) regBotName(name, desc, email string) (*pxBot, error) {
-	b, err := s.h.NewBotDesc(name, desc, email, dc.Software{
+	b, err := s.h.NewBotDesc(name, desc, email, types.Software{
 		Name:    apiName,
 		Version: versionString,
 	})

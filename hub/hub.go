@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
 
-	dc "github.com/direct-connect/go-dc"
+	"github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -27,7 +27,7 @@ type Config struct {
 	Website          string
 	Email            string
 	Keyprint         string
-	Soft             dc.Software
+	Soft             types.Software
 	MOTD             string
 	ChatLog          int
 	ChatLogJoin      int
@@ -191,21 +191,21 @@ func (h *Hub) setZlibLevel(level int) {
 }
 
 type Stats struct {
-	Name     string      `json:"name"`
-	Desc     string      `json:"desc,omitempty"`
-	Addr     []string    `json:"addr,omitempty"`
-	Icon     string      `json:"icon,omitempty"`
-	Owner    string      `json:"owner,omitempty"`
-	Website  string      `json:"website,omitempty"`
-	Email    string      `json:"email,omitempty"`
-	Users    int         `json:"users"`
-	MaxUsers int         `json:"max-users,omitempty"`
-	Share    uint64      `json:"share"`               // MB
-	MaxShare uint64      `json:"max-share,omitempty"` // MB
-	Enc      string      `json:"encoding,omitempty"`
-	Soft     dc.Software `json:"soft"`
-	Uptime   uint64      `json:"uptime,omitempty"`
-	Keyprint string      `json:"-"`
+	Name     string         `json:"name"`
+	Desc     string         `json:"desc,omitempty"`
+	Addr     []string       `json:"addr,omitempty"`
+	Icon     string         `json:"icon,omitempty"`
+	Owner    string         `json:"owner,omitempty"`
+	Website  string         `json:"website,omitempty"`
+	Email    string         `json:"email,omitempty"`
+	Users    int            `json:"users"`
+	MaxUsers int            `json:"max-users,omitempty"`
+	Share    uint64         `json:"share"`               // MB
+	MaxShare uint64         `json:"max-share,omitempty"` // MB
+	Enc      string         `json:"encoding,omitempty"`
+	Soft     types.Software `json:"soft"`
+	Uptime   uint64         `json:"uptime,omitempty"`
+	Keyprint string         `json:"-"`
 }
 
 func (st *Stats) DefaultAddr() string {
@@ -256,7 +256,7 @@ func (h *Hub) HubUser() *Bot {
 	return h.hubUser
 }
 
-func (h *Hub) getSoft() dc.Software {
+func (h *Hub) getSoft() types.Software {
 	return h.conf.Soft // won't change
 }
 
@@ -772,7 +772,7 @@ type UserInfo struct {
 	Name           string
 	Desc           string
 	Kind           UserKind
-	App            dc.Software
+	App            types.Software
 	HubsNormal     int
 	HubsRegistered int
 	HubsOperator   int

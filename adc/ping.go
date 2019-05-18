@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/direct-connect/go-dcpp/adc/types"
+	"github.com/direct-connect/go-dc/adc"
+	"github.com/direct-connect/go-dc/adc/types"
 )
 
 type PingHubInfo struct {
-	HubInfo
+	adc.HubInfo
 	Ext   []string
-	Users []User
+	Users []adc.UserInfo
 }
 
 type PingConfig struct {
@@ -31,29 +32,29 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 	}
 	defer c.Close()
 
-	fea := ModFeatures{
+	fea := adc.ModFeatures{
 		// should always be set for ADC
-		FeaBASE: true,
-		FeaBAS0: true,
-		FeaTIGR: true,
+		adc.FeaBASE: true,
+		adc.FeaBAS0: true,
+		adc.FeaTIGR: true,
 		// extensions
 
 		// TODO: some hubs will stop the handshake after sending the hub info
 		//       if this extension is specified
 		//adc.FeaPING: true,
 
-		FeaUCMD: true,
-		FeaUCM0: true,
-		FeaBZIP: true,
-		FeaSEGA: true,
-		FeaZLIF: true,
-		extONID: true,
-		extASCH: true,
-		extNAT0: true,
+		adc.FeaUCMD: true,
+		adc.FeaUCM0: true,
+		adc.FeaBZIP: true,
+		adc.FeaSEGA: true,
+		adc.FeaZLIF: true,
+		adc.FeaONID: true,
+		adc.FeaASCH: true,
+		adc.FeaNAT0: true,
 		// TODO: anything else?
 	}
 
-	err = c.WriteHubMsg(Supported{
+	err = c.WriteHubMsg(adc.Supported{
 		Features: fea,
 	})
 	if err != nil {
@@ -79,7 +80,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := msg.(ZOn); ok {
+	if _, ok := msg.(adc.ZOn); ok {
 		err = c.r.EnableZlib()
 		if err != nil {
 			return nil, err
@@ -89,11 +90,11 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 			return nil, err
 		}
 	}
-	sup, ok := msg.(Supported)
+	sup, ok := msg.(adc.Supported)
 	if !ok {
 		return nil, fmt.Errorf("expected SUP command, got: %#v", msg)
 	}
-	var ext []Feature
+	var ext []adc.Feature
 	for features, ok := range sup.Features {
 		if !ok {
 			continue
@@ -107,13 +108,16 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	sid, ok := msg.(SIDAssign)
+	sid, ok := msg.(adc.SIDAssign)
 	if !ok {
 		return nil, fmt.Errorf("expected SID command, got: %#v", msg)
 	}
 
-	pid := types.NewPID()
-	user := User{
+	pid, err := types.NewPID()
+	if err != nil {
+		return nil, err
+	}
+	user := adc.UserInfo{
 		Id:         pid.Hash(),
 		Pid:        &pid,
 		Name:       conf.Name,
@@ -158,15 +162,16 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 	)
 	stage := hubInfo
 	for {
-		cmd, err := c.ReadPacket(deadline)
+		pck, err := c.ReadPacketRaw(deadline)
 		if err == io.EOF {
 			return &hub, io.ErrUnexpectedEOF
 		} else if err != nil {
 			return &hub, err
 		}
-		switch cmd := cmd.(type) {
-		case *InfoPacket:
-			if cmd.Name == (ZOn{}).Cmd() {
+		switch pck := pck.(type) {
+		case *adc.InfoPacket:
+			typ := pck.Msg.Cmd()
+			if typ == (adc.ZOn{}).Cmd() {
 				err = c.r.EnableZlib()
 				if err != nil {
 					return &hub, err
@@ -176,38 +181,38 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 			switch stage {
 			case hubInfo:
 				// waiting for hub info
-				if cmd.Name != (User{}).Cmd() {
-					return &hub, fmt.Errorf("expected hub info, received: %#v", cmd.Data)
+				if typ != (adc.UserInfo{}).Cmd() {
+					return &hub, fmt.Errorf("expected hub info, received: %v", typ)
 				}
-				if err := Unmarshal(cmd.Data, &hub.HubInfo); err != nil {
+				if err := pck.DecodeMessageTo(&hub.HubInfo); err != nil {
 					return &hub, err
 				}
 				fixVersion()
 				stage = optStatus
 			case optStatus:
 				// optionally wait for status command
-				if cmd.Name == (ChatMessage{}).Cmd() {
+				if typ == (adc.ChatMessage{}).Cmd() {
 					continue // ignore
 				}
-				if cmd.Name != (Status{}).Cmd() {
-					return &hub, fmt.Errorf("expected status, received: %#v", cmd)
+				if typ != (adc.Status{}).Cmd() {
+					return &hub, fmt.Errorf("expected status, received: %#v", pck)
 				}
-				var st Status
-				if err := Unmarshal(cmd.Data, &st); err != nil {
+				var st adc.Status
+				if err := pck.DecodeMessageTo(&st); err != nil {
 					return &hub, err
 				} else if !st.Ok() {
 					return &hub, st.Err()
 				}
 				stage = userList
 			case userList:
-				if cmd.Name != (Disconnect{}).Cmd() {
-					return &hub, fmt.Errorf("expected disconnect, received: %#v", cmd)
+				if typ != (adc.Disconnect{}).Cmd() {
+					return &hub, fmt.Errorf("expected disconnect, received: %#v", pck)
 				}
-				var st Disconnect
-				if err := Unmarshal(cmd.Data, &st); err != nil {
+				var st adc.Disconnect
+				if err := pck.DecodeMessageTo(&st); err != nil {
 					return &hub, err
 				}
-				e := Error{Status{Sev: Fatal, Msg: st.Message}}
+				e := adc.Error{Status: adc.Status{Sev: adc.Fatal, Msg: st.Message}}
 				if strings.Contains(st.Message, "registered users only") {
 					e.Code = 26
 				}
@@ -216,27 +221,27 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 				}
 				return &hub, e
 			default:
-				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
+				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, pck)
 			}
 			continue
-		case *BroadcastPacket:
+		case *adc.BroadcastPacket:
 			switch stage {
 			case optStatus:
 				stage = userList
 				fallthrough
 			case userList:
-				if cmd.ID == sid.SID {
+				if pck.ID == sid.SID {
 					// make sure to wipe PID, so we don't send it later occasionally
 					user.Pid = nil
-					if err := Unmarshal(cmd.Data, &user); err != nil {
+					if err := pck.DecodeMessageTo(&user); err != nil {
 						return &hub, err
 					}
 					// done, should switch to NORMAL
 					return &hub, nil
 				}
 				// other users
-				var u User
-				if err := Unmarshal(cmd.Data, &u); err != nil {
+				var u adc.UserInfo
+				if err := pck.DecodeMessageTo(&u); err != nil {
 					return &hub, err
 				}
 				if hub.Version == "" && hub.Application == "" {
@@ -250,10 +255,10 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 				hub.Users = append(hub.Users, u)
 				// continue until we see ourselves in the list
 			default:
-				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
+				return &hub, fmt.Errorf("unexpected command in stage %d: %#v", stage, pck)
 			}
 		default:
-			return &hub, fmt.Errorf("unexpected command: %#v", cmd)
+			return &hub, fmt.Errorf("unexpected command: %#v", pck)
 		}
 	}
 }

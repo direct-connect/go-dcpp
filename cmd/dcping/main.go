@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/text/encoding/htmlindex"
 
+	adcp "github.com/direct-connect/go-dc/adc"
 	dc "github.com/direct-connect/go-dcpp"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/hublist"
@@ -217,7 +218,7 @@ func init() {
 				}
 			}
 			var errCode int
-			if e, ok := err.(adc.Error); ok {
+			if e, ok := err.(adcp.Error); ok {
 				errCode = int(e.Sev)*100 + e.Code
 			}
 			switch *pingOut {

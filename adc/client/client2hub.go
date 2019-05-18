@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	adcp "github.com/direct-connect/go-dc/adc"
 	"github.com/direct-connect/go-dcpp/adc"
 	"github.com/direct-connect/go-dcpp/version"
 )
@@ -26,7 +27,7 @@ func DialHub(addr string, info *Config) (*Conn, error) {
 type Config struct {
 	PID        adc.PID
 	Name       string
-	Extensions adc.ExtFeatures
+	Extensions adcp.ExtFeatures
 }
 
 func (c *Config) validate() error {
@@ -65,7 +66,7 @@ func HubHandshake(conn *adc.Conn, conf *Config) (*Conn, error) {
 		conn.Close()
 		return nil, err
 	}
-	c.ext = make(map[adc.Feature]struct{})
+	c.ext = make(map[adcp.Feature]struct{})
 	for _, ext := range c.user.Features {
 		c.ext[ext] = struct{}{}
 	}
@@ -78,19 +79,19 @@ func HubHandshake(conn *adc.Conn, conf *Config) (*Conn, error) {
 	return c, nil
 }
 
-func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
-	ourFeatures := adc.ModFeatures{
+func protocolToHub(conn *adc.Conn) (adc.SID, adcp.ModFeatures, error) {
+	ourFeatures := adcp.ModFeatures{
 		// should always be set for ADC
-		adc.FeaBASE: true,
-		adc.FeaBAS0: true,
-		adc.FeaTIGR: true,
+		adcp.FeaBASE: true,
+		adcp.FeaBAS0: true,
+		adcp.FeaTIGR: true,
 		// extensions
 
 		// TODO: some hubs will stop the handshake after sending the hub info
 		//       if this extension is specified
 		//adc.FeaPING: true,
 
-		adc.FeaBZIP: true,
+		adcp.FeaBZIP: true,
 		// TODO: ZLIG
 	}
 
@@ -98,7 +99,7 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 	// We expect SUP followed by SID to transition to IDENTIFY.
 	//
 	// https://adc.sourceforge.io/ADC.html#_protocol
-	err := conn.WriteHubMsg(adc.Supported{
+	err := conn.WriteHubMsg(adcp.Supported{
 		Features: ourFeatures,
 	})
 	if err != nil {
@@ -115,7 +116,7 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 	if err != nil {
 		return adc.SID{}, nil, err
 	}
-	sup, ok := msg.(adc.Supported)
+	sup, ok := msg.(adcp.Supported)
 	if !ok {
 		return adc.SID{}, nil, fmt.Errorf("expected SUP command, got: %#v", msg)
 	}
@@ -123,9 +124,9 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 
 	// check mutual features
 	mutual := ourFeatures.Intersect(hubFeatures)
-	if !mutual.IsSet(adc.FeaBASE) && !mutual.IsSet(adc.FeaBAS0) {
+	if !mutual.IsSet(adcp.FeaBASE) && !mutual.IsSet(adcp.FeaBAS0) {
 		return adc.SID{}, nil, fmt.Errorf("hub does not support BASE")
-	} else if !mutual.IsSet(adc.FeaTIGR) {
+	} else if !mutual.IsSet(adcp.FeaTIGR) {
 		return adc.SID{}, nil, fmt.Errorf("hub does not support TIGR")
 	}
 
@@ -134,14 +135,14 @@ func protocolToHub(conn *adc.Conn) (adc.SID, adc.ModFeatures, error) {
 	if err != nil {
 		return adc.SID{}, nil, err
 	}
-	sid, ok := msg.(adc.SIDAssign)
+	sid, ok := msg.(adcp.SIDAssign)
 	if !ok {
 		return adc.SID{}, nil, fmt.Errorf("expected SID command, got: %#v", msg)
 	}
 	return sid.SID, mutual, nil
 }
 
-func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
+func identifyToHub(conn *adc.Conn, sid adc.SID, user *adcp.UserInfo) error {
 	// Hub may send INF, but it's not required.
 	// The client should broadcast INF with PD/ID and other required fields.
 	//
@@ -154,7 +155,7 @@ func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
 		user.Application = version.Name
 		user.Version = version.Vers
 	}
-	for _, f := range []adc.Feature{adc.FeaSEGA, adc.FeaTCP4} {
+	for _, f := range []adcp.Feature{adcp.FeaSEGA, adcp.FeaTCP4} {
 		if !user.Features.Has(f) {
 			user.Features = append(user.Features, f)
 		}
@@ -173,17 +174,17 @@ func identifyToHub(conn *adc.Conn, sid adc.SID, user *adc.User) error {
 // Conn represents a Client-to-Hub connection.
 type Conn struct {
 	conn *adc.Conn
-	fea  adc.ModFeatures
+	fea  adcp.ModFeatures
 
 	closing chan struct{}
 	closed  chan struct{}
 
 	pid  adc.PID
 	sid  adc.SID
-	user adc.User
-	ext  map[adc.Feature]struct{}
+	user adcp.UserInfo
+	ext  map[adcp.Feature]struct{}
 
-	hub adc.HubInfo
+	hub adcp.HubInfo
 
 	peers struct {
 		sync.RWMutex
@@ -217,10 +218,10 @@ func (c *Conn) CID() adc.CID { return c.user.Id }
 func (c *Conn) SID() adc.SID { return c.sid }
 
 // Hub returns hub information.
-func (c *Conn) Hub() adc.HubInfo { return c.hub }
+func (c *Conn) Hub() adcp.HubInfo { return c.hub }
 
 // Features returns a set of negotiated features.
-func (c *Conn) Features() adc.ModFeatures { return c.fea.Clone() }
+func (c *Conn) Features() adcp.ModFeatures { return c.fea.Clone() }
 
 func (c *Conn) Close() error {
 	select {
@@ -235,7 +236,7 @@ func (c *Conn) Close() error {
 	return err
 }
 
-func (c *Conn) writeDirect(to adc.SID, msg adc.Message) error {
+func (c *Conn) writeDirect(to adc.SID, msg adcp.Message) error {
 	if err := c.conn.WriteDirect(c.SID(), to, msg); err != nil {
 		return err
 	}
@@ -265,32 +266,32 @@ func (c *Conn) revConnToken(ctx context.Context, cid adc.CID) (token string, add
 func (c *Conn) readLoop() {
 	defer close(c.closed)
 	for {
-		cmd, err := c.conn.ReadPacket(time.Time{})
+		cmd, err := c.conn.ReadPacketRaw(time.Time{})
 		if err != nil {
 			log.Println(err)
 			return
 		}
 		switch cmd := cmd.(type) {
-		case *adc.BroadcastPacket:
+		case *adcp.BroadcastPacket:
 			if err := c.handleBroadcast(cmd); err != nil {
 				log.Println(err)
 				return
 			}
-		case *adc.InfoPacket:
+		case *adcp.InfoPacket:
 			if err := c.handleInfo(cmd); err != nil {
 				log.Println(err)
 				return
 			}
-		case *adc.FeaturePacket:
+		case *adcp.FeaturePacket:
 			if err := c.handleFeature(cmd); err != nil {
 				log.Println(err)
 				return
 			}
-		case *adc.DirectPacket:
+		case *adcp.DirectPacket:
 			// TODO: ADC flaw: why ever send the client his own SID? hub should append it instead
 			//		 same for the sending party
-			if cmd.Targ != c.SID() {
-				log.Println("direct command to a wrong destination:", cmd.Targ)
+			if cmd.To != c.SID() {
+				log.Println("direct command to a wrong destination:", cmd.To)
 				return
 			}
 			if err := c.handleDirect(cmd); err != nil {
@@ -303,47 +304,46 @@ func (c *Conn) readLoop() {
 	}
 }
 
-func (c *Conn) handleBroadcast(p *adc.BroadcastPacket) error {
+func (c *Conn) handleBroadcast(p *adcp.BroadcastPacket) error {
 	// we could decode the message and type-switch, but for cases
 	// below it's better to decode later
-	switch p.Name {
-	case (adc.User{}).Cmd():
+	switch p.Msg.Cmd() {
+	case (adcp.UserInfo{}).Cmd():
 		// easier to merge while decoding
-		return c.peerUpdate(p.ID, p.Data)
-	case (adc.SearchRequest{}).Cmd():
+		return c.peerUpdate(p.ID, p)
+	case (adcp.SearchRequest{}).Cmd():
 		peer := c.peerBySID(p.ID)
-		// async decoding
-		go c.handleSearch(peer, p.Data)
+		c.handleSearch(peer, p)
 		return nil
 	// TODO: MSG
 	default:
-		log.Printf("unhandled broadcast command: %v", p.Name)
+		log.Printf("unhandled broadcast command: %v", p.Msg.Cmd())
 		return nil
 	}
 }
 
-func (c *Conn) handleInfo(p *adc.InfoPacket) error {
-	msg, err := p.Decode()
+func (c *Conn) handleInfo(p *adcp.InfoPacket) error {
+	err := p.DecodeMessage()
 	if err != nil {
 		return err
 	}
-	switch msg := msg.(type) {
-	case adc.ChatMessage:
+	switch msg := p.Msg.(type) {
+	case adcp.ChatMessage:
 		// TODO: ADC: maybe hub should take a AAAA SID for itself
 		//       and this will become B-MSG AAAA, instead of I-MSG
 		fmt.Printf("%s\n", msg.Text)
 		return nil
-	case adc.Disconnect:
+	case adcp.Disconnect:
 		// TODO: ADC flaw: this should be B-QUI, not I-QUI
 		//  	 it always includes a SID and is, in fact, a broadcast
 		return c.peerQuit(msg.ID)
 	default:
-		log.Printf("unhandled info command: %v", p.Name)
+		log.Printf("unhandled info command: %v", p.Msg.Cmd())
 		return nil
 	}
 }
 
-func (c *Conn) handleFeature(cmd *adc.FeaturePacket) error {
+func (c *Conn) handleFeature(cmd *adcp.FeaturePacket) error {
 	// TODO: ADC protocol: this is another B-XXX command, but with a feature selector
 	//		 might be a good idea to extend selector with some kind of tags
 	//		 it may work for extensions, geo regions, chat channels, etc
@@ -351,25 +351,25 @@ func (c *Conn) handleFeature(cmd *adc.FeaturePacket) error {
 	// TODO: ADC flaw: shouldn't the hub convert F-XXX to B-XXX if the current client
 	//		 supports all listed extensions? does the client care about the selector?
 
-	for fea, want := range cmd.Features {
-		if _, enabled := c.ext[fea]; enabled != want {
+	for _, f := range cmd.Sel {
+		if _, enabled := c.ext[f.Fea]; enabled != f.Sel {
 			return nil
 		}
 	}
 
 	// FIXME: this allows F-MSG that we should probably avoid
-	return c.handleBroadcast(&adc.BroadcastPacket{
-		ID: cmd.ID, BasePacket: cmd.BasePacket,
+	return c.handleBroadcast(&adcp.BroadcastPacket{
+		ID: cmd.ID, Msg: cmd.Msg,
 	})
 }
 
-func (c *Conn) handleDirect(cmd *adc.DirectPacket) error {
-	msg, err := cmd.Decode()
+func (c *Conn) handleDirect(cmd *adcp.DirectPacket) error {
+	err := cmd.DecodeMessage()
 	if err != nil {
 		return err
 	}
-	switch msg := msg.(type) {
-	case adc.ConnectRequest:
+	switch msg := cmd.Msg.(type) {
+	case adcp.ConnectRequest:
 		c.revConn.Lock()
 		tok, ok := c.revConn.tokens[msg.Token]
 		delete(c.revConn.tokens, msg.Token)
@@ -383,17 +383,17 @@ func (c *Conn) handleDirect(cmd *adc.DirectPacket) error {
 		go c.handleConnReq(p, tok, msg)
 		return nil
 	default:
-		log.Printf("unhandled direct command: %v", cmd.Name)
+		log.Printf("unhandled direct command: %v", cmd.Msg.Cmd())
 		return nil
 	}
 }
 
-func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adc.ConnectRequest) {
+func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adcp.ConnectRequest) {
 	if p == nil {
 		tok.errc <- ErrPeerOffline
 		return
 	}
-	if s.Proto != adc.ProtoADC {
+	if s.Proto != adcp.ProtoADC {
 		tok.errc <- fmt.Errorf("unsupported protocol: %q", s.Proto)
 		return
 	}
@@ -409,9 +409,9 @@ func (c *Conn) handleConnReq(p *Peer, tok revConnToken, s adc.ConnectRequest) {
 	tok.addr <- addr + ":" + strconv.Itoa(s.Port)
 }
 
-func (c *Conn) handleSearch(p *Peer, data []byte) {
-	var sch adc.SearchRequest
-	if err := adc.Unmarshal(data, &sch); err != nil {
+func (c *Conn) handleSearch(p *Peer, pck adcp.Packet) {
+	var sch adcp.SearchRequest
+	if err := pck.DecodeMessageTo(&sch); err != nil {
 		log.Println("failed to decode search:", err)
 		return
 	}
@@ -434,7 +434,7 @@ func (c *Conn) peerBySID(sid adc.SID) *Peer {
 	return p
 }
 
-func (c *Conn) peerJoins(sid adc.SID, u adc.User) *Peer {
+func (c *Conn) peerJoins(sid adc.SID, u adcp.UserInfo) *Peer {
 	c.peers.Lock()
 	defer c.peers.Unlock()
 	if c.peers.byCID == nil {
@@ -467,7 +467,7 @@ func (c *Conn) peerQuit(sid adc.SID) error {
 	return nil
 }
 
-func (c *Conn) peerUpdate(sid adc.SID, data []byte) error {
+func (c *Conn) peerUpdate(sid adc.SID, pck adcp.Packet) error {
 	c.peers.Lock()
 	p, ok := c.peers.bySID[sid]
 	if ok {
@@ -475,12 +475,12 @@ func (c *Conn) peerUpdate(sid adc.SID, data []byte) error {
 
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		return adc.Unmarshal(data, p.user)
+		return pck.DecodeMessageTo(p.user)
 	}
 	defer c.peers.Unlock()
 
-	var u adc.User
-	if err := adc.Unmarshal(data, &u); err != nil {
+	var u adcp.UserInfo
+	if err := pck.DecodeMessageTo(&u); err != nil {
 		return err
 	}
 	if c.peers.byCID == nil {
@@ -510,29 +510,30 @@ func (c *Conn) acceptUsersList() error {
 	)
 	stage := hubInfo
 	for {
-		cmd, err := c.conn.ReadPacket(deadline)
+		cmd, err := c.conn.ReadPacketRaw(deadline)
 		if err != nil {
 			return err
 		}
 		switch cmd := cmd.(type) {
-		case *adc.InfoPacket:
+		case *adcp.InfoPacket:
+			typ := cmd.Msg.Cmd()
 			switch stage {
 			case hubInfo:
 				// waiting for hub info
-				if cmd.Name != (adc.User{}).Cmd() {
+				if typ != (adcp.UserInfo{}).Cmd() {
 					return fmt.Errorf("expected hub info, received: %#v", cmd)
 				}
-				if err := adc.Unmarshal(cmd.Data, &c.hub); err != nil {
+				if err := cmd.DecodeMessageTo(&c.hub); err != nil {
 					return err
 				}
 				stage = optStatus
 			case optStatus:
 				// optionally wait for status command
-				if cmd.Name != (adc.Status{}).Cmd() {
+				if typ != (adcp.Status{}).Cmd() {
 					return fmt.Errorf("expected status, received: %#v", cmd)
 				}
-				var st adc.Status
-				if err := adc.Unmarshal(cmd.Data, &st); err != nil {
+				var st adcp.Status
+				if err := cmd.DecodeMessageTo(&st); err != nil {
 					return err
 				} else if !st.Ok() {
 					return st.Err()
@@ -541,7 +542,7 @@ func (c *Conn) acceptUsersList() error {
 			default:
 				return fmt.Errorf("unexpected command in stage %d: %#v", stage, cmd)
 			}
-		case *adc.BroadcastPacket:
+		case *adcp.BroadcastPacket:
 			switch stage {
 			case optStatus:
 				stage = userList
@@ -550,15 +551,15 @@ func (c *Conn) acceptUsersList() error {
 				if cmd.ID == c.sid {
 					// make sure to wipe PID, so we don't send it later occasionally
 					c.user.Pid = nil
-					if err := adc.Unmarshal(cmd.Data, &c.user); err != nil {
+					if err := cmd.DecodeMessageTo(&c.user); err != nil {
 						return err
 					}
 					// done, should switch to NORMAL
 					return nil
 				}
 				// other users
-				var u adc.User
-				if err := adc.Unmarshal(cmd.Data, &u); err != nil {
+				var u adcp.UserInfo
+				if err := cmd.DecodeMessageTo(&u); err != nil {
 					return err
 				}
 				_ = c.peerJoins(cmd.ID, u)
@@ -577,7 +578,7 @@ type Peer struct {
 
 	mu   sync.RWMutex
 	sid  *adc.SID // may change if user disconnects
-	user *adc.User
+	user *adcp.UserInfo
 }
 
 func (p *Peer) online(sid adc.SID) {
@@ -603,14 +604,14 @@ func (p *Peer) Online() bool {
 	return p.getSID() != nil
 }
 
-func (p *Peer) Info() adc.User {
+func (p *Peer) Info() adcp.UserInfo {
 	p.mu.RLock()
 	user := *p.user
 	p.mu.RUnlock()
 	return user
 }
 
-func (p *Peer) update(u adc.User) {
+func (p *Peer) update(u adcp.UserInfo) {
 	p.mu.Lock()
 	if p.user.Id != u.Id {
 		p.mu.Unlock()

@@ -13,10 +13,11 @@ import (
 	"sync"
 	"time"
 
-	dc "github.com/direct-connect/go-dc"
+	adcp "github.com/direct-connect/go-dc/adc"
+	"github.com/direct-connect/go-dc/adc/types"
 	"github.com/direct-connect/go-dc/tiger"
+	dctypes "github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/adc"
-	"github.com/direct-connect/go-dcpp/adc/types"
 	"github.com/direct-connect/go-dcpp/internal/safe"
 )
 
@@ -114,7 +115,7 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 	peer.c.SetWriteTimeout(-1)
 	go peer.writer(writeTimeout)
 	for {
-		p, err := peer.c.ReadPacket(time.Time{})
+		p, err := peer.c.ReadPacketRaw(time.Time{})
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
@@ -129,52 +130,52 @@ func (h *Hub) adcServePeer(peer *adcPeer) error {
 	}
 }
 
-func (h *Hub) adcHandlePacket(peer *adcPeer, p adc.Packet) error {
+func (h *Hub) adcHandlePacket(peer *adcPeer, p adcp.Packet) error {
 	skind := string(p.Kind())
 	cntADCPackets.WithLabelValues(skind).Add(1)
 	defer measure(durADCHandlePacket.WithLabelValues(skind))()
 
-	cmd := p.Message().Type.String()
+	cmd := p.Message().Cmd().String()
 	cntADCCommands.WithLabelValues(cmd).Add(1)
 	defer measure(durADCHandleCommand.WithLabelValues(cmd))()
 
 	switch p := p.(type) {
-	case *adc.BroadcastPacket:
+	case *adcp.BroadcastPacket:
 		if peer.sid != p.ID {
 			return errors.New("malformed broadcast")
 		}
 		h.adcBroadcast(p, peer)
 		return nil
-	case *adc.FeaturePacket:
+	case *adcp.FeaturePacket:
 		if peer.sid != p.ID {
 			return errors.New("malformed features broadcast")
 		}
 		// TODO: we ignore feature selectors for now
-		h.adcBroadcast(&adc.BroadcastPacket{BasePacket: p.BasePacket, ID: p.ID}, peer)
+		h.adcBroadcast(&adcp.BroadcastPacket{Msg: p.Msg, ID: p.ID}, peer)
 		return nil
-	case *adc.EchoPacket:
+	case *adcp.EchoPacket:
 		if peer.sid != p.ID {
 			return errors.New("malformed echo packet")
 		}
 		if err := peer.SendADC(p); err != nil {
 			return err
 		}
-		h.adcDirect((*adc.DirectPacket)(p), peer)
+		h.adcDirect((*adcp.DirectPacket)(p), peer)
 		return nil
-	case *adc.DirectPacket:
+	case *adcp.DirectPacket:
 		if peer.sid != p.ID {
 			return errors.New("malformed direct packet")
 		}
 		h.adcDirect(p, peer)
 		return nil
-	case *adc.HubPacket:
+	case *adcp.HubPacket:
 		h.adcHub(p, peer)
 		return nil
-	case *adc.ClientPacket, *adc.UDPPacket:
+	case *adcp.ClientPacket, *adcp.UDPPacket:
 		return errors.New("invalid packet kind")
 	default:
-		data, _ := p.MarshalPacket()
-		log.Printf("%s: adc: %s", peer.RemoteAddr(), string(data))
+		raw, _ := p.Message().(*adcp.RawMessage)
+		log.Printf("%s: adc: %s%s %s", peer.RemoteAddr(), string(p.Kind()), p.Message().Cmd(), string(raw.Data))
 		return nil
 	}
 }
@@ -182,18 +183,16 @@ func (h *Hub) adcHandlePacket(peer *adcPeer, p adc.Packet) error {
 func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 	deadline := time.Now().Add(time.Second * 5)
 	// Expect features from the client
-	p, err := c.ReadPacket(deadline)
+	p, err := c.ReadPacketRaw(deadline)
 	if err != nil {
 		return nil, err
 	}
-	hp, ok := p.(*adc.HubPacket)
+	hp, ok := p.(*adcp.HubPacket)
 	if !ok {
 		return nil, fmt.Errorf("expected hub messagge, got: %#v", p)
-	} else if hp.Name != (adc.Supported{}).Cmd() {
-		return nil, fmt.Errorf("expected support message, got: %v", hp.Name)
 	}
-	var sup adc.Supported
-	if err := adc.Unmarshal(hp.Data, &sup); err != nil {
+	var sup adcp.Supported
+	if err := hp.DecodeMessageTo(&sup); err != nil {
 		return nil, err
 	}
 	for ext, on := range sup.Features {
@@ -202,27 +201,27 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 		}
 		cntADCExtensions.WithLabelValues(ext.String()).Add(1)
 	}
-	hubFeatures := adc.ModFeatures{
+	hubFeatures := adcp.ModFeatures{
 		// should always be set for ADC
-		adc.FeaBASE: true,
-		adc.FeaBAS0: true,
-		adc.FeaTIGR: true,
+		adcp.FeaBASE: true,
+		adcp.FeaBAS0: true,
+		adcp.FeaTIGR: true,
 		// extensions
-		adc.FeaPING: true,
-		adc.FeaUCMD: true,
-		adc.FeaUCM0: true,
-		adc.FeaZLIF: true,
+		adcp.FeaPING: true,
+		adcp.FeaUCMD: true,
+		adcp.FeaUCM0: true,
+		adcp.FeaZLIF: true,
 	}
 
 	mutual := hubFeatures.Intersect(sup.Features)
-	if !mutual.IsSet(adc.FeaBASE) && !mutual.IsSet(adc.FeaBAS0) {
+	if !mutual.IsSet(adcp.FeaBASE) && !mutual.IsSet(adcp.FeaBAS0) {
 		return nil, fmt.Errorf("client does not support BASE")
-	} else if !mutual.IsSet(adc.FeaTIGR) {
+	} else if !mutual.IsSet(adcp.FeaTIGR) {
 		return nil, fmt.Errorf("client does not support TIGR")
 	}
 
-	if lvl := h.zlibLevel(); lvl != 0 && mutual.IsSet(adc.FeaZLIF) {
-		err = c.WriteInfoMsg(adc.ZOn{})
+	if lvl := h.zlibLevel(); lvl != 0 && mutual.IsSet(adcp.FeaZLIF) {
+		err = c.WriteInfoMsg(adcp.ZOn{})
 		if err != nil {
 			return nil, err
 		}
@@ -233,7 +232,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 	}
 
 	// send features supported by the hub
-	err = c.WriteInfoMsg(adc.Supported{
+	err = c.WriteInfoMsg(adcp.Supported{
 		Features: hubFeatures,
 	})
 	if err != nil {
@@ -242,7 +241,7 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 
 	peer := newADC(h, cinfo, c, mutual)
 
-	err = c.WriteInfoMsg(adc.SIDAssign{
+	err = c.WriteInfoMsg(adcp.SIDAssign{
 		SID: peer.SID(),
 	})
 	if err != nil {
@@ -258,18 +257,16 @@ func (h *Hub) adcStageProtocol(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 	// client should send INF with ID and PID set
-	p, err := peer.c.ReadPacket(deadline)
+	p, err := peer.c.ReadPacketRaw(deadline)
 	if err != nil {
 		return err
 	}
-	b, ok := p.(*adc.BroadcastPacket)
+	b, ok := p.(*adcp.BroadcastPacket)
 	if !ok {
 		return fmt.Errorf("expected user info broadcast, got %#v", p)
-	} else if b.Name != (adc.User{}).Cmd() {
-		return fmt.Errorf("expected user info message, got %v", b.Name)
 	}
-	var u adc.User
-	if err := adc.Unmarshal(b.Data, &u); err != nil {
+	var u adcp.UserInfo
+	if err := b.DecodeMessageTo(&u); err != nil {
 		return err
 	}
 	u.Normalize()
@@ -279,14 +276,14 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	}
 	if u.Id != u.Pid.Hash() {
 		err = errors.New("invalid pid supplied")
-		_ = peer.sendErrorNow(adc.Fatal, 27, err)
+		_ = peer.sendErrorNow(adcp.Fatal, 27, err)
 		return err
 	}
 	u.Pid = nil
 
 	err = h.validateUserName(u.Name)
 	if err != nil {
-		_ = peer.sendErrorNow(adc.Fatal, 21, err)
+		_ = peer.sendErrorNow(adcp.Fatal, 21, err)
 		return err
 	}
 
@@ -300,12 +297,12 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 
 	if sameName {
 		err = errNickTaken
-		_ = peer.sendErrorNow(adc.Fatal, 22, err)
+		_ = peer.sendErrorNow(adcp.Fatal, 22, err)
 		return err
 	}
 	if sameCID {
 		err = errors.New("CID taken")
-		_ = peer.sendErrorNow(adc.Fatal, 24, err)
+		_ = peer.sendErrorNow(adcp.Fatal, 24, err)
 		return err
 	}
 
@@ -326,11 +323,11 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	if !ok {
 		if sameCID {
 			err = errors.New("CID taken")
-			_ = peer.sendErrorNow(adc.Fatal, 24, err)
+			_ = peer.sendErrorNow(adcp.Fatal, 24, err)
 			return err
 		}
 		err = errNickTaken
-		_ = peer.sendErrorNow(adc.Fatal, 22, err)
+		_ = peer.sendErrorNow(adcp.Fatal, 22, err)
 		return err
 	}
 
@@ -361,7 +358,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 	deadline = time.Now().Add(time.Second * 5)
 
 	// send hub info
-	err = peer.c.WriteInfoMsg(adc.HubInfo{
+	err = peer.c.WriteInfoMsg(adcp.HubInfo{
 		Name:        st.Name,
 		Desc:        st.Desc,
 		Application: st.Soft.Name,
@@ -374,8 +371,8 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 	// send OK status
-	err = peer.c.WriteInfoMsg(adc.Status{
-		Sev:  adc.Success,
+	err = peer.c.WriteInfoMsg(adcp.Status{
+		Sev:  adcp.Success,
 		Code: 0,
 		Msg:  h.poweredBy(),
 	})
@@ -394,7 +391,7 @@ func (h *Hub) adcStageIdentity(peer *adcPeer) error {
 		return err
 	}
 
-	if peer.fea.IsSet(adc.FeaUCMD) || peer.fea.IsSet(adc.FeaUCM0) {
+	if peer.fea.IsSet(adcp.FeaUCMD) || peer.fea.IsSet(adcp.FeaUCM0) {
 		err = h.adcSendUserCommand(peer)
 		if err != nil {
 			unbind()
@@ -430,7 +427,7 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 	//some bytes for check password
 	var salt [24]byte
 	rand.Read(salt[:])
-	err = peer.c.WriteInfoMsg(adc.GetPassword{
+	err = peer.c.WriteInfoMsg(adcp.GetPassword{
 		Salt: salt[:],
 	})
 	if err != nil {
@@ -441,18 +438,16 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 		return err
 	}
 
-	p, err := peer.c.ReadPacket(deadline)
+	p, err := peer.c.ReadPacketRaw(deadline)
 	if err != nil {
 		return err
 	}
-	hp, ok := p.(*adc.HubPacket)
+	hp, ok := p.(*adcp.HubPacket)
 	if !ok {
 		return fmt.Errorf("expected hub messagge, got: %#v", p)
-	} else if hp.Name != (adc.Password{}).Cmd() {
-		return fmt.Errorf("expected user password message, got %v", hp.Name)
 	}
-	var pass adc.Password
-	if err := adc.Unmarshal(hp.Data, &pass); err != nil {
+	var pass adcp.Password
+	if err := hp.DecodeMessageTo(&pass); err != nil {
 		return err
 	}
 	ok, err = h.adcCheckUserPass(rec, salt[:], pass.Hash)
@@ -460,7 +455,7 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 		return err
 	} else if !ok {
 		err = errors.New("wrong password")
-		_ = peer.sendErrorNow(adc.Fatal, 23, err)
+		_ = peer.sendErrorNow(adcp.Fatal, 23, err)
 		return err
 	}
 	peer.setUser(user)
@@ -478,15 +473,15 @@ func (h *Hub) adcCheckUserPass(rec *UserRecord, salt []byte, hash tiger.Hash) (b
 	return exp == hash, nil
 }
 
-func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
+func (h *Hub) adcHub(p *adcp.HubPacket, from Peer) {
 	// TODO: disallow INF, STA and some others
-	msg, err := p.Decode()
+	err := p.DecodeMessage()
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
 		return
 	}
-	switch msg := msg.(type) {
-	case adc.ChatMessage:
+	switch msg := p.Msg.(type) {
+	case adcp.ChatMessage:
 		text := string(msg.Text)
 		if h.isCommand(from, text) {
 			return
@@ -499,14 +494,14 @@ func (h *Hub) adcHub(p *adc.HubPacket, from Peer) {
 
 func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 	for _, c := range h.ListCommands(peer.User()) {
-		cat := adc.CategoryHub
+		cat := adcp.CategoryHub
 		cmd := "HMSG !" + c.Name
 		if c.opt.OnUser {
 			cmd += `\s%[userSID]`
-			cat = adc.CategoryUser
+			cat = adcp.CategoryUser
 		}
 		cmd += "\n"
-		err := peer.c.WriteInfoMsg(adc.UserCommand{
+		err := peer.c.WriteInfoMsg(adcp.UserCommand{
 			Path:     c.Menu,
 			Command:  cmd,
 			Category: cat,
@@ -518,8 +513,8 @@ func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 	return nil
 }
 
-func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
-	msg, err := p.Decode()
+func (h *Hub) adcBroadcast(p *adcp.BroadcastPacket, from *adcPeer) {
+	err := p.DecodeMessage()
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
 		return
@@ -527,8 +522,8 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 	// TODO: read INF, update peer info
 	// TODO: update nick, make sure there is no duplicates
 	// TODO: disallow STA and some others
-	switch msg := msg.(type) {
-	case adc.ChatMessage:
+	switch msg := p.Msg.(type) {
+	case adcp.ChatMessage:
 		if h.isCommand(from, msg.Text) {
 			return
 		}
@@ -536,7 +531,7 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 			Text: msg.Text,
 			Me:   msg.Me,
 		})
-	case adc.SearchRequest:
+	case adcp.SearchRequest:
 		h.adcHandleSearch(from, &msg, nil)
 	default:
 		// TODO: decode other packets
@@ -548,21 +543,21 @@ func (h *Hub) adcBroadcast(p *adc.BroadcastPacket, from *adcPeer) {
 	}
 }
 
-func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
+func (h *Hub) adcDirect(p *adcp.DirectPacket, from *adcPeer) {
 	// TODO: disallow INF, STA and some others
-	peer := h.peerBySID(p.Targ)
+	peer := h.peerBySID(p.To)
 	if peer == nil {
-		r := h.roomBySID(p.Targ)
+		r := h.roomBySID(p.To)
 		if r == nil {
 			return
 		}
-		msg, err := p.Decode()
+		err := p.DecodeMessage()
 		if err != nil {
 			log.Printf("cannot parse ADC message: %v", err)
 			return
 		}
-		switch msg := msg.(type) {
-		case adc.ChatMessage:
+		switch msg := p.Msg.(type) {
+		case adcp.ChatMessage:
 			r.SendChat(from, Message{
 				Text: msg.Text,
 				Me:   msg.Me,
@@ -570,18 +565,18 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 		}
 		return
 	}
-	msg, err := p.Decode()
+	err := p.DecodeMessage()
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
 		return
 	}
-	switch msg := msg.(type) {
-	case adc.ChatMessage:
+	switch msg := p.Msg.(type) {
+	case adcp.ChatMessage:
 		h.privateChat(from, peer, Message{
 			Name: from.Name(),
 			Text: string(msg.Text),
 		})
-	case adc.ConnectRequest:
+	case adcp.ConnectRequest:
 		info := from.Info()
 		ip := info.Ip4
 		if info.Ip6 != "" {
@@ -592,12 +587,12 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 		}
 		secure := strings.HasPrefix(msg.Proto, "ADCS")
 		h.connectReq(from, peer, ip+":"+strconv.Itoa(msg.Port), msg.Token, secure)
-	case adc.RevConnectRequest:
+	case adcp.RevConnectRequest:
 		secure := strings.HasPrefix(msg.Proto, "ADCS")
 		h.revConnectReq(from, peer, msg.Token, secure)
-	case adc.SearchRequest:
+	case adcp.SearchRequest:
 		h.adcHandleSearch(from, &msg, []Peer{peer})
-	case adc.SearchResult:
+	case adcp.SearchResult:
 		h.adcHandleResult(from, peer, &msg)
 	default:
 		// TODO: decode other packets
@@ -607,7 +602,7 @@ func (h *Hub) adcDirect(p *adc.DirectPacket, from *adcPeer) {
 	}
 }
 
-func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest, peers []Peer) {
+func (h *Hub) adcHandleSearch(peer *adcPeer, req *adcp.SearchRequest, peers []Peer) {
 	s := peer.newSearch(req.Token)
 	if req.TTH != nil {
 		// ignore other parameters
@@ -619,10 +614,10 @@ func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest, peers []Pee
 		Not: req.Not,
 	}
 	var sr SearchRequest = name
-	if req.Type == adc.FileTypeFile ||
+	if req.Type == adcp.FileTypeFile ||
 		req.Eq != 0 || req.Le != 0 || req.Ge != 0 ||
 		len(req.Ext) != 0 || len(req.NoExt) != 0 ||
-		req.Group != adc.ExtNone {
+		req.Group != adcp.ExtNone {
 		freq := FileSearch{
 			NameSearch: name,
 			MinSize:    uint64(req.Ge),
@@ -635,17 +630,17 @@ func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest, peers []Pee
 			freq.MaxSize = uint64(req.Eq)
 		}
 		switch req.Group {
-		case adc.ExtAudio:
+		case adcp.ExtAudio:
 			freq.FileType = FileTypeAudio
-		case adc.ExtArch:
+		case adcp.ExtArch:
 			freq.FileType = FileTypeCompressed
-		case adc.ExtDoc:
+		case adcp.ExtDoc:
 			freq.FileType = FileTypeDocuments
-		case adc.ExtExe:
+		case adcp.ExtExe:
 			freq.FileType = FileTypeExecutable
-		case adc.ExtImage:
+		case adcp.ExtImage:
 			freq.FileType = FileTypePicture
-		case adc.ExtVideo:
+		case adcp.ExtVideo:
 			freq.FileType = FileTypeVideo
 		}
 		sr = freq
@@ -653,7 +648,7 @@ func (h *Hub) adcHandleSearch(peer *adcPeer, req *adc.SearchRequest, peers []Pee
 	h.Search(sr, s, peers)
 }
 
-func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
+func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adcp.SearchResult) {
 	if to, ok := to.(*adcPeer); ok {
 		_ = to.SendADCDirect(peer.SID(), *res)
 		return
@@ -683,7 +678,7 @@ func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adc.SearchResult) {
 
 var _ Peer = (*adcPeer)(nil)
 
-func newADC(h *Hub, cinfo *ConnInfo, c *adc.Conn, fea adc.ModFeatures) *adcPeer {
+func newADC(h *Hub, cinfo *ConnInfo, c *adc.Conn, fea adcp.ModFeatures) *adcPeer {
 	if cinfo == nil {
 		cinfo = &ConnInfo{Local: c.LocalAddr(), Remote: c.RemoteAddr()}
 	}
@@ -700,18 +695,18 @@ type adcPeer struct {
 	BasePeer
 
 	c   *adc.Conn
-	fea adc.ModFeatures
+	fea adcp.ModFeatures
 
 	write struct {
 		wake chan struct{}
 		sync.Mutex
-		buf []adc.Packet
+		buf []adcp.Packet
 	}
 	info struct {
 		cid adc.CID
 
 		sync.RWMutex
-		user adc.User
+		user adcp.UserInfo
 	}
 
 	search struct {
@@ -732,29 +727,29 @@ type adcSearchToken struct {
 	s    Search
 }
 
-func adcUserType(u *adc.User, c *User, info *UserInfo) {
-	u.Type = adc.UserTypeNone
+func adcUserType(u *adcp.UserInfo, c *User, info *UserInfo) {
+	u.Type = adcp.UserTypeNone
 	if info != nil {
 		switch info.Kind {
 		case UserBot:
-			u.Type = adc.UserTypeBot
+			u.Type = adcp.UserTypeBot
 		case UserHub:
-			u.Type = adc.UserTypeHub
+			u.Type = adcp.UserTypeHub
 		}
 	}
 	if c == nil {
 		return
 	}
 	if c.Has(PermOwner) {
-		u.Type = adc.UserTypeHubOwner
+		u.Type = adcp.UserTypeHubOwner
 	} else if c.Has(FlagOpIcon) {
-		u.Type = adc.UserTypeOperator
+		u.Type = adcp.UserTypeOperator
 	} else if c.Has(FlagRegIcon) {
-		u.Type = adc.UserTypeRegistered
+		u.Type = adcp.UserTypeRegistered
 	}
 }
 
-func (p *adcPeer) Info() adc.User {
+func (p *adcPeer) Info() adcp.UserInfo {
 	p.info.RLock()
 	u := p.info.user
 	p.info.RUnlock()
@@ -769,7 +764,7 @@ func (p *adcPeer) UserInfo() UserInfo {
 		Share: uint64(u.ShareSize),
 		Email: u.Email,
 		Desc:  u.Desc,
-		App: dc.Software{
+		App: dctypes.Software{
 			Name:    u.Application,
 			Version: u.Version,
 		},
@@ -777,9 +772,9 @@ func (p *adcPeer) UserInfo() UserInfo {
 		HubsRegistered: u.HubsRegistered,
 		HubsOperator:   u.HubsOperator,
 		Slots:          u.Slots,
-		IPv4:           u.Features.Has(adc.FeaTCP4),
-		IPv6:           u.Features.Has(adc.FeaTCP6),
-		TLS:            u.Features.Has(adc.FeaADC0),
+		IPv4:           u.Features.Has(adcp.FeaTCP4),
+		IPv6:           u.Features.Has(adcp.FeaTCP6),
+		TLS:            u.Features.Has(adcp.FeaADC0),
 	}
 }
 
@@ -788,7 +783,7 @@ func (p *adcPeer) writer(timeout time.Duration) {
 	ticker := time.NewTicker(time.Minute / 2)
 	defer ticker.Stop()
 
-	var buf2 []adc.Packet
+	var buf2 []adcp.Packet
 	for {
 		var err error
 		select {
@@ -830,7 +825,7 @@ func (p *adcPeer) writer(timeout time.Duration) {
 	}
 }
 
-func (p *adcPeer) SendADC(m ...adc.Packet) error {
+func (p *adcPeer) SendADC(m ...adcp.Packet) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
@@ -848,39 +843,27 @@ func (p *adcPeer) SendADC(m ...adc.Packet) error {
 	return nil
 }
 
-func (p *adcPeer) SendADCInfo(m adc.Message) error {
-	data, err := adc.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return p.SendADC(&adc.InfoPacket{
-		BasePacket: adc.BasePacket{Name: m.Cmd(), Data: data},
+func (p *adcPeer) SendADCInfo(m adcp.Message) error {
+	return p.SendADC(&adcp.InfoPacket{
+		Msg: m,
 	})
 }
 
-func (p *adcPeer) SendADCDirect(from SID, m adc.Message) error {
-	data, err := adc.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return p.SendADC(&adc.DirectPacket{
-		ID: from, Targ: p.SID(),
-		BasePacket: adc.BasePacket{Name: m.Cmd(), Data: data},
+func (p *adcPeer) SendADCDirect(from SID, m adcp.Message) error {
+	return p.SendADC(&adcp.DirectPacket{
+		ID: from, To: p.SID(),
+		Msg: m,
 	})
 }
 
-func (p *adcPeer) SendADCBroadcast(from SID, m adc.Message) error {
-	data, err := adc.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return p.SendADC(&adc.BroadcastPacket{
-		ID:         from,
-		BasePacket: adc.BasePacket{Name: m.Cmd(), Data: data},
+func (p *adcPeer) SendADCBroadcast(from SID, m adcp.Message) error {
+	return p.SendADC(&adcp.BroadcastPacket{
+		ID:  from,
+		Msg: m,
 	})
 }
 
-func (p *adcPeer) sendInfoNow(m adc.Message) error {
+func (p *adcPeer) sendInfoNow(m adcp.Message) error {
 	err := p.c.WriteInfoMsg(m)
 	if err != nil {
 		return err
@@ -888,8 +871,8 @@ func (p *adcPeer) sendInfoNow(m adc.Message) error {
 	return p.c.Flush()
 }
 
-func (p *adcPeer) sendErrorNow(sev adc.Severity, code int, err error) error {
-	return p.sendInfoNow(adc.Status{
+func (p *adcPeer) sendErrorNow(sev adcp.Severity, code int, err error) error {
+	return p.sendInfoNow(adcp.Status{
 		Sev: sev, Code: code, Msg: err.Error(),
 	})
 }
@@ -913,8 +896,8 @@ func (p *adcPeer) PeersUpdate(e *PeersUpdateEvent) error {
 	return p.peersUpdate(e)
 }
 
-func (u UserInfo) toADC(cid CID, user *User) adc.User {
-	out := adc.User{
+func (u UserInfo) toADC(cid CID, user *User) adcp.UserInfo {
+	out := adcp.UserInfo{
 		Name:           u.Name,
 		Id:             cid,
 		Application:    u.App.Name,
@@ -929,18 +912,18 @@ func (u UserInfo) toADC(cid CID, user *User) adc.User {
 	}
 	adcUserType(&out, user, &u)
 	if u.TLS {
-		out.Features = append(out.Features, adc.FeaADC0)
+		out.Features = append(out.Features, adcp.FeaADC0)
 	}
 	if u.IPv4 {
-		out.Features = append(out.Features, adc.FeaTCP4)
+		out.Features = append(out.Features, adcp.FeaTCP4)
 	}
 	if u.IPv6 {
-		out.Features = append(out.Features, adc.FeaTCP6)
+		out.Features = append(out.Features, adcp.FeaTCP6)
 	}
 	return out
 }
 
-func (p *adcPeer) fixUserInfo(u *adc.User) {
+func (p *adcPeer) fixUserInfo(u *adcp.UserInfo) {
 	if u.Application != "" && p.Info().Application == "" {
 		// doesn't support AP field
 		u.Application, u.Version = "", u.Application+" "+u.Version
@@ -952,7 +935,7 @@ func (p *adcPeer) peersJoin(e *PeersJoinEvent, initial bool) error {
 		return errConnectionClosed
 	}
 	for _, peer := range e.Peers {
-		var u adc.User
+		var u adcp.UserInfo
 		if p2, ok := peer.(*adcPeer); ok {
 			u = p2.Info()
 		} else {
@@ -992,7 +975,7 @@ func (p *adcPeer) peersUpdate(e *PeersUpdateEvent) error {
 		return errConnectionClosed
 	}
 	for _, peer := range e.Peers {
-		var u adc.User
+		var u adcp.UserInfo
 		if p2, ok := peer.(*adcPeer); ok {
 			u = p2.Info()
 		} else {
@@ -1018,7 +1001,7 @@ func (p *adcPeer) PeersLeave(e *PeersLeaveEvent) error {
 		if !p.Online() {
 			return errConnectionClosed
 		}
-		if err := p.SendADCInfo(&adc.Disconnect{
+		if err := p.SendADCInfo(&adcp.Disconnect{
 			ID: peer.SID(),
 		}); err != nil {
 			return err
@@ -1038,19 +1021,19 @@ func (p *adcPeer) JoinRoom(room *Room) error {
 	rname := room.Name()
 	h := tiger.HashBytes([]byte(rname)) // TODO: include hub name?
 	soft := p.hub.getSoft()
-	err := p.SendADCBroadcast(rsid, adc.User{
+	err := p.SendADCBroadcast(rsid, adcp.UserInfo{
 		Id:          types.CID(h),
 		Name:        rname,
 		HubsNormal:  room.Users(), // TODO: update
 		Application: soft.Name,
 		Version:     soft.Version,
-		Type:        adc.UserTypeOperator,
+		Type:        adcp.UserTypeOperator,
 		Slots:       1,
 	})
 	if err != nil {
 		return err
 	}
-	err = p.SendADCDirect(rsid, adc.ChatMessage{
+	err = p.SendADCDirect(rsid, adcp.ChatMessage{
 		Text: "joined", PM: &rsid, Me: true,
 	})
 	if err != nil {
@@ -1067,14 +1050,14 @@ func (p *adcPeer) LeaveRoom(room *Room) error {
 		return nil
 	}
 	rsid := room.SID()
-	err := p.SendADCDirect(rsid, adc.ChatMessage{
+	err := p.SendADCDirect(rsid, adcp.ChatMessage{
 		Text: "parted", PM: &rsid, Me: true,
 		TS: time.Now().Unix(),
 	})
 	if err != nil {
 		return err
 	}
-	err = p.SendADCBroadcast(rsid, adc.Disconnect{
+	err = p.SendADCBroadcast(rsid, adcp.Disconnect{
 		ID: rsid,
 	})
 	if err != nil {
@@ -1088,7 +1071,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 		return errConnectionClosed
 	}
 	if room == nil || room.Name() == "" {
-		return p.SendADCBroadcast(from.SID(), &adc.ChatMessage{
+		return p.SendADCBroadcast(from.SID(), &adcp.ChatMessage{
 			Text: msg.Text, Me: msg.Me,
 			TS: msg.Time.Unix(),
 		})
@@ -1099,7 +1082,7 @@ func (p *adcPeer) ChatMsg(room *Room, from Peer, msg Message) error {
 	}
 	rsid := room.SID()
 	fsid := from.SID()
-	return p.SendADCDirect(fsid, adc.ChatMessage{
+	return p.SendADCDirect(fsid, adcp.ChatMessage{
 		Text: msg.Text, PM: &rsid, Me: msg.Me,
 		TS: msg.Time.Unix(),
 	})
@@ -1110,7 +1093,7 @@ func (p *adcPeer) PrivateMsg(from Peer, msg Message) error {
 		return errConnectionClosed
 	}
 	src := from.SID()
-	return p.SendADCDirect(src, &adc.ChatMessage{
+	return p.SendADCDirect(src, &adcp.ChatMessage{
 		Text: msg.Text, PM: &src, Me: msg.Me,
 		TS: msg.Time.Unix(),
 	})
@@ -1123,7 +1106,7 @@ func (p *adcPeer) HubChatMsg(m Message) error {
 	if m.Time.IsZero() {
 		m.Time = time.Now()
 	}
-	return p.SendADCInfo(&adc.ChatMessage{
+	return p.SendADCInfo(&adcp.ChatMessage{
 		Text: m.Text, Me: m.Me,
 		TS: m.Time.Unix(),
 	})
@@ -1154,19 +1137,19 @@ func (p *adcPeer) ConnectTo(peer Peer, addr string, token string, secure bool) e
 	} else {
 		field = [2]byte{'I', '6'} // IPv6
 	}
-	err = p.SendADCBroadcast(peer.SID(), &adc.UserMod{
-		field: host,
+	err = p.SendADCBroadcast(peer.SID(), &adcp.UserInfoMod{
+		{Tag: field, Value: host},
 	})
 	if err != nil {
 		return err
 	}
 
 	// we need to pretend that peer speaks the same protocol as we do
-	proto := adc.ProtoADC
+	proto := adcp.ProtoADC
 	if secure {
-		proto = adc.ProtoADCS
+		proto = adcp.ProtoADCS
 	}
-	return p.SendADCDirect(peer.SID(), &adc.ConnectRequest{
+	return p.SendADCDirect(peer.SID(), &adcp.ConnectRequest{
 		Proto: proto,
 		Port:  port,
 		Token: token,
@@ -1178,11 +1161,11 @@ func (p *adcPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 		return errConnectionClosed
 	}
 	// we need to pretend that peer speaks the same protocol as we do
-	proto := adc.ProtoADC
+	proto := adcp.ProtoADC
 	if secure {
-		proto = adc.ProtoADCS
+		proto = adcp.ProtoADCS
 	}
-	return p.SendADCDirect(peer.SID(), &adc.RevConnectRequest{
+	return p.SendADCDirect(peer.SID(), &adcp.RevConnectRequest{
 		Proto: proto,
 		Token: token,
 	})
@@ -1205,7 +1188,7 @@ func (s *adcSearch) SendResult(r SearchResult) error {
 	if !s.p.Online() {
 		return errConnectionClosed
 	}
-	sr := adc.SearchResult{
+	sr := adcp.SearchResult{
 		Token: s.token,
 		Slots: 1, // TODO
 	}
@@ -1269,7 +1252,7 @@ func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) err
 	} else {
 		token = p.searchToken(out)
 	}
-	msg := adc.SearchRequest{
+	msg := adcp.SearchRequest{
 		Token: token,
 	}
 	if r, ok := req.(TTHSearch); ok {
@@ -1281,10 +1264,10 @@ func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) err
 			name = r
 		case DirSearch:
 			name = r.NameSearch
-			msg.Type = adc.FileTypeDir
+			msg.Type = adcp.FileTypeDir
 		case FileSearch:
 			name = r.NameSearch
-			msg.Type = adc.FileTypeFile
+			msg.Type = adcp.FileTypeFile
 			if r.MinSize != 0 {
 				msg.Ge = int64(r.MinSize)
 			}
@@ -1299,17 +1282,17 @@ func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) err
 			msg.NoExt = r.NoExt
 			switch r.FileType {
 			case FileTypeAudio:
-				msg.Group = adc.ExtAudio
+				msg.Group = adcp.ExtAudio
 			case FileTypeCompressed:
-				msg.Group = adc.ExtArch
+				msg.Group = adcp.ExtArch
 			case FileTypeDocuments:
-				msg.Group = adc.ExtDoc
+				msg.Group = adcp.ExtDoc
 			case FileTypeExecutable:
-				msg.Group = adc.ExtExe
+				msg.Group = adcp.ExtExe
 			case FileTypePicture:
-				msg.Group = adc.ExtImage
+				msg.Group = adcp.ExtImage
 			case FileTypeVideo:
-				msg.Group = adc.ExtVideo
+				msg.Group = adcp.ExtVideo
 			}
 		default:
 			return nil // ignore

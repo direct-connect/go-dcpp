@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	dc "github.com/direct-connect/go-dc"
+	"github.com/direct-connect/go-dc/types"
 )
 
 var localhostIP = net.ParseIP("127.0.0.1")
@@ -46,7 +46,7 @@ func (b *Bot) Close() error {
 	return b.p.closeWith(b.p)
 }
 
-func (h *Hub) newBot(name, desc, email string, kind UserKind, soft dc.Software) (*Bot, error) {
+func (h *Hub) newBot(name, desc, email string, kind UserKind, soft types.Software) (*Bot, error) {
 	if err := h.validateUserName(name); err != nil {
 		return nil, err
 	} else if !h.nameAvailable(name, nil) {
@@ -80,11 +80,11 @@ func (h *Hub) newBot(name, desc, email string, kind UserKind, soft dc.Software) 
 	return b, nil
 }
 
-func (h *Hub) NewBot(name string, soft dc.Software) (*Bot, error) {
+func (h *Hub) NewBot(name string, soft types.Software) (*Bot, error) {
 	return h.NewBotDesc(name, "", "", soft)
 }
 
-func (h *Hub) NewBotDesc(name, desc, email string, soft dc.Software) (*Bot, error) {
+func (h *Hub) NewBotDesc(name, desc, email string, soft types.Software) (*Bot, error) {
 	return h.newBot(name, desc, email, UserBot, soft)
 }
 
@@ -93,7 +93,7 @@ type botPeer struct {
 	desc  string
 	email string
 	kind  UserKind
-	soft  dc.Software
+	soft  types.Software
 }
 
 func (*botPeer) Searchable() bool {
