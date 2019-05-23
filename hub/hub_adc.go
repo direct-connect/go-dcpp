@@ -514,7 +514,14 @@ func (h *Hub) adcSendUserCommand(peer *adcPeer) error {
 }
 
 func (h *Hub) adcBroadcast(p *adcp.BroadcastPacket, from *adcPeer) {
-	err := p.DecodeMessage()
+	var err error
+	if p.Msg.Cmd() == (adcp.UserInfo{}).Cmd() {
+		var m adcp.UserInfoMod
+		err = p.DecodeMessageTo(&m)
+		p.Msg = &m
+	} else {
+		err = p.DecodeMessage()
+	}
 	if err != nil {
 		log.Printf("cannot parse ADC message: %v", err)
 		return
