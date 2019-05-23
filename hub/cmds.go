@@ -405,6 +405,9 @@ func (h *Hub) cmdUserIP(p, p2 Peer) error {
 }
 
 func (h *Hub) cmdDrop(p, p2 Peer) error {
+	if _, ok := p2.(*botPeer); ok {
+		return errors.New("refusing to kick a bot")
+	}
 	_ = p2.Close()
 	h.cmdOutput(p, "user dropped")
 	return nil
@@ -423,6 +426,9 @@ func (h *Hub) cmdBanIPa(p Peer, ip net.IP) error {
 }
 
 func (h *Hub) cmdBanUserIP(p, p2 Peer) error {
+	if _, ok := p2.(*botPeer); ok {
+		return errors.New("refusing to ban a bot")
+	}
 	addr, ok := p2.RemoteAddr().(*net.TCPAddr)
 	if !ok {
 		return errors.New("user is not using IP")
@@ -436,6 +442,9 @@ func (h *Hub) cmdBanUserIP(p, p2 Peer) error {
 
 func (h *Hub) cmdBanIP(p Peer, args string) error {
 	ip := net.ParseIP(args)
+	if ip.IsLoopback() {
+		return errors.New("cannot ban loopback address")
+	}
 	return h.cmdBanIPa(p, ip)
 }
 
