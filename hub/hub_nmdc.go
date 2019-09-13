@@ -220,7 +220,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 			Desc:     st.Desc,
 			Host:     st.DefaultAddr(),
 			Soft:     st.Soft,
-			Encoding: "UTF8",
+			Encoding: "UTF-8",
 		})
 		if err == nil {
 			err = c.Flush()
