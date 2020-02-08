@@ -249,6 +249,7 @@ func init() {
 adcs://%s?kp=%s
 adcs://%s
 adc://%s
+nmdcs://%s
 dchub://%s
 
 [ IRC chat ]
@@ -261,6 +262,7 @@ http://%s%s
 
 `,
 			addr, kp,
+			addr,
 			addr,
 			addr,
 			addr,
