@@ -30,7 +30,6 @@ const Version = version.Vers
 
 func main() {
 	if err := Root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -91,10 +90,12 @@ func init() {
 		if len(args) == 0 {
 			return errors.New("expected at least one address")
 		}
+		cmd.SilenceUsage = true
+
 		rctx := context.Background()
 		dc.Debug = *probeDebug
 
-		probeOne := func(addr string) {
+		probeOne := func(addr string) error {
 			ctx, cancel := context.WithTimeout(rctx, *probeTimeout)
 			defer cancel()
 
@@ -102,15 +103,19 @@ func init() {
 			if err != nil {
 				log.Println(err)
 				fmt.Printf("%s - error\n", addr)
-			} else {
-				fmt.Printf("%s\n", u)
+				return err
 			}
+			fmt.Printf("%s\n", u)
+			return nil
 		}
 
+		var last error
 		for _, addr := range args {
-			probeOne(addr)
+			if err := probeOne(addr); err != nil {
+				last = err
+			}
 		}
-		return nil
+		return last
 	}
 	Root.AddCommand(probeCmd)
 
@@ -142,6 +147,8 @@ func init() {
 			}
 			nmdc.DefaultFallbackEncoding = enc
 		}
+		cmd.SilenceUsage = true
+
 		var (
 			mu    sync.Mutex
 			w     io.Writer = os.Stdout
@@ -190,7 +197,7 @@ func init() {
 			Hubs:       *pingHubs,
 		}
 
-		pingOne := func(addr string) {
+		pingOne := func(addr string) error {
 			ctx, cancel := context.WithTimeout(rctx, *pingTimeout)
 			defer cancel()
 
@@ -242,9 +249,9 @@ func init() {
 						Status:  status,
 						ErrCode: errCode,
 					})
-					return
+					return err
 				}
-				if err = enc(struct {
+				if err := enc(struct {
 					dc.HubInfo
 					Status  string `json:"status,omitempty"`
 					ErrCode int    `json:"errcode,omitempty"`
@@ -255,6 +262,7 @@ func init() {
 				}); err != nil {
 					panic(err)
 				}
+				return err
 			case "xml", "xml-line":
 				var out hublist.Hub
 				status := "Online"
@@ -298,9 +306,10 @@ func init() {
 					out.Address = addr
 				}
 				out.Status = status
-				if err = enc(out); err != nil {
+				if err := enc(out); err != nil {
 					panic(err)
 				}
+				return err
 			default:
 				panic(fmt.Errorf("unsupported format: %q", *pingOut))
 			}
@@ -308,12 +317,18 @@ func init() {
 
 		var wg sync.WaitGroup
 		jobs := make(chan string, *pingNum)
+		errc := make(chan error, 1)
 		for i := 0; i < *pingNum; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				for addr := range jobs {
-					pingOne(addr)
+					if err := pingOne(addr); err != nil {
+						select {
+						case errc <- err:
+						default:
+						}
+					}
 				}
 			}()
 		}
@@ -324,7 +339,14 @@ func init() {
 		close(jobs)
 		wg.Wait()
 		if flush != nil {
-			return flush()
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+		select {
+		case err := <-errc:
+			return err
+		default:
 		}
 		return nil
 	}
