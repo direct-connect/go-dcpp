@@ -184,19 +184,19 @@ func (c *Conn) ReadClientMsg(deadline time.Time) (adc.Message, error) {
 }
 
 func (c *Conn) Broadcast(from SID) adc.WriteStream {
-	return c.w.Broadcast(from)
+	return c.w.BroadcastStream(from)
 }
 
 func (c *Conn) WriteInfoMsg(msg adc.Message) error {
-	return c.w.WriteInfoMsg(msg)
+	return c.w.WriteInfo(msg)
 }
 
 func (c *Conn) WriteHubMsg(msg adc.Message) error {
-	return c.w.WriteHubMsg(msg)
+	return c.w.WriteHub(msg)
 }
 
 func (c *Conn) WriteClientMsg(msg adc.Message) error {
-	return c.w.WriteClientMsg(msg)
+	return c.w.WriteClient(msg)
 }
 
 func (c *Conn) WriteBroadcast(id SID, msg adc.Message) error {
