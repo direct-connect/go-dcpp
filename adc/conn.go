@@ -56,6 +56,7 @@ func DialContext(ctx context.Context, addr string) (*Conn, error) {
 			InsecureSkipVerify: true,
 		})
 		if err = sconn.Handshake(); err != nil {
+			_ = sconn.Close()
 			return nil, fmt.Errorf("TLS handshake failed: %v", err)
 		}
 		conn = sconn
