@@ -23,19 +23,20 @@ var (
 )
 
 type HubInfo struct {
-	Name     string
-	Addr     string
-	Desc     string
-	Topic    string
-	Failover []string
-	Encoding string
-	Owner    string
-	Server   types.Software
-	Ext      []string
-	Users    []nmdc.MyINFO
-	Ops      []string
-	Bots     []string
-	Redirect string
+	Name      string
+	Addr      string
+	KeyPrints []string
+	Desc      string
+	Topic     string
+	Failover  []string
+	Encoding  string
+	Owner     string
+	Server    types.Software
+	Ext       []string
+	Users     []nmdc.MyINFO
+	Ops       []string
+	Bots      []string
+	Redirect  string
 }
 
 func (h *HubInfo) decodeWith(enc encoding.Encoding) error {
@@ -139,6 +140,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	}
 
 	var hub HubInfo
+	hub.KeyPrints = c.GetKeyPrints()
 
 	// TODO: check if it's always the case
 	pk := strings.SplitN(lock.PK, " ", 2)

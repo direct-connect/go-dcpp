@@ -67,10 +67,11 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 			return nil, err
 		}
 		info := &HubInfo{
-			Name: hub.Name,
-			Desc: hub.Desc,
-			Addr: []string{addr},
-			Enc:  hub.Encoding,
+			Name:      hub.Name,
+			Desc:      hub.Desc,
+			Addr:      []string{addr},
+			KeyPrints: hub.KeyPrints,
+			Enc:       hub.Encoding,
 			Server: &Software{
 				Name:    hub.Server.Name,
 				Version: hub.Server.Version,
@@ -129,13 +130,14 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 			return nil, err
 		}
 		info := &HubInfo{
-			Name:    hub.Name,
-			Desc:    hub.Desc,
-			Addr:    []string{addr},
-			Enc:     "utf-8",
-			Website: hub.Website,
-			Owner:   hub.Owner,
-			Uptime:  uint64(hub.Uptime),
+			Name:      hub.Name,
+			Desc:      hub.Desc,
+			Addr:      []string{addr},
+			KeyPrints: hub.KeyPrints,
+			Enc:       "utf-8",
+			Website:   hub.Website,
+			Owner:     hub.Owner,
+			Uptime:    uint64(hub.Uptime),
 			Server: &Software{
 				Name:    hub.Application,
 				Version: hub.Version,
@@ -170,21 +172,22 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 }
 
 type HubInfo struct {
-	Name     string    `json:"name" xml:"Name,attr"`
-	Desc     string    `json:"desc,omitempty" xml:"Description,attr,omitempty"`
-	Addr     []string  `json:"addr,omitempty" xml:"Address,attr,omitempty"`
-	Icon     string    `json:"icon,omitempty" xml:"Icon,attr,omitempty"`
-	Owner    string    `json:"owner,omitempty" xml:"Owner,attr,omitempty"`
-	Website  string    `json:"website,omitempty" xml:"Website,attr,omitempty"`
-	Email    string    `json:"email,omitempty" xml:"Email,attr,omitempty"`
-	Enc      string    `json:"encoding,omitempty" xml:"Encoding,attr,omitempty"`
-	Server   *Software `json:"soft,omitempty" xml:"Software,omitempty"`
-	Uptime   uint64    `json:"uptime,omitempty" xml:"Uptime,attr,omitempty"`
-	Users    int       `json:"users" xml:"Users,attr"`
-	Files    uint64    `json:"files,omitempty" xml:"Files,attr,omitempty"`
-	Share    uint64    `json:"share,omitempty" xml:"Shared,attr,omitempty"`
-	Redirect string    `json:"redirect,omitempty" xml:"Redirect,attr,omitempty"`
-	UserList []HubUser `json:"userlist,omitempty" xml:"User,attr,omitempty"`
+	Name      string    `json:"name" xml:"Name,attr"`
+	Desc      string    `json:"desc,omitempty" xml:"Description,attr,omitempty"`
+	Addr      []string  `json:"addr,omitempty" xml:"Address,attr,omitempty"`
+	KeyPrints []string  `json:"kp,omitempty" xml:"KP,attr,omitempty"`
+	Icon      string    `json:"icon,omitempty" xml:"Icon,attr,omitempty"`
+	Owner     string    `json:"owner,omitempty" xml:"Owner,attr,omitempty"`
+	Website   string    `json:"website,omitempty" xml:"Website,attr,omitempty"`
+	Email     string    `json:"email,omitempty" xml:"Email,attr,omitempty"`
+	Enc       string    `json:"encoding,omitempty" xml:"Encoding,attr,omitempty"`
+	Server    *Software `json:"soft,omitempty" xml:"Software,omitempty"`
+	Uptime    uint64    `json:"uptime,omitempty" xml:"Uptime,attr,omitempty"`
+	Users     int       `json:"users" xml:"Users,attr"`
+	Files     uint64    `json:"files,omitempty" xml:"Files,attr,omitempty"`
+	Share     uint64    `json:"share,omitempty" xml:"Shared,attr,omitempty"`
+	Redirect  string    `json:"redirect,omitempty" xml:"Redirect,attr,omitempty"`
+	UserList  []HubUser `json:"userlist,omitempty" xml:"User,attr,omitempty"`
 }
 
 type HubUser struct {

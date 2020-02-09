@@ -28,5 +28,6 @@ type Hub struct {
 
 	// our extensions
 
-	ErrCode int `xml:"ErrCode,attr,omitempty"`
+	ErrCode   int      `xml:"ErrCode,attr,omitempty"`
+	KeyPrints []string `xml:"KP,attr,omitempty"`
 }

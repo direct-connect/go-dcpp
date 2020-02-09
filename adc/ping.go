@@ -13,8 +13,9 @@ import (
 
 type PingHubInfo struct {
 	adc.HubInfo
-	Ext   []string
-	Users []adc.UserInfo
+	Ext       []string
+	KeyPrints []string
+	Users     []adc.UserInfo
 }
 
 type PingConfig struct {
@@ -74,6 +75,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 	}
 
 	var hub PingHubInfo
+	hub.KeyPrints = c.GetKeyPrints()
 
 	// first, we expect a SUP from the hub with a list of supported features
 	msg, err := c.ReadInfoMsg(deadline)

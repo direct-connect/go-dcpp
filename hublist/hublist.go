@@ -219,6 +219,7 @@ func (w *XMLListWriter) writeHeader() error {
 			<Column Name="Logo" Type="string" />
 			<Column Name="Icon" Type="string" />
 			<Column Name="ErrCode" Type="int" />
+			<Column Name="KP" Type="string" />
 		</Columns>`))
 	return err
 }

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/direct-connect/go-dc/adc"
+	"github.com/direct-connect/go-dc/keyprint"
+	"github.com/direct-connect/go-dc/keyprint/tlskp"
 )
 
 var (
@@ -51,6 +53,7 @@ func DialContext(ctx context.Context, addr string) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	var kps []string
 	if secure {
 		sconn := tls.Client(conn, &tls.Config{
 			InsecureSkipVerify: true,
@@ -60,8 +63,23 @@ func DialContext(ctx context.Context, addr string) (*Conn, error) {
 			return nil, fmt.Errorf("TLS handshake failed: %v", err)
 		}
 		conn = sconn
+		// verify keyprint if it's set in the URL
+		if exp := keyprint.FromURL(u); exp != "" {
+			if kps, err = tlskp.VerifyKeyPrint(sconn, exp); err != nil {
+				_ = sconn.Close()
+				return nil, err
+			}
+		} else {
+			kps = tlskp.GetKeyPrints(sconn)
+		}
 	}
-	return NewConn(conn)
+	c, err := NewConn(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	c.kps = kps
+	return c, nil
 }
 
 // NewConn runs an ADC protocol over a specified connection.
@@ -88,12 +106,19 @@ func NewConn(conn net.Conn) (*Conn, error) {
 
 // Conn is an ADC protocol connection.
 type Conn struct {
+	kps []string // keyprints, set by TLS
+
 	closed chan struct{}
 
 	conn net.Conn
 
 	w *adc.Writer
 	r *adc.Reader
+}
+
+// GetKeyPrints returns keyprints set by TLS, if any.
+func (c *Conn) GetKeyPrints() []string {
+	return c.kps
 }
 
 func (c *Conn) OnLineR(fnc func(line []byte) (bool, error)) {

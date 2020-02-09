@@ -3,11 +3,9 @@ package cmd
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base32"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -16,6 +14,8 @@ import (
 	"math/big"
 	"net"
 	"time"
+
+	"github.com/direct-connect/go-dc/keyprint"
 )
 
 type TLSConfig struct {
@@ -105,8 +105,7 @@ func loadCert(conf *Config) (*tls.Certificate, string, error) {
 	}
 	kp := ""
 	if len(rootTLSCert.Certificate) != 0 {
-		h := sha256.Sum256(rootTLSCert.Certificate[0])
-		kp = "SHA256/" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h[:])
+		kp = keyprint.FromBytes(rootTLSCert.Certificate[0])
 	}
 	return &rootTLSCert, kp, nil
 }

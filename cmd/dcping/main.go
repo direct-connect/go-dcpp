@@ -286,6 +286,7 @@ func init() {
 						Users:       info.Users,
 						Shared:      hublist.Size(info.Share),
 						ErrCode:     errCode,
+						KeyPrints:   info.KeyPrints,
 					}
 					// output encoding in the legacy format
 					if strings.HasPrefix(out.Encoding, "windows-") {
