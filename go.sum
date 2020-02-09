@@ -61,6 +61,8 @@ github.com/direct-connect/go-dc v0.10.1 h1:e7WUAj46isrl99QbxRF1Q5kmZyF2PnZeHlANt
 github.com/direct-connect/go-dc v0.10.1/go.mod h1:HQEFvitqPrFbthrB/4RoF3j5lmg/H0Hlxlr559rLSOQ=
 github.com/direct-connect/go-dc v0.10.2 h1:nCd8po3HVXCyBH/M6NRerwNNIgB89JtrwKHNJqS7bYA=
 github.com/direct-connect/go-dc v0.10.2/go.mod h1:HQEFvitqPrFbthrB/4RoF3j5lmg/H0Hlxlr559rLSOQ=
+github.com/direct-connect/go-dc v0.10.3 h1:pdEdBICQciVyV2uf8B+b/mNZhLOVeLeLLae+wO8g7DI=
+github.com/direct-connect/go-dc v0.10.3/go.mod h1:HQEFvitqPrFbthrB/4RoF3j5lmg/H0Hlxlr559rLSOQ=
 github.com/direct-connect/go-lua v0.0.0-20190505214648-cdda08bfc989 h1:HJ7xi21gPoykRgZBeC0mlwuyBVTUnyq0Sb4jq440ua0=
 github.com/direct-connect/go-lua v0.0.0-20190505214648-cdda08bfc989/go.mod h1:HUVcqegPSdbI2ZYqmF0gu7df3cXewXuEV43YUHU0/aQ=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
