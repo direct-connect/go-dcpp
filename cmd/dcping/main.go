@@ -129,7 +129,7 @@ func init() {
 	pingPretty := pingCmd.Flags().Bool("pretty", false, "pretty-print an output")
 	pingNum := pingCmd.Flags().IntP("num", "n", runtime.NumCPU()*2, "number of parallel pings")
 	pingTimeout := pingCmd.Flags().DurationP("timeout", "t", time.Second*5, "ping timeout")
-	pingFallbackEnc := pingCmd.Flags().StringP("encoding", "e", "", "fallback encoding")
+	pingFallbackEnc := pingCmd.Flags().StringP("encoding", "e", "", "fallback encoding (e.g. cp1251)")
 	pingName := pingCmd.Flags().String("name", "", "name of the pinger")
 	pingShare := pingCmd.Flags().Uint64("share", 0, "declared share size (in bytes)")
 	pingShareFiles := pingCmd.Flags().Int("files", 0, "declared share files")
@@ -143,7 +143,7 @@ func init() {
 		if name := *pingFallbackEnc; name != "" {
 			enc, err := htmlindex.Get(name)
 			if err != nil {
-				return err
+				return errors.New("invalid encoding name in --encoding parameter; try the full name (e.g. cp1251)")
 			}
 			nmdc.DefaultFallbackEncoding = enc
 		}
