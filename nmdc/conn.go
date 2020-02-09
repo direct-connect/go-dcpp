@@ -243,7 +243,15 @@ func (c *Conn) Close() error {
 	}
 	c.closed = true
 	// should not hold any other mutex
-	return c.conn.Close()
+	var last error
+	if err := c.r.Close(); err != nil {
+		last = err
+	}
+	if err := c.w.Close(); err != nil {
+		last = err
+	}
+	_ = c.conn.Close()
+	return last
 }
 
 func (c *Conn) WriteMsg(m ...nmdc.Message) error {
