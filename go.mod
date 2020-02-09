@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/Shopify/go-lua v0.0.0-20181106184032-48449c60c0a9
 	github.com/beorn7/perks v1.0.0 // indirect
-	github.com/direct-connect/go-dc v0.10.1
+	github.com/direct-connect/go-dc v0.10.2
 	github.com/go-irc/irc v2.1.0+incompatible
 	github.com/hidal-go/hidalgo v0.0.0-20190420191634-c112d74960ad
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect

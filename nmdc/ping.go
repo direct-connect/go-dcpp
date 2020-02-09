@@ -22,6 +22,17 @@ var (
 	ErrRegisteredOnly = errors.New("registered users only")
 )
 
+type ErrBanned struct {
+	Reason string
+}
+
+func (e *ErrBanned) Error() string {
+	if e.Reason == "" {
+		return "banned"
+	}
+	return fmt.Sprintf("banned: %q", e.Reason)
+}
+
 type HubInfo struct {
 	Name      string
 	Addr      string
@@ -131,6 +142,24 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 		//FeaQuickList, // some hubs doesn't like this
 		//FeaDHT0, // some hubs ask users to disable it and drops the connection
 	)
+	if e, ok := err.(*nmdc.ErrUnexpectedCommand); ok {
+		// chat message: it may be a ban
+		if e.Received.Typ == "" {
+			var m nmdc.ChatMessage
+			_ = m.UnmarshalNMDC(nil, e.Received.Data)
+			if strings.Contains(m.Text, "Banned by") {
+				reason := ""
+				if i := strings.Index(m.Text, "Reason: "); i > 0 {
+					reason = m.Text[i+8:]
+					if i := strings.IndexByte(reason, '\n'); i > 0 {
+						reason = reason[:i]
+					}
+					reason = strings.TrimSpace(reason)
+				}
+				return nil, &ErrBanned{Reason: reason}
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

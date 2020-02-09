@@ -62,6 +62,12 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 				Sev: adcp.Fatal, Code: 26,
 				Msg: err.Error(),
 			}}
+		} else if e, ok := err.(*nmdc.ErrBanned); ok {
+			// TODO: distinguish temporary and permanent bans
+			err = adcp.Error{Status: adcp.Status{
+				Sev: adcp.Fatal, Code: 30,
+				Msg: e.Reason,
+			}}
 		}
 		if err != nil && hub == nil {
 			return nil, err
