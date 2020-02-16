@@ -198,6 +198,33 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 		return nil, err
 	}
 
+	// if configured, redirect connections to ADC
+	if h.getRedirectNMDCToTLS() {
+		proto := "adc://"
+		// account for currently set TLS redirects
+		if cinfo.Secure || h.getRedirectNMDCToTLS() || h.getRedirectADCToTLS() {
+			proto = "adcs://"
+		}
+		err = c.WriteOneMsg(&nmdcp.ForceMove{
+			Address: proto + cinfo.Local.String(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	// if configured, redirect insecure connections to NMDCS
+	if !cinfo.Secure && h.getRedirectNMDCToTLS() {
+		err = c.WriteOneMsg(&nmdcp.ForceMove{
+			Address: "nmdcs://" + cinfo.Local.String(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
 	peer := newNMDC(h, cinfo, c, fea, nick, addr.IP)
 
 	if peer.fea.Has(nmdcp.ExtBotINFO) {

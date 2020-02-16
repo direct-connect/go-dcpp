@@ -149,6 +149,11 @@ type Hub struct {
 	zlib struct {
 		level int32
 	}
+	redirect struct {
+		nmdcToTLS int32
+		nmdcToADC int32
+		adcToTLS  int32
+	}
 
 	globalChat *Room
 	rooms      rooms
@@ -188,6 +193,42 @@ func (h *Hub) setZlibLevel(level int) {
 		level = 9
 	}
 	atomic.StoreInt32(&h.zlib.level, int32(level))
+}
+
+func setAtomicBool(p *int32, v bool) {
+	var iv int32
+	if v {
+		iv = 1
+	}
+	atomic.StoreInt32(p, iv)
+}
+
+func getAtomicBool(p *int32) bool {
+	return atomic.LoadInt32(p) != 0
+}
+
+func (h *Hub) getRedirectNMDCToTLS() bool {
+	return getAtomicBool(&h.redirect.nmdcToTLS)
+}
+
+func (h *Hub) getRedirectNMDCToADC() bool {
+	return getAtomicBool(&h.redirect.nmdcToADC)
+}
+
+func (h *Hub) getRedirectADCToTLS() bool {
+	return getAtomicBool(&h.redirect.adcToTLS)
+}
+
+func (h *Hub) setRedirectNMDCToTLS(v bool) {
+	setAtomicBool(&h.redirect.nmdcToTLS, v)
+}
+
+func (h *Hub) setRedirectNMDCToADC(v bool) {
+	setAtomicBool(&h.redirect.nmdcToADC, v)
+}
+
+func (h *Hub) setRedirectADCToTLS(v bool) {
+	setAtomicBool(&h.redirect.adcToTLS, v)
 }
 
 type Stats struct {

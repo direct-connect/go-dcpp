@@ -74,6 +74,8 @@ func (h *Hub) ServeADC(conn net.Conn, cinfo *ConnInfo) error {
 	peer, err := h.adcHandshake(c, cinfo)
 	if err != nil {
 		return err
+	} else if peer == nil {
+		return nil
 	}
 	defer peer.Close()
 	return h.adcServePeer(peer)
@@ -85,6 +87,24 @@ func (h *Hub) adcHandshake(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 	peer, err := h.adcStageProtocol(c, cinfo)
 	if err != nil {
 		return nil, err
+	}
+	// if configured, redirect insecure connections to ADCS
+	// TODO(dennwc): this crashes some clients :(
+	if !cinfo.Secure && h.getRedirectADCToTLS() {
+		err = c.WriteInfoMsg(&adcp.Disconnect{
+			ID: peer.SID(),
+			// TODO: use the hostname somehow?
+			// TODO: use the keyprint
+			Redirect: "adcs://" + cinfo.Local.String(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		err = c.Flush()
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
 	}
 	// connection is not yet valid and we haven't added the client to the hub yet
 	if err = h.adcStageIdentity(peer); err != nil {

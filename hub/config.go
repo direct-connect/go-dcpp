@@ -17,7 +17,10 @@ const (
 )
 
 const (
-	ConfigZlibLevel = "zlib.level"
+	ConfigZlibLevel       = "zlib.level"
+	ConfigNMDCRedirectTLS = "nmdc.redirect.tls"
+	ConfigNMDCRedirectADC = "nmdc.redirect.adc"
+	ConfigADCRedirectTLS  = "adc.redirect.tls"
 )
 
 var configAliases = map[string]string{
@@ -137,6 +140,9 @@ func (h *Hub) ConfigKeys() []string {
 		ConfigHubWebsite,
 		ConfigHubEmail,
 		ConfigZlibLevel,
+		ConfigNMDCRedirectTLS,
+		ConfigNMDCRedirectADC,
+		ConfigADCRedirectTLS,
 	}
 	h.conf.RLock()
 	for k := range h.conf.m {
@@ -169,6 +175,14 @@ func (h *Hub) GetConfig(key string) (interface{}, bool) {
 		return v, true
 	case ConfigZlibLevel:
 		v, ok := h.GetConfigInt(key)
+		if !ok {
+			return nil, false
+		}
+		return v, true
+	case ConfigNMDCRedirectTLS,
+		ConfigNMDCRedirectADC,
+		ConfigADCRedirectTLS:
+		v, ok := h.GetConfigBool(key)
 		if !ok {
 			return nil, false
 		}
@@ -274,6 +288,12 @@ func (h *Hub) setConfigBool(key string, val bool) {
 		return
 	}
 	switch key {
+	case ConfigNMDCRedirectTLS:
+		h.setRedirectNMDCToTLS(val)
+	case ConfigNMDCRedirectADC:
+		h.setRedirectNMDCToADC(val)
+	case ConfigADCRedirectTLS:
+		h.setRedirectADCToTLS(val)
 	default:
 		h.setConfigMap(key, val)
 	}
@@ -289,6 +309,12 @@ func (h *Hub) GetConfigBool(key string) (bool, bool) {
 		key = alias
 	}
 	switch key {
+	case ConfigNMDCRedirectTLS:
+		return h.getRedirectNMDCToTLS(), true
+	case ConfigNMDCRedirectADC:
+		return h.getRedirectNMDCToADC(), true
+	case ConfigADCRedirectTLS:
+		return h.getRedirectADCToTLS(), true
 	default:
 		v, ok := h.getConfigMap(key)
 		if !ok || v == nil {
