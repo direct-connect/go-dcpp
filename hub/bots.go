@@ -11,6 +11,15 @@ var localhostIP = net.ParseIP("127.0.0.1")
 
 var _ Peer = (*botPeer)(nil)
 
+// IsBot checks if a user is a bot.
+func IsBot(p Peer) bool {
+	if p == nil {
+		return false
+	}
+	_, ok := p.(*botPeer)
+	return ok
+}
+
 type Bot struct {
 	h *Hub
 	p *botPeer

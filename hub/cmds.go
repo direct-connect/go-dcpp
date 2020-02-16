@@ -498,7 +498,7 @@ func (h *Hub) cmdUserIP(p, p2 Peer) error {
 }
 
 func (h *Hub) cmdDrop(p, p2 Peer) error {
-	if _, ok := p2.(*botPeer); ok {
+	if IsBot(p2) {
 		return errors.New("refusing to kick a bot")
 	}
 	_ = p2.Close()
@@ -511,7 +511,7 @@ func (h *Hub) cmdDropAll(p Peer) error {
 	for _, p2 := range h.Peers() {
 		if p == p2 {
 			continue
-		} else if _, ok := p2.(*botPeer); ok {
+		} else if IsBot(p2) {
 			continue
 		}
 		_ = p2.Close()
@@ -534,7 +534,7 @@ func (h *Hub) cmdBanIPa(p Peer, ip net.IP) error {
 }
 
 func (h *Hub) cmdBanUserIP(p, p2 Peer) error {
-	if _, ok := p2.(*botPeer); ok {
+	if IsBot(p2) {
 		return errors.New("refusing to ban a bot")
 	}
 	addr, ok := p2.RemoteAddr().(*net.TCPAddr)
@@ -581,7 +581,7 @@ func (h *Hub) cmdListBanIP(p Peer, args string) error {
 }
 
 func (h *Hub) cmdRedirectUser(p, p2 Peer, args string) error {
-	if _, ok := p2.(*botPeer); ok {
+	if IsBot(p2) {
 		return errors.New("refusing to redirect a bot")
 	}
 	addr := args
@@ -607,7 +607,7 @@ func (h *Hub) cmdRedirectAll(p Peer, args string) error {
 	for _, p2 := range h.Peers() {
 		if p == p2 {
 			continue
-		} else if _, ok := p2.(*botPeer); ok {
+		} else if IsBot(p2) {
 			continue
 		}
 		_ = p2.Redirect(addr)
