@@ -237,6 +237,10 @@ func init() {
 			}
 		}
 
+		if err := setLimits(); err != nil {
+			return err
+		}
+
 		if err := h.Start(); err != nil {
 			return err
 		}
