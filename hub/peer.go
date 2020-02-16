@@ -19,6 +19,7 @@ type ConnInfo struct {
 	Secure  bool
 	TLSVers uint16
 	ALPN    string
+	Proto   string
 }
 
 type Peer interface {

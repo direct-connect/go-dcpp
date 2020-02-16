@@ -826,6 +826,7 @@ func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick s
 	peer.ext.userip2 = fea.Has(nmdcp.ExtUserIP2)
 	peer.ext.botlist = fea.Has(nmdcp.ExtBotList)
 	peer.ext.tths = fea.Has(nmdcp.ExtTTHS)
+	cinfo.Proto = "NMDC"
 	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.write.wake = make(chan struct{}, 1)
 	peer.write.flush = make(chan chan<- struct{}, 1)

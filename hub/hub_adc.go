@@ -693,6 +693,7 @@ func newADC(h *Hub, cinfo *ConnInfo, c *adc.Conn, fea adcp.ModFeatures) *adcPeer
 		c:   c,
 		fea: fea,
 	}
+	cinfo.Proto = "ADC"
 	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.write.wake = make(chan struct{}, 1)
 	return peer

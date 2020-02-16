@@ -67,6 +67,7 @@ func (h *Hub) newBot(name, desc, email string, kind UserKind, soft types.Softwar
 		Remote: addr,
 		Local:  addr,
 		Secure: true,
+		Proto:  "Plugin",
 	})
 	p.setName(name)
 

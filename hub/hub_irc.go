@@ -158,6 +158,7 @@ func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 		c:    c,
 		conn: conn,
 	}
+	cinfo.Proto = "IRC"
 	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.setName(name)
 

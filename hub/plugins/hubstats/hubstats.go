@@ -23,7 +23,7 @@ func (*hubStats) Name() string {
 }
 
 func (*hubStats) Version() hub.Version {
-	return hub.Version{Major: 0, Minor: 4}
+	return hub.Version{Major: 0, Minor: 5}
 }
 
 func (p *hubStats) Init(h *hub.Hub, path string) error {
@@ -39,6 +39,12 @@ func (p *hubStats) Init(h *hub.Hub, path string) error {
 		Name:  "tlsinfo",
 		Short: "show info about TLS connections",
 		Func:  p.cmdTLSStats,
+	})
+	h.RegisterCommand(hub.Command{
+		Name:    "protos",
+		Aliases: []string{"protoinfo"},
+		Short:   "show protocol info about peer connections",
+		Func:    p.cmdProtoStats,
 	})
 	return nil
 }
@@ -126,6 +132,38 @@ TLS verions:
 				name, v, perc(v, s.ALPN),
 			)
 		}
+	}
+	_ = peer.HubChatMsg(hub.Message{Text: buf.String()})
+	return nil
+}
+
+func (p *hubStats) cmdProtoStats(peer hub.Peer, args string) error {
+	total := uint(0)
+	protos := make(map[string]uint)
+	for _, p2 := range p.h.Peers() {
+		total++
+		c := p2.ConnInfo()
+		if c == nil {
+			continue
+		}
+		protos[c.Proto]++
+	}
+	perc := func(v, n uint) float64 {
+		return 100 * float64(v) / float64(n)
+	}
+	buf := bytes.NewBuffer(nil)
+	buf.WriteString("\nProtocols:\n")
+	names := make([]string, 0, len(protos))
+	for name := range protos {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		v := protos[name]
+		_, _ = fmt.Fprintf(buf,
+			"%s: %5d (%.1f%%)\n",
+			name, v, perc(v, total),
+		)
 	}
 	_ = peer.HubChatMsg(hub.Message{Text: buf.String()})
 	return nil
