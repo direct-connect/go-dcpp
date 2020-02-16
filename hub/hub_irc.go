@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -146,6 +147,22 @@ func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 			Params:  []string{"*", name, errNickTaken.Error()},
 		})
 	}
+
+	usr, rec, err := h.getUser(name)
+	if err != nil {
+		unbind()
+		return nil, err
+	}
+	if usr != nil && rec != nil {
+		if cinfo != nil && !cinfo.Secure {
+			unbind()
+			return nil, errConnInsecure
+		}
+		// TODO(dennwc): support passwords for IRC
+		unbind()
+		return nil, errors.New("password login is not supported for IRC yet")
+	}
+
 	conn.SetReadDeadline(time.Time{})
 
 	peer := &ircPeer{
@@ -162,7 +179,7 @@ func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.setName(name)
 
-	err := h.ircAccept(peer)
+	err = h.ircAccept(peer)
 	if err != nil {
 		unbind()
 		return nil, err
