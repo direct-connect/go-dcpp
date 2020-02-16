@@ -42,16 +42,18 @@ const (
 	PermRoomsJoin = "rooms.join"
 	PermRoomsList = "rooms.list"
 
-	PermBroadcast   = "hub.broadcast"
-	PermConfigWrite = "config.write"
-	PermConfigRead  = "config.read"
-	PermTopic       = "hub.topic"
-	PermDrop        = "user.drop"
-	PermDropAll     = "user.drop_all"
-	PermRedirect    = "user.redirect"
-	PermRedirectAll = "user.redirect_all"
-	PermIP          = "user.ip"
-	PermBanIP       = "ban.ip"
+	PermBroadcast       = "hub.broadcast"
+	PermConfigWrite     = "config.write"
+	PermConfigRead      = "config.read"
+	PermTopic           = "hub.topic"
+	PermDrop            = "user.drop"
+	PermDropAll         = "user.drop_all"
+	PermRedirect        = "user.redirect"
+	PermRedirectAll     = "user.redirect_all"
+	PermRegister        = "user.register"
+	PermRegisterProfile = "user.register_profile"
+	PermIP              = "user.ip"
+	PermBanIP           = "ban.ip"
 )
 
 func (h *Hub) initCommands() {
@@ -128,6 +130,12 @@ func (h *Hub) initCommands() {
 		Menu:    []string{"IP"},
 		Require: PermIP,
 		Func:    h.cmdUserIP,
+	})
+	h.RegisterCommand(Command{
+		Name: "reguser", Aliases: []string{"regnewuser"},
+		Short:   "registers a new user or change a password",
+		Require: PermRegister,
+		Func:    h.cmdRegisterUser,
 	})
 
 	// Bans
@@ -262,12 +270,11 @@ func (h *Hub) cmdRegister(p Peer, args string) error {
 	if c := p.ConnInfo(); c != nil && !c.Secure {
 		return errConnInsecure
 	}
-	if len(args) < 6 {
-		h.cmdOutput(p, "password should be at least 6 characters")
-		return nil
+	pass := args
+	if err := h.validatePass(pass); err != nil {
+		return err
 	}
 	name := p.Name()
-	pass := args
 	ok, err := h.IsRegistered(name)
 	if ok {
 		err = h.UpdateUser(name, func(u *UserRecord) (bool, error) {
@@ -288,6 +295,65 @@ func (h *Hub) cmdRegister(p Peer, args string) error {
 		return err
 	}
 	h.cmdOutputf(p, "user %s registered, please reconnect", name)
+	return nil
+}
+
+func (h *Hub) cmdRegisterUser(p Peer, args string) error {
+	if c := p.ConnInfo(); c != nil && !c.Secure {
+		return errConnInsecure
+	}
+	name, args, err := cmdParseString(args)
+	if err != nil {
+		return err
+	}
+	if err = h.validateUserName(name); err != nil {
+		return err
+	}
+	if ok, err := h.IsRegistered(name); err != nil {
+		return err
+	} else if ok {
+		return errNickTaken
+	}
+	pass, args, err := cmdParseString(args)
+	if err != nil {
+		return err
+	}
+	if err = h.validatePass(pass); err != nil {
+		return err
+	}
+	var prof string
+	if args != "" {
+		pu := p.User()
+		if !pu.HasPerm(PermRegisterProfile) {
+			return errors.New("you are not allowed to set user profiles during the registration")
+		}
+		prof, _, err = cmdParseString(args)
+		if err != nil {
+			return err
+		}
+		if prof == ProfileNameRoot && !pu.IsOwner() {
+			return errors.New("only owners can register new owners")
+		}
+		if pr := h.Profile(prof); pr == nil {
+			return errors.New("there is no such profile")
+		}
+	}
+	err = h.RegisterUser(name, pass)
+	if err != nil {
+		return err
+	}
+	if prof == "" {
+		h.cmdOutputf(p, "user %s registered", name)
+		return nil
+	}
+	err = h.UpdateUser(name, func(u *UserRecord) (bool, error) {
+		u.Profile = prof
+		return true, nil
+	})
+	if err != nil {
+		return err
+	}
+	h.cmdOutputf(p, "user %s with profile %s registered", name, prof)
 	return nil
 }
 

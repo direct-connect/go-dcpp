@@ -222,6 +222,14 @@ func (h *Hub) validateUserName(name string) error {
 	return nil
 }
 
+func (h *Hub) validatePass(pass string) error {
+	const min = 6
+	if len(pass) < min {
+		return fmt.Errorf("password should be at least %d characters", min)
+	}
+	return nil
+}
+
 func (h *Hub) RegisterUser(name, pass string) error {
 	if h.db == nil {
 		return ErrUserRegDisabled
