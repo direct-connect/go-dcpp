@@ -828,6 +828,7 @@ func newNMDC(h *Hub, cinfo *ConnInfo, c *nmdc.Conn, fea nmdcp.Extensions, nick s
 	peer.ext.tths = fea.Has(nmdcp.ExtTTHS)
 	h.newBasePeer(&peer.BasePeer, cinfo)
 	peer.write.wake = make(chan struct{}, 1)
+	peer.write.flush = make(chan chan<- struct{}, 1)
 	peer.info.user.Name = nick
 	return peer
 }
@@ -840,8 +841,9 @@ type nmdcPeer struct {
 	ip  net.IP
 
 	write struct {
-		wake chan struct{}
-		cnt  uint32 // atomic
+		wake  chan struct{}
+		flush chan chan<- struct{}
+		cnt   uint32 // atomic
 		sync.Mutex
 		buf []nmdcp.Message
 	}
@@ -952,6 +954,10 @@ func (p *nmdcPeer) Close() error {
 	return p.closeOn(nil)
 }
 
+func (p *nmdcPeer) flushBuffers(timeout time.Duration) {
+
+}
+
 func (p *nmdcPeer) writer(timeout time.Duration) {
 	defer p.Close()
 	ticker := time.NewTicker(time.Minute / 2)
@@ -972,6 +978,43 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 		return
 	}
 	var deadline time.Time
+	flushBuffers := func(force bool) {
+		p.write.Lock()
+		buf := p.write.buf
+		p.write.buf = buf2
+		atomic.StoreUint32(&p.write.cnt, 0)
+		p.write.Unlock()
+		numNMDCWriteQueue.Observe(float64(len(buf)))
+		if len(buf) == 0 {
+			resetBuf(buf)
+			return
+		}
+		start := time.Now()
+		if start.After(deadline) || deadline.Sub(start) < (timeout*3)/4 {
+			// set only if an old deadline is stale
+			deadline = start.Add(timeout)
+			_ = p.c.SetWriteDeadline(deadline)
+		}
+		err := p.c.WriteMsg(buf...)
+		resetBuf(buf)
+		if err != nil {
+			durNMDCWrite.Observe(time.Since(start).Seconds())
+			logErr(err)
+			return
+		}
+		if !force && atomic.LoadUint32(&p.write.cnt) > 0 && len(p.write.wake) != 0 {
+			durNMDCWrite.Observe(time.Since(start).Seconds())
+			return // do not flush, continue batching
+		}
+		err = p.c.Flush()
+		durNMDCWrite.Observe(time.Since(start).Seconds())
+		if err != nil {
+			logErr(err)
+			return
+		}
+		_ = p.c.SetWriteDeadline(time.Time{})
+		deadline = time.Time{}
+	}
 	for {
 		select {
 		case <-p.close.done:
@@ -991,46 +1034,15 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 			}
 			_ = p.c.SetWriteDeadline(time.Time{})
 		case <-p.write.wake:
-			p.write.Lock()
-			buf := p.write.buf
-			p.write.buf = buf2
-			atomic.StoreUint32(&p.write.cnt, 0)
-			p.write.Unlock()
-			numNMDCWriteQueue.Observe(float64(len(buf)))
-			if len(buf) == 0 {
-				resetBuf(buf)
-				continue
-			}
-			start := time.Now()
-			if start.After(deadline) || deadline.Sub(start) < (timeout*3)/4 {
-				// set only if an old deadline is stale
-				deadline = start.Add(timeout)
-				_ = p.c.SetWriteDeadline(deadline)
-			}
-			err := p.c.WriteMsg(buf...)
-			resetBuf(buf)
-			if err != nil {
-				durNMDCWrite.Observe(time.Since(start).Seconds())
-				logErr(err)
-				return
-			}
-			if atomic.LoadUint32(&p.write.cnt) > 0 && len(p.write.wake) != 0 {
-				durNMDCWrite.Observe(time.Since(start).Seconds())
-				continue // do not flush, continue batching
-			}
-			err = p.c.Flush()
-			durNMDCWrite.Observe(time.Since(start).Seconds())
-			if err != nil {
-				logErr(err)
-				return
-			}
-			_ = p.c.SetWriteDeadline(time.Time{})
-			deadline = time.Time{}
+			flushBuffers(false)
+		case ch := <-p.write.flush:
+			flushBuffers(true)
+			ch <- struct{}{}
 		}
 	}
 }
 
-func (p *nmdcPeer) SendNMDC(m ...nmdcp.Message) error {
+func (p *nmdcPeer) sendNMDC(m ...nmdcp.Message) error {
 	if !p.Online() {
 		return errConnectionClosed
 	}
@@ -1042,9 +1054,34 @@ func (p *nmdcPeer) SendNMDC(m ...nmdcp.Message) error {
 	p.write.buf = append(p.write.buf, m...)
 	atomic.AddUint32(&p.write.cnt, 1)
 	p.write.Unlock()
+	return nil
+}
+
+func (p *nmdcPeer) SendNMDC(m ...nmdcp.Message) error {
+	if err := p.sendNMDC(m...); err != nil {
+		return err
+	}
 	select {
 	case p.write.wake <- struct{}{}:
 	default:
+	}
+	return nil
+}
+
+func (p *nmdcPeer) SendNMDCNow(m ...nmdcp.Message) error {
+	if err := p.sendNMDC(m...); err != nil {
+		return err
+	}
+	ch := make(chan struct{}, 1)
+	select {
+	case <-p.close.done:
+		return errConnectionClosed
+	case p.write.flush <- ch:
+	}
+	select {
+	case <-p.close.done:
+		return errConnectionClosed
+	case <-ch:
 	}
 	return nil
 }
@@ -1627,4 +1664,13 @@ func (p *nmdcPeer) Search(ctx context.Context, req SearchRequest, out Search) er
 	}
 	msg := p.searchCmdOther(out.Peer(), req)
 	return p.SendNMDC(msg)
+}
+
+func (p *nmdcPeer) Redirect(addr string) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
+	return p.SendNMDCNow(&nmdcp.ForceMove{
+		Address: addr,
+	})
 }

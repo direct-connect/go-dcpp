@@ -76,6 +76,9 @@ type Peer interface {
 
 	// Search sends a search request to this peer.
 	Search(ctx context.Context, req SearchRequest, out Search) error
+
+	// Redirect the peer to a different hub or address.
+	Redirect(addr string) error
 }
 
 type PeerTopic interface {

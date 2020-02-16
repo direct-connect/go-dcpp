@@ -157,6 +157,10 @@ func (p *botPeer) Search(ctx context.Context, req SearchRequest, out Search) err
 	return nil
 }
 
+func (p *botPeer) Redirect(addr string) error {
+	return nil
+}
+
 func (p *botPeer) Close() error {
 	return nil // override - can only be closed by bot owner
 }

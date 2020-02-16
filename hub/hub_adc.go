@@ -1309,3 +1309,13 @@ func (p *adcPeer) Search(ctx context.Context, req SearchRequest, out Search) err
 	}
 	return p.SendADCBroadcast(out.Peer().SID(), msg)
 }
+
+func (p *adcPeer) Redirect(addr string) error {
+	if !p.Online() {
+		return errConnectionClosed
+	}
+	return p.SendADCInfo(&adcp.Disconnect{
+		ID:       p.SID(),
+		Redirect: addr,
+	})
+}

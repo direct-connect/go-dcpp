@@ -34,6 +34,7 @@ func DefaultProfiles() map[string]Map {
 			PermRoomsList: true,
 			PermBroadcast: true,
 			PermDrop:      true,
+			PermRedirect:  true,
 			PermIP:        true,
 			PermBanIP:     true,
 		},

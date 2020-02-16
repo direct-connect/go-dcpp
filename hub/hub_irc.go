@@ -464,3 +464,7 @@ func (p *ircPeer) RevConnectTo(peer Peer, token string, secure bool) error {
 func (p *ircPeer) Search(ctx context.Context, req SearchRequest, out Search) error {
 	return nil
 }
+
+func (p *ircPeer) Redirect(addr string) error {
+	return nil
+}

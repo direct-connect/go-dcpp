@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"reflect"
 	"regexp"
 	"sort"
@@ -46,6 +47,9 @@ const (
 	PermConfigRead  = "config.read"
 	PermTopic       = "hub.topic"
 	PermDrop        = "user.drop"
+	PermDropAll     = "user.drop_all"
+	PermRedirect    = "user.redirect"
+	PermRedirectAll = "user.redirect_all"
 	PermIP          = "user.ip"
 	PermBanIP       = "ban.ip"
 )
@@ -135,6 +139,13 @@ func (h *Hub) initCommands() {
 		Func:    h.cmdDrop,
 	})
 	h.RegisterCommand(Command{
+		Name:    "drop_all",
+		Short:   "drops all users from the hub",
+		Menu:    []string{"Drop All"},
+		Require: PermDropAll,
+		Func:    h.cmdDropAll,
+	})
+	h.RegisterCommand(Command{
 		Name:    "banuserip",
 		Short:   "ban user's IP",
 		Menu:    []string{"Ban IP"},
@@ -159,6 +170,22 @@ func (h *Hub) initCommands() {
 		Menu:    []string{"Bans", "List IPs"},
 		Require: PermBanIP,
 		Func:    h.cmdListBanIP,
+	})
+
+	// Redirects
+	h.RegisterCommand(Command{
+		Name:    "redirect",
+		Short:   "redirect user",
+		Menu:    []string{"Redirect"},
+		Require: PermRedirect,
+		Func:    h.cmdRedirectUser,
+	})
+	h.RegisterCommand(Command{
+		Name:    "redirect_all",
+		Short:   "redirect all users",
+		Menu:    []string{"Redirect All"},
+		Require: PermRedirectAll,
+		Func:    h.cmdRedirectAll,
 	})
 
 	// Low-level commands
@@ -413,6 +440,21 @@ func (h *Hub) cmdDrop(p, p2 Peer) error {
 	return nil
 }
 
+func (h *Hub) cmdDropAll(p Peer) error {
+	n := 0
+	for _, p2 := range h.Peers() {
+		if p == p2 {
+			continue
+		} else if _, ok := p2.(*botPeer); ok {
+			continue
+		}
+		_ = p2.Close()
+		n++
+	}
+	h.cmdOutput(p, fmt.Sprintf("dropped %d users", n))
+	return nil
+}
+
 func (h *Hub) cmdBanIPa(p Peer, ip net.IP) error {
 	if ip == nil {
 		return errors.New("invalid IP format")
@@ -469,6 +511,44 @@ func (h *Hub) cmdListBanIP(p Peer, args string) error {
 		return true
 	})
 	h.cmdOutput(p, buf.String())
+	return nil
+}
+
+func (h *Hub) cmdRedirectUser(p, p2 Peer, args string) error {
+	if _, ok := p2.(*botPeer); ok {
+		return errors.New("refusing to redirect a bot")
+	}
+	addr := args
+	_, err := url.Parse(addr)
+	if err != nil {
+		return fmt.Errorf("an argument must be a valid URL: %q", addr)
+	}
+	if err := p2.Redirect(addr); err != nil {
+		return err
+	}
+	_ = p2.Close()
+	h.cmdOutput(p, "user redirected")
+	return nil
+}
+
+func (h *Hub) cmdRedirectAll(p Peer, args string) error {
+	addr := args
+	_, err := url.Parse(addr)
+	if err != nil {
+		return fmt.Errorf("an argument must be a valid URL: %q", addr)
+	}
+	n := 0
+	for _, p2 := range h.Peers() {
+		if p == p2 {
+			continue
+		} else if _, ok := p2.(*botPeer); ok {
+			continue
+		}
+		_ = p2.Redirect(addr)
+		_ = p2.Close()
+		n++
+	}
+	h.cmdOutput(p, fmt.Sprintf("redirected %d users", n))
 	return nil
 }
 
