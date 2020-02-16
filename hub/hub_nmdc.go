@@ -347,6 +347,8 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		}
 		peer.setUser(user)
 		deadline = time.Now().Add(time.Second * 5)
+	} else if h.IsPrivate() {
+		return errServerIsPrivate
 	}
 
 	_ = c.SetWriteDeadline(deadline)

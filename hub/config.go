@@ -14,6 +14,7 @@ const (
 	ConfigHubWebsite = "hub.website"
 	ConfigHubEmail   = "hub.email"
 	ConfigHubMOTD    = "hub.motd"
+	ConfigHubPrivate = "hub.private"
 )
 
 const (
@@ -31,6 +32,7 @@ var configAliases = map[string]string{
 	"website": ConfigHubWebsite,
 	"email":   ConfigHubEmail,
 	"motd":    ConfigHubMOTD,
+	"private": ConfigHubPrivate,
 }
 
 // configIgnored is a list of ignored config keys that can only be set in the config file.
@@ -45,6 +47,7 @@ var configIgnored = map[string]struct{}{
 	"serve.port":     {},
 	"serve.tls.cert": {},
 	"serve.tls.key":  {},
+	ConfigHubPrivate: {},
 }
 
 func (h *Hub) MergeConfig(m Map) {
@@ -139,6 +142,7 @@ func (h *Hub) ConfigKeys() []string {
 		ConfigHubOwner,
 		ConfigHubWebsite,
 		ConfigHubEmail,
+		ConfigHubPrivate,
 		ConfigZlibLevel,
 		ConfigNMDCRedirectTLS,
 		ConfigNMDCRedirectADC,
@@ -179,7 +183,8 @@ func (h *Hub) GetConfig(key string) (interface{}, bool) {
 			return nil, false
 		}
 		return v, true
-	case ConfigNMDCRedirectTLS,
+	case ConfigHubPrivate,
+		ConfigNMDCRedirectTLS,
 		ConfigNMDCRedirectADC,
 		ConfigADCRedirectTLS:
 		v, ok := h.GetConfigBool(key)
@@ -309,6 +314,8 @@ func (h *Hub) GetConfigBool(key string) (bool, bool) {
 		key = alias
 	}
 	switch key {
+	case ConfigHubPrivate:
+		return h.IsPrivate(), true
 	case ConfigNMDCRedirectTLS:
 		return h.getRedirectNMDCToTLS(), true
 	case ConfigNMDCRedirectADC:

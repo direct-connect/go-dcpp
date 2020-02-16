@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	errNickTaken     = errors.New("nick taken")
-	errConnInsecure  = errors.New("connection is insecure")
-	errCmdInvalidArg = errors.New("invalid argument")
+	errNickTaken       = errors.New("nick taken")
+	errConnInsecure    = errors.New("connection is insecure")
+	errCmdInvalidArg   = errors.New("invalid argument")
+	errServerIsPrivate = errors.New("server is private")
 )
 
 type ErrUnknownProtocol struct {

@@ -122,7 +122,7 @@ func (h *Hub) serveV0Stats(w http.ResponseWriter, r *http.Request) {
 	hd.Set("Content-Type", "application/json")
 
 	qu := r.URL.Query()
-	if qu.Get("users") != "1" {
+	if h.IsPrivate() || qu.Get("users") != "1" {
 		_ = json.NewEncoder(w).Encode(st)
 		return
 	}

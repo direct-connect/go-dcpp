@@ -161,6 +161,9 @@ func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 		// TODO(dennwc): support passwords for IRC
 		unbind()
 		return nil, errors.New("password login is not supported for IRC yet")
+	} else if h.IsPrivate() {
+		unbind()
+		return nil, errServerIsPrivate
 	}
 
 	conn.SetReadDeadline(time.Time{})

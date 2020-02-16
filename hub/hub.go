@@ -26,6 +26,7 @@ type Config struct {
 	Owner            string
 	Website          string
 	Email            string
+	Private          bool
 	Keyprint         string
 	Soft             types.Software
 	MOTD             string
@@ -66,6 +67,7 @@ func NewHub(conf Config) (*Hub, error) {
 		tls:     conf.TLS,
 	}
 	h.conf.Config = conf
+	h.conf.private = conf.Private
 	h.setZlibLevel(-1)
 	if conf.FallbackEncoding != "" {
 		enc, err := htmlindex.Get(conf.FallbackEncoding)
@@ -109,6 +111,8 @@ type Hub struct {
 	closed  chan struct{}
 
 	conf struct {
+		private bool
+
 		sync.RWMutex
 		Config
 		m Map
@@ -169,6 +173,10 @@ func (h *Hub) SetDatabase(db Database) {
 
 func (h *Hub) AddAddress(addr string) {
 	h.addrs = append(h.addrs, addr)
+}
+
+func (h *Hub) IsPrivate() bool {
+	return h.conf.private
 }
 
 func (h *Hub) incShare(v uint64) {
@@ -235,6 +243,7 @@ type Stats struct {
 	Name     string         `json:"name"`
 	Desc     string         `json:"desc,omitempty"`
 	Addr     []string       `json:"addr,omitempty"`
+	Private  bool           `json:"private,omitempty"`
 	Icon     string         `json:"icon,omitempty"`
 	Owner    string         `json:"owner,omitempty"`
 	Website  string         `json:"website,omitempty"`
@@ -271,6 +280,7 @@ func (h *Hub) Stats() Stats {
 		Owner:    h.conf.Owner,
 		Website:  h.conf.Website,
 		Email:    h.conf.Email,
+		Private:  h.conf.Private,
 		Icon:     "icon.png",
 		Users:    users,
 		Share:    uint64(atomic.LoadInt64(&h.peers.share)),

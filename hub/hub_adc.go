@@ -437,6 +437,9 @@ func (h *Hub) adcStageVerify(peer *adcPeer) error {
 	if err != nil {
 		return err
 	} else if user == nil || rec == nil {
+		if h.IsPrivate() {
+			return errServerIsPrivate
+		}
 		return nil
 	}
 	if c := peer.ConnInfo(); c != nil && !c.Secure {

@@ -53,6 +53,7 @@ type Config struct {
 	Website string `yaml:"website"`
 	Email   string `yaml:"email"`
 	MOTD    string `yaml:"motd"`
+	Private bool   `yaml:"private"`
 	Serve   struct {
 		Host string     `yaml:"host"`
 		Port int        `yaml:"port"`
@@ -115,6 +116,7 @@ func init() {
 	}
 	viper.SetConfigName("hub")
 	viper.SetDefault("motd", "Welcome!")
+	viper.SetDefault("private", false)
 	viper.SetDefault("chat.encoding", "cp1251")
 	viper.SetDefault("chat.log.max", 50)
 	viper.SetDefault("chat.log.join", 10)
@@ -182,6 +184,7 @@ func init() {
 			Website:          conf.Website,
 			Email:            conf.Email,
 			MOTD:             conf.MOTD,
+			Private:          conf.Private,
 			FallbackEncoding: conf.Chat.Encoding,
 			ChatLog:          conf.Chat.Log.Max,
 			ChatLogJoin:      conf.Chat.Log.Join,
