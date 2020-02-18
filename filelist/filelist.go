@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/direct-connect/go-dc/tiger"
-	"github.com/direct-connect/go-dcpp/adc/types"
+	"github.com/direct-connect/go-dc/adc/types"
 )
 
 type Dir struct {
