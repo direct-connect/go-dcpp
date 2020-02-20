@@ -44,14 +44,14 @@ func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
 	cntConnNMDCOpen.Add(1)
 	defer cntConnNMDCOpen.Add(-1)
 
+	if cinfo == nil {
+		cinfo = &ConnInfo{Local: conn.LocalAddr(), Remote: conn.RemoteAddr()}
+	}
 	if cinfo.TLSVers != 0 {
 		cntConnNMDCS.Add(1)
 	}
 	if cinfo.ALPN != "" {
 		cntConnAlpnNMDC.Add(1)
-	}
-	if cinfo == nil {
-		cinfo = &ConnInfo{Local: conn.LocalAddr(), Remote: conn.RemoteAddr()}
 	}
 
 	log.Printf("%s: using NMDC", conn.RemoteAddr())
