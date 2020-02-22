@@ -168,10 +168,14 @@ func (r *Room) SendChat(from Peer, m Message) {
 	}
 
 	if r.h.globalChat == r {
-		if !r.h.callOnChat(from, m) {
+		if !r.h.callOnGlobalChat(from, m) {
 			cntChatMsgDropped.Add(1)
 			return
 		}
+	}
+	if !r.h.callOnChat(r, from, m) {
+		cntChatMsgDropped.Add(1)
+		return
 	}
 
 	cntChatMsg.Add(1)

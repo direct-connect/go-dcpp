@@ -61,7 +61,7 @@ func (s *Script) onStartup() {
 
 func (s *Script) setupOnArrival() {
 	if onChat := s.globalFunc("ChatArrival", lua.MultipleReturns); onChat != nil {
-		s.h.OnChat(func(p hub.Peer, m hub.Message) bool {
+		s.h.OnGlobalChat(func(p hub.Peer, m hub.Message) bool {
 			u := s.luaUserArg(p, false)
 
 			msg := hub.ToNMDCChatMsg(p, m)

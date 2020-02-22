@@ -468,7 +468,7 @@ func (s *Script) setupGlobals() {
 		"onChat": func(_ *lua.State) int {
 			fnc := s.ToFunc(1, 1)
 			s.s.Pop(1)
-			s.h.OnChat(func(p hub.Peer, m hub.Message) bool {
+			s.h.OnGlobalChat(func(p hub.Peer, m hub.Message) bool {
 				var out bool
 				fnc.CallRet(func(st *lua.State) {
 					out = s.popBool()

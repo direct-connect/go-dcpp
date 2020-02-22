@@ -732,6 +732,10 @@ func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
 }
 
 func (h *Hub) privateChat(from, to Peer, m Message) {
+	if !h.callOnPM(from, to, m) {
+		cntChatMsgPMDropped.Add(1)
+		return
+	}
 	cntChatMsgPM.Add(1)
 	m.Time = time.Now().UTC()
 	_ = to.PrivateMsg(from, m)

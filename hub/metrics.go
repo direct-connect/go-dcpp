@@ -189,6 +189,10 @@ var (
 		Name: "dc_chat_msg_pm",
 		Help: "The total number of private messages sent",
 	})
+	cntChatMsgPMDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dc_chat_msg_pm_dropped",
+		Help: "The total number of private messages dropped",
+	})
 
 	cntSearch = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "dc_search",
