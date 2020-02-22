@@ -983,10 +983,6 @@ func (p *nmdcPeer) Close() error {
 	return p.closeOn(nil)
 }
 
-func (p *nmdcPeer) flushBuffers(timeout time.Duration) {
-
-}
-
 func (p *nmdcPeer) writer(timeout time.Duration) {
 	defer p.Close()
 	ticker := time.NewTicker(time.Minute / 2)
