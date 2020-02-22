@@ -15,6 +15,7 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 
 	"github.com/direct-connect/go-dc/types"
+	"github.com/direct-connect/go-dcpp/internal/safe"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -154,9 +155,9 @@ type Hub struct {
 		level int32
 	}
 	redirect struct {
-		nmdcToTLS int32
-		nmdcToADC int32
-		adcToTLS  int32
+		nmdcToTLS safe.Bool
+		nmdcToADC safe.Bool
+		adcToTLS  safe.Bool
 	}
 
 	globalChat *Room
@@ -203,40 +204,28 @@ func (h *Hub) setZlibLevel(level int) {
 	atomic.StoreInt32(&h.zlib.level, int32(level))
 }
 
-func setAtomicBool(p *int32, v bool) {
-	var iv int32
-	if v {
-		iv = 1
-	}
-	atomic.StoreInt32(p, iv)
-}
-
-func getAtomicBool(p *int32) bool {
-	return atomic.LoadInt32(p) != 0
-}
-
 func (h *Hub) getRedirectNMDCToTLS() bool {
-	return getAtomicBool(&h.redirect.nmdcToTLS)
+	return h.redirect.nmdcToTLS.Get()
 }
 
 func (h *Hub) getRedirectNMDCToADC() bool {
-	return getAtomicBool(&h.redirect.nmdcToADC)
+	return h.redirect.nmdcToADC.Get()
 }
 
 func (h *Hub) getRedirectADCToTLS() bool {
-	return getAtomicBool(&h.redirect.adcToTLS)
+	return h.redirect.adcToTLS.Get()
 }
 
 func (h *Hub) setRedirectNMDCToTLS(v bool) {
-	setAtomicBool(&h.redirect.nmdcToTLS, v)
+	h.redirect.nmdcToTLS.Set(v)
 }
 
 func (h *Hub) setRedirectNMDCToADC(v bool) {
-	setAtomicBool(&h.redirect.nmdcToADC, v)
+	h.redirect.nmdcToADC.Set(v)
 }
 
 func (h *Hub) setRedirectADCToTLS(v bool) {
-	setAtomicBool(&h.redirect.adcToTLS, v)
+	h.redirect.adcToTLS.Set(v)
 }
 
 type Stats struct {
