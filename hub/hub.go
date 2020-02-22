@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -417,7 +416,7 @@ func (h *Hub) ListenAndServe(addr string) error {
 					h.probableAttack(remote, err)
 				}
 				if n := atomic.AddUint64(&errorsN, 1); n < maxErrorsPerSec {
-					log.Printf("%s: %v", remote, err)
+					h.Logf("%s: %v", remote, err)
 				}
 			}
 		}()
@@ -503,7 +502,7 @@ func (h *Hub) serve(conn net.Conn, cinfo *ConnInfo) error {
 		if proto != "" {
 			cntConnALPN.Add(1)
 			cinfo.ALPN = proto
-			log.Printf("%s: ALPN negotiated %q", tconn.RemoteAddr(), proto)
+			h.Logf("%s: ALPN negotiated %q", tconn.RemoteAddr(), proto)
 		}
 		switch proto {
 		case "nmdc":
@@ -519,7 +518,7 @@ func (h *Hub) serve(conn net.Conn, cinfo *ConnInfo) error {
 			cntConnAlpnHTTP.Add(1)
 			return h.ServeHTTP2(tconn)
 		case "":
-			log.Printf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
+			h.Logf("%s: ALPN not supported, fallback to auto", tconn.RemoteAddr())
 			return h.serve(tconn, cinfo)
 		default:
 			return fmt.Errorf("unsupported protocol: %q", proto)
@@ -700,7 +699,7 @@ func (h *Hub) broadcastTopic(topic string) {
 }
 
 func (h *Hub) broadcastUserJoin(peer Peer, notify []Peer) {
-	log.Printf("%s: connected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
+	h.Logf("%s: connected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {
 		notify = h.Peers()
 	}
@@ -721,7 +720,7 @@ func (h *Hub) broadcastUserUpdate(peer Peer, notify []Peer) {
 }
 
 func (h *Hub) broadcastUserLeave(peer Peer, notify []Peer) {
-	log.Printf("%s: disconnected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
+	h.Logf("%s: disconnected: %s %s", peer.RemoteAddr(), peer.SID(), peer.Name())
 	if notify == nil {
 		notify = h.Peers()
 	}

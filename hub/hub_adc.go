@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"strconv"
@@ -52,7 +51,7 @@ func (h *Hub) ServeADC(conn net.Conn, cinfo *ConnInfo) error {
 		cntConnAlpnADC.Add(1)
 	}
 
-	log.Printf("%s: using ADC", conn.RemoteAddr())
+	h.Logf("%s: using ADC", conn.RemoteAddr())
 	c, err := adc.NewConn(conn)
 	if err != nil {
 		return err
@@ -195,7 +194,7 @@ func (h *Hub) adcHandlePacket(peer *adcPeer, p adcp.Packet) error {
 		return errors.New("invalid packet kind")
 	default:
 		raw, _ := p.Message().(*adcp.RawMessage)
-		log.Printf("%s: adc: %s%s %s", peer.RemoteAddr(), string(p.Kind()), p.Message().Cmd(), string(raw.Data))
+		h.Logf("%s: adc: %s%s %s", peer.RemoteAddr(), string(p.Kind()), p.Message().Cmd(), string(raw.Data))
 		return nil
 	}
 }
@@ -500,7 +499,7 @@ func (h *Hub) adcHub(p *adcp.HubPacket, from Peer) {
 	// TODO: disallow INF, STA and some others
 	err := p.DecodeMessage()
 	if err != nil {
-		log.Printf("cannot parse ADC message: %v", err)
+		h.Logf("cannot parse ADC message: %v", err)
 		return
 	}
 	switch msg := p.Msg.(type) {
@@ -546,7 +545,7 @@ func (h *Hub) adcBroadcast(p *adcp.BroadcastPacket, from *adcPeer) {
 		err = p.DecodeMessage()
 	}
 	if err != nil {
-		log.Printf("cannot parse ADC message: %v", err)
+		h.Logf("cannot parse ADC message: %v", err)
 		return
 	}
 	// TODO: read INF, update peer info
@@ -583,7 +582,7 @@ func (h *Hub) adcDirect(p *adcp.DirectPacket, from *adcPeer) {
 		}
 		err := p.DecodeMessage()
 		if err != nil {
-			log.Printf("cannot parse ADC message: %v", err)
+			h.Logf("cannot parse ADC message: %v", err)
 			return
 		}
 		switch msg := p.Msg.(type) {
@@ -597,7 +596,7 @@ func (h *Hub) adcDirect(p *adcp.DirectPacket, from *adcPeer) {
 	}
 	err := p.DecodeMessage()
 	if err != nil {
-		log.Printf("cannot parse ADC message: %v", err)
+		h.Logf("cannot parse ADC message: %v", err)
 		return
 	}
 	switch msg := p.Msg.(type) {
@@ -849,7 +848,7 @@ func (p *adcPeer) writer(timeout time.Duration) {
 		_ = p.c.SetWriteDeadline(time.Time{})
 		if err != nil {
 			if p.Online() {
-				log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+				p.hub.Logf("%s: write: %v", p.c.RemoteAddr(), err)
 			}
 			return
 		}

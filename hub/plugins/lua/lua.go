@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -68,7 +67,7 @@ func (p *plugin) loadScripts(path string) error {
 	p.scripts = make(map[string]*Script)
 
 	path = filepath.Join(path, "scripts")
-	log.Println("lua: loading scripts in:", path)
+	p.h.Log("lua: loading scripts in:", path)
 	d, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -87,7 +86,7 @@ func (p *plugin) loadScripts(path string) error {
 			if !strings.HasSuffix(name, ".lua") {
 				continue
 			}
-			log.Println("lua: loading script:", name)
+			p.h.Log("lua: loading script:", name)
 			s, err := p.loadScript(filepath.Join(path, name))
 			if err != nil {
 				return fmt.Errorf("lua: %v", err)
@@ -95,7 +94,7 @@ func (p *plugin) loadScripts(path string) error {
 			pname := s.getString("script", "name")
 			vers := s.getString("script", "version")
 			if pname != "" || vers != "" {
-				log.Printf("lua: loaded plugin: %q (v%s)\n",
+				p.h.Logf("lua: loaded plugin: %q (v%s)\n",
 					s.getString("script", "name"),
 					s.getString("script", "version"),
 				)
@@ -272,7 +271,7 @@ func (s *Script) Push(v interface{}) {
 		}
 		// TODO: reflect
 		data, _ := json.Marshal(v)
-		log.Printf("TODO: lua.pushJSON(%T -> %q)", v, string(data))
+		s.h.Logf("TODO: lua.pushJSON(%T -> %q)", v, string(data))
 		var m map[string]interface{}
 		_ = json.Unmarshal(data, &m)
 		s.pushMap(m)

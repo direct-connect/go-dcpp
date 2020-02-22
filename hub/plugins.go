@@ -3,7 +3,6 @@ package hub
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"plugin"
@@ -77,7 +76,7 @@ type plugins struct {
 func (h *Hub) initPlugins() error {
 	for _, name := range pluginsOrder {
 		p := pluginsByName[name]
-		log.Printf("loading plugin: %s (%v)\n", p.Name(), p.Version())
+		h.Logf("loading plugin: %s (%v)\n", p.Name(), p.Version())
 		err := p.Init(h, h.plugins.paths[name])
 		if err != nil {
 			h.stopPlugins()
@@ -92,7 +91,7 @@ func (h *Hub) stopPlugins() {
 	for _, p := range h.plugins.loaded {
 		err := p.Close()
 		if err != nil {
-			log.Printf("error stopping the plugin %s: %v\n", p.Name(), err)
+			h.Logf("error stopping the plugin %s: %v\n", p.Name(), err)
 		}
 	}
 }

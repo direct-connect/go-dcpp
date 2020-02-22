@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
-	"log"
 	"net"
 	"net/http"
 
@@ -42,7 +41,7 @@ func (h *Hub) initHTTP() error {
 	mux.HandleFunc(HTTPInfoPathV0, h.serveV0Stats)
 	mux.Handle("/", http.FileServer(statikFS))
 	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s: http: %s %s (%s)\n",
+		h.Logf("%s: http: %s %s (%s)\n",
 			r.RemoteAddr, r.Method, r.URL, r.Header.Get("User-Agent"),
 		)
 		st := h.Stats()
@@ -73,7 +72,7 @@ func (h *Hub) ServeHTTP1(conn net.Conn) error {
 	cntConnHTTPOpen.Add(1)
 	defer cntConnHTTPOpen.Add(-1)
 
-	log.Printf("%s: using HTTP1", conn.RemoteAddr())
+	h.Logf("%s: using HTTP1", conn.RemoteAddr())
 	// make a fake listener with only one connection
 	closed := make(chan struct{})
 	l := &singleListen{
@@ -93,7 +92,7 @@ func (h *Hub) ServeHTTP2(conn net.Conn) error {
 	cntConnHTTPOpen.Add(1)
 	defer cntConnHTTPOpen.Add(-1)
 
-	log.Printf("%s: using HTTP2", conn.RemoteAddr())
+	h.Logf("%s: using HTTP2", conn.RemoteAddr())
 	h.h2.ServeConn(conn, h.h2conf)
 	return nil
 }

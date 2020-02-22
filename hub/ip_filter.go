@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -145,7 +144,7 @@ func (h *Hub) saveBan(b Ban) {
 }
 
 func (h *Hub) reportAutoBlock(a net.Addr, reason error) {
-	log.Println("blocked:", addrString(a), "reason:", reason)
+	h.OpLog("blocked:", addrString(a), "reason:", reason)
 }
 
 func (h *Hub) probableAttack(a net.Addr, reason error) {
@@ -180,7 +179,7 @@ func (h *Hub) loadBans() error {
 		h.hardBlockKey(BanKey(b.Key))
 	}
 	if len(bans) != 0 {
-		log.Printf("loaded %d bans", len(bans))
+		h.Logf("loaded %d bans", len(bans))
 	}
 	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -54,7 +53,7 @@ func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
 		cntConnAlpnNMDC.Add(1)
 	}
 
-	log.Printf("%s: using NMDC", conn.RemoteAddr())
+	h.Logf("%s: using NMDC", conn.RemoteAddr())
 
 	c, err := nmdc.NewConn(conn)
 	if err != nil {
@@ -75,7 +74,7 @@ func (h *Hub) ServeNMDC(conn net.Conn, cinfo *ConnInfo) error {
 		return true, nil
 	})
 	c.OnUnmarshalError(func(line []byte, err error) (bool, error) {
-		log.Printf("nmdc: failed to unmarshal:\n%q\n", string(line))
+		h.Logf("nmdc: failed to unmarshal:\n%q\n", string(line))
 		return true, err
 	})
 	c.OnRawMessageR(func(cmd, data []byte) (bool, error) {
@@ -546,7 +545,7 @@ func (h *Hub) nmdcServePeer(peer *nmdcPeer) error {
 		if n >= max {
 			countM(cntNMDCCommandsDrop, typ, 1)
 			if n == max {
-				log.Println("flood:", peer.Name(), typ, msg)
+				h.Log("flood:", peer.Name(), typ, msg)
 			}
 			// TODO: temp ban?
 			continue
@@ -704,7 +703,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		countM(cntNMDCCommandsDrop, typ, 1)
 		// TODO
 		data, _ := nmdcp.Marshal(nil, msg)
-		log.Printf("%s: nmdc: %s", peer.RemoteAddr(), string(data))
+		h.Logf("%s: nmdc: %s", peer.RemoteAddr(), string(data))
 		return nil
 	}
 }
@@ -825,7 +824,7 @@ func (h *Hub) sendNMDCTo(p Peer, m nmdcp.Message) error {
 		if np, ok := p.(*nmdcPeer); ok {
 			return np.SendNMDC(m)
 		}
-		log.Printf("TODO: Hub.SendNMDC(%T, %T)", p, m)
+		h.Logf("TODO: Hub.SendNMDC(%T, %T)", p, m)
 		return nil
 	}
 }
@@ -1003,7 +1002,7 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 	logErr := func(err error) {
 		if p.Online() {
 			cntNMDCWriteErr.Add(1)
-			log.Printf("%s: write: %v", p.c.RemoteAddr(), err)
+			p.hub.Logf("%s: write: %v", p.c.RemoteAddr(), err)
 		}
 		return
 	}

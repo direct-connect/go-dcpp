@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -35,7 +34,7 @@ func (h *Hub) ServeIRC(conn net.Conn, cinfo *ConnInfo) error {
 		cinfo = &ConnInfo{Local: conn.LocalAddr(), Remote: conn.RemoteAddr()}
 	}
 
-	log.Printf("%s: using IRC", conn.RemoteAddr())
+	h.Logf("%s: using IRC", conn.RemoteAddr())
 	peer, err := h.ircHandshake(conn, cinfo)
 	if err != nil {
 		return err
@@ -77,7 +76,7 @@ func (h *Hub) ServeIRC(conn net.Conn, cinfo *ConnInfo) error {
 			return nil
 		default:
 			// TODO
-			log.Printf("%s: irc: %s", peer.RemoteAddr(), m)
+			h.Logf("%s: irc: %s", peer.RemoteAddr(), m)
 		}
 	}
 }
@@ -85,8 +84,8 @@ func (h *Hub) ServeIRC(conn net.Conn, cinfo *ConnInfo) error {
 func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 	c := irc.NewConn(conn)
 	if ircDebug {
-		c.Reader.DebugCallback = func(line string) { log.Println("<-", line) }
-		c.Writer.DebugCallback = func(line string) { log.Println("->", line) }
+		c.Reader.DebugCallback = func(line string) { h.Log("<-", line) }
+		c.Writer.DebugCallback = func(line string) { h.Log("->", line) }
 	}
 
 	host, _, _ := net.SplitHostPort(conn.LocalAddr().String())
@@ -291,7 +290,7 @@ waitJoin:
 			}
 			break waitJoin
 		default:
-			log.Println("unknown command:", m)
+			h.Log("unknown command:", m)
 		}
 	}
 	err = peer.writeMessage(&irc.Message{

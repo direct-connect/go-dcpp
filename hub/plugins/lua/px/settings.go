@@ -1,7 +1,6 @@
 package px
 
 import (
-	"log"
 	"strings"
 
 	"github.com/direct-connect/go-dcpp/hub"
@@ -37,7 +36,7 @@ func (s *Script) setupSettings() {
 
 func (s *Script) saveSettings() {
 	// TODO
-	log.Println("TODO: px.SetMan.Save()")
+	s.h.Log("TODO: px.SetMan.Save()")
 }
 
 func (s *Script) getMOTD() string {
@@ -53,7 +52,7 @@ func (s *Script) getBool(id idBool) (bool, bool) {
 	switch id {
 	default:
 		// TODO
-		log.Printf("TODO: px.SetMan.GetBool(%d)", id)
+		s.h.Logf("TODO: px.SetMan.GetBool(%d)", id)
 	}
 	return false, false
 }
@@ -62,7 +61,7 @@ func (s *Script) setBool(id idBool, v bool) {
 	switch id {
 	default:
 		// TODO
-		log.Printf("TODO: px.SetMan.SetBool(%d, %v)", id, v)
+		s.h.Logf("TODO: px.SetMan.SetBool(%d, %v)", id, v)
 	}
 }
 
@@ -70,7 +69,7 @@ func (s *Script) getInt(id idInt) (int, bool) {
 	switch id {
 	default:
 		// TODO
-		log.Printf("TODO: px.SetMan.GetNumber(%d)", id)
+		s.h.Logf("TODO: px.SetMan.GetNumber(%d)", id)
 	}
 	return 0, false
 }
@@ -79,7 +78,7 @@ func (s *Script) setInt(id idInt, v int) {
 	switch id {
 	default:
 		// TODO
-		log.Printf("TODO: px.SetMan.SetNumber(%d, %d)", id, v)
+		s.h.Logf("TODO: px.SetMan.SetNumber(%d, %d)", id, v)
 	}
 }
 
@@ -113,7 +112,7 @@ func (s *Script) getString(id idString) (string, bool) {
 		return "!+/", true
 	default:
 		// TODO
-		log.Printf("TODO: px.SetMan.GetString(%d)", id)
+		s.h.Logf("TODO: px.SetMan.GetString(%d)", id)
 	}
 	return "", false
 }
@@ -130,35 +129,35 @@ func (s *Script) setString(id idString, v string) {
 		s.h.SetConfigString(hub.ConfigHubEmail, v)
 	default:
 		// TODO
-		log.Printf("TODO: px.SetMan.SetString(%d, %q)", id, v)
+		s.h.Logf("TODO: px.SetMan.SetString(%d, %q)", id, v)
 	}
 }
 
 func (s *Script) getMinShare() uint64 {
 	// TODO
-	log.Println("TODO: px.SetMan.GetMinShare()")
+	s.h.Log("TODO: px.SetMan.GetMinShare()")
 	return 0
 }
 
 func (s *Script) setMinShare(v uint64) {
 	// TODO
-	log.Printf("TODO: px.SetMan.SetMinShare(%d)", v)
+	s.h.Logf("TODO: px.SetMan.SetMinShare(%d)", v)
 }
 
 func (s *Script) getMaxShare() uint64 {
 	// TODO
-	log.Println("TODO: px.SetMan.GetMaxShare()")
+	s.h.Log("TODO: px.SetMan.GetMaxShare()")
 	return 0
 }
 
 func (s *Script) setMaxShare(v uint64) {
 	// TODO
-	log.Printf("TODO: px.SetMan.SetMaxShare(%d)", v)
+	s.h.Logf("TODO: px.SetMan.SetMaxShare(%d)", v)
 }
 
 func (s *Script) setHubsSlotsRatio(hubs, slots uint) {
 	// TODO
-	log.Printf("TODO: px.SetMan.SetHubSlotRatio(%d, %d)", hubs, slots)
+	s.h.Logf("TODO: px.SetMan.SetHubSlotRatio(%d, %d)", hubs, slots)
 }
 
 func (s *Script) luaSettingsSave(st *lua.State) int {

@@ -1,8 +1,6 @@
 package px
 
 import (
-	"log"
-
 	"github.com/direct-connect/go-dcpp/hub"
 	hlua "github.com/direct-connect/go-dcpp/hub/plugins/lua"
 
@@ -30,7 +28,7 @@ func (s *Script) setupProfiles() {
 
 func (s *Script) saveProfiles() {
 	// TODO
-	log.Println("TODO: px.ProfMan.Save()")
+	s.h.Log("TODO: px.ProfMan.Save()")
 }
 
 type pxProfile struct {

@@ -1,7 +1,6 @@
 package px
 
 import (
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -83,22 +82,22 @@ type core struct {
 
 func (s *Script) restart() {
 	// TODO
-	log.Print("TODO: px.Core.Restart()")
+	s.h.Log("TODO: px.Core.Restart()")
 }
 
 func (s *Script) shutdown() {
 	// TODO
-	log.Print("TODO: px.Core.Shutdown()")
+	s.h.Log("TODO: px.Core.Shutdown()")
 }
 
 func (s *Script) resumeAccepts() {
 	// TODO
-	log.Print("TODO: px.Core.ResumeAccepts()")
+	s.h.Log("TODO: px.Core.ResumeAccepts()")
 }
 
 func (s *Script) suspendAccepts(dt time.Duration) {
 	// TODO
-	log.Printf("TODO: px.Core.SuspendAccepts(%v)", dt)
+	s.h.Logf("TODO: px.Core.SuspendAccepts(%v)", dt)
 }
 
 type pxBot struct {
@@ -151,7 +150,7 @@ func (s *Script) regBot(name, desc, email string, op bool) (*pxBot, error) {
 
 func (s *Script) regBotInfo(name, myinfo string, op bool) (*pxBot, error) {
 	// TODO: parse MyINFO
-	log.Printf("TODO: px.Core.RegBot(%q, %q, %v)", name, myinfo, op)
+	s.h.Logf("TODO: px.Core.RegBot(%q, %q, %v)", name, myinfo, op)
 
 	b, err := s.regBotName(name, "", "")
 	if err != nil {
@@ -173,7 +172,7 @@ func (s *Script) unregBot(name string) bool {
 
 func (s *Script) bots() []*pxBot {
 	// TODO: should it include bots from other scripts? hub bot? op chat?
-	log.Print("TODO: px.Core.GetBots()")
+	s.h.Log("TODO: px.Core.GetBots()")
 	var bots []*pxBot
 	s.core.RLock()
 	for _, b := range s.core.bots {
@@ -185,7 +184,7 @@ func (s *Script) bots() []*pxBot {
 
 func (s *Script) actualUsersPeak() int {
 	// TODO
-	log.Print("TODO: px.Core.GetActualUsersPeak()")
+	s.h.Log("TODO: px.Core.GetActualUsersPeak()")
 	return 0
 }
 
@@ -206,7 +205,7 @@ func (s *Script) hubIP() string {
 	}
 	// TODO: check if this is correct
 	host, _, _ := net.SplitHostPort(addr)
-	log.Printf("TODO: px.Core.GetHubIP() = %q", host)
+	s.h.Logf("TODO: px.Core.GetHubIP() = %q", host)
 	return host
 }
 
@@ -223,19 +222,19 @@ func (s *Script) hubIPs() []string {
 		}
 	}
 	// TODO: check if this is correct
-	log.Printf("TODO: px.Core.GetHubIPs() = %q", ips)
+	s.h.Logf("TODO: px.Core.GetHubIPs() = %q", ips)
 	return ips
 }
 
 func (s *Script) hubAliasSec() string {
 	// TODO
-	log.Println("TODO: px.Core.GetHubSecAlias()")
+	s.h.Log("TODO: px.Core.GetHubSecAlias()")
 	return ""
 }
 
 func (s *Script) pxPath() string {
 	// TODO
-	log.Println("TODO: px.Core.GetPtokaXPath()")
+	s.h.Log("TODO: px.Core.GetPtokaXPath()")
 	return ""
 }
 

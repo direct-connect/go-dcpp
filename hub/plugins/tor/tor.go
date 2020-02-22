@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -56,7 +55,7 @@ func (p *plugin) Init(h *hub.Hub, path string) error {
 }
 
 func (p *plugin) startTor() error {
-	log.Println("Tor version:", ltor.ProviderVersion())
+	p.h.Log("Tor version:", ltor.ProviderVersion())
 
 	torDir := filepath.Join(p.path, torDir)
 	if _, err := os.Stat(torDir); os.IsNotExist(err) {
@@ -100,7 +99,7 @@ func (p *plugin) listenAndServe() error {
 			return err
 		}
 		key = k
-		log.Printf("Loaded Tor private key: %s\n", keyFile)
+		p.h.Logf("Loaded Tor private key: %s\n", keyFile)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -121,12 +120,12 @@ func (p *plugin) listenAndServe() error {
 			if err != nil {
 				return err
 			}
-			log.Printf("Saved Tor private key: %s\n", keyFile)
+			p.h.Logf("Saved Tor private key: %s\n", keyFile)
 		}
 	}
 	p.onion = onion
 	addr := fmt.Sprintf("%v.onion:%d", onion.ID, torPort)
-	log.Printf("Tor address: %s\n", addr)
+	p.h.Logf("Tor address: %s\n", addr)
 	p.h.AddAddress(addr)
 	go p.serve(onion)
 	return nil
@@ -136,13 +135,13 @@ func (p *plugin) serve(l net.Listener) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println("tor:", err)
+			p.h.Log("tor:", err)
 			return
 		}
 		go func() {
 			defer conn.Close()
 			if err := p.h.Serve(conn); err != nil {
-				log.Println("tor:", err)
+				p.h.Log("tor:", err)
 			}
 		}()
 	}
@@ -150,12 +149,12 @@ func (p *plugin) serve(l net.Listener) {
 
 func (p *plugin) Close() error {
 	if p.onion != nil {
-		log.Println("tor: stopping service")
+		p.h.Log("tor: stopping service")
 		_ = p.onion.Close()
 		p.onion = nil
 	}
 	if p.tor != nil {
-		log.Println("tor: stopping node")
+		p.h.Log("tor: stopping node")
 		_ = p.tor.Close()
 		p.tor = nil
 	}
