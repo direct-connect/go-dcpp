@@ -177,6 +177,10 @@ var (
 		Name: "dc_chat_rooms",
 		Help: "The number of active chat rooms",
 	})
+	cntChatRoomsPrivate = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "dc_chat_rooms_private",
+		Help: "The number of private chat rooms",
+	})
 	cntChatMsg = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "dc_chat_msg",
 		Help: "The total number of chat messages sent",

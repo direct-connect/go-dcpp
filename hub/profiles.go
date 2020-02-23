@@ -31,19 +31,21 @@ func DefaultProfiles() map[string]Map {
 			ProfileParent: ProfileNameRegistered,
 			FlagOpIcon:    true,
 
-			PermRoomsList: true,
-			PermBroadcast: true,
-			PermDrop:      true,
-			PermRegister:  true,
-			PermRedirect:  true,
-			PermIP:        true,
-			PermBanIP:     true,
+			PermRoomsList:   true,
+			PermBroadcast:   true,
+			PermRoomsOpChat: true,
+			PermDrop:        true,
+			PermRegister:    true,
+			PermRedirect:    true,
+			PermIP:          true,
+			PermBanIP:       true,
 		},
 		ProfileNameRegistered: {
 			ProfileParent: ProfileNameGuest,
 			FlagRegIcon:   true,
 
 			PermRoomsJoin: true,
+			PermRoomsNew:  true,
 		},
 		ProfileNameGuest: {},
 	}

@@ -79,10 +79,19 @@ func NewHub(conf Config) (*Hub, error) {
 	h.peers.reserved = make(map[nameKey]struct{})
 	h.peers.byName = make(map[nameKey]Peer)
 	h.peers.bySID = make(map[SID]Peer)
-	h.rooms.init()
-	h.globalChat = h.newRoom("")
 
+	h.rooms.init()
+	h.globalChat = h.newRoomSys("", "")
 	var err error
+	h.opChat, err = h.NewPermRoom("OpChat", PermRoomsOpChat)
+	if err != nil {
+		panic(err)
+	}
+	h.OnPermJoined(PermRoomsOpChat, func(p Peer) bool {
+		h.opChat.Join(p)
+		return true
+	})
+
 	h.hubUser, err = h.newBot(conf.Name, conf.Desc, conf.Email, UserHub, conf.Soft)
 	if err != nil {
 		return nil, err
@@ -160,6 +169,7 @@ type Hub struct {
 	}
 
 	globalChat *Room
+	opChat     *Room
 	rooms      rooms
 	plugins    plugins
 	hooks      hooks

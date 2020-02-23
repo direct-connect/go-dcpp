@@ -39,8 +39,10 @@ type CommandFunc = func(p Peer, args string) error
 type RawCmd string
 
 const (
-	PermRoomsJoin = "rooms.join"
-	PermRoomsList = "rooms.list"
+	PermRoomsJoin   = "rooms.join"
+	PermRoomsNew    = "rooms.new"
+	PermRoomsList   = "rooms.list"
+	PermRoomsOpChat = "rooms.opchat"
 
 	PermBroadcast       = "hub.broadcast"
 	PermConfigWrite     = "config.write"
@@ -359,16 +361,18 @@ func (h *Hub) cmdRegisterUser(p Peer, args string) error {
 
 func (h *Hub) cmdJoin(p Peer, args string) error {
 	name := args
-	if !strings.HasPrefix(name, "#") {
-		return errors.New("room name should start with '#'")
-	}
 	r := h.Room(name)
 	if r == nil {
+		if !p.User().HasPerm(PermRoomsNew) {
+			return ErrCantJoinRoom
+		}
 		var err error
 		r, err = h.NewRoom(name)
 		if err != nil {
 			return err
 		}
+	} else if !r.CanJoin(p) {
+		return ErrCantJoinRoom
 	}
 	r.Join(p)
 	return nil
@@ -376,9 +380,6 @@ func (h *Hub) cmdJoin(p Peer, args string) error {
 
 func (h *Hub) cmdLeave(p Peer, args string) error {
 	name := args
-	if !strings.HasPrefix(name, "#") {
-		return errors.New("room name should start with '#'")
-	}
 	r := h.Room(name)
 	if r == nil {
 		return nil
@@ -388,12 +389,13 @@ func (h *Hub) cmdLeave(p Peer, args string) error {
 }
 
 func (h *Hub) cmdRooms(p Peer, args string) error {
-	list := h.Rooms()
+	list := h.RoomsFor(p)
 	buf := bytes.NewBuffer(nil)
 	buf.WriteString("available chat rooms:\n")
 	for _, r := range list {
 		buf.WriteString(r.Name() + "\n")
 	}
+	h.cmdOutput(p, buf.String())
 	return nil
 }
 

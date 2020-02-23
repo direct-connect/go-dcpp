@@ -5,8 +5,8 @@ import (
 	"encoding/xml"
 	"io"
 
-	"github.com/direct-connect/go-dc/tiger"
 	"github.com/direct-connect/go-dc/adc/types"
+	"github.com/direct-connect/go-dc/tiger"
 )
 
 type Dir struct {

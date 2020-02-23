@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	ErrRoomExists = errors.New("room already exists")
+	ErrRoomExists   = errors.New("room already exists")
+	ErrCantJoinRoom = errors.New("cannot join the room")
 )
 
 type Message struct {
@@ -21,64 +22,122 @@ type Message struct {
 
 type rooms struct {
 	sync.RWMutex
-	byName map[string]*Room
+	byName map[nameKey]*Room
 	bySID  map[SID]*Room
 }
 
+func roomKey(name string) nameKey {
+	if name == "" {
+		return ""
+	}
+	if name[0] == '#' {
+		name = name[1:]
+	}
+	name = strings.ToLower(name)
+	return nameKey(name)
+}
+
 func (r *rooms) init() {
-	r.byName = make(map[string]*Room)
+	r.byName = make(map[nameKey]*Room)
 	r.bySID = make(map[SID]*Room)
 }
 
-func (h *Hub) newRoom(name string) *Room {
+func (h *Hub) newRoomSys(name string, perm string) *Room {
 	cntChatRooms.Add(1)
+	if perm != "" {
+		cntChatRoomsPrivate.Add(1)
+	}
 	r := &Room{
 		h: h, name: name, sid: h.nextSID(),
+		perm:  perm,
 		peers: make(map[Peer]struct{}),
 	}
 	r.log.limit = h.conf.ChatLog
 	return r
 }
 
-func (h *Hub) NewRoom(name string) (*Room, error) {
-	if !strings.HasPrefix(name, "#") {
-		return nil, errors.New("room name should start with '#'")
+func (h *Hub) newRoom(name string, perm string) (*Room, error) {
+	key := roomKey(name)
+	if len(name) != 0 && name[0] != '#' {
+		name = "#" + name
 	}
 	h.rooms.RLock()
-	_, ok := h.rooms.byName[name]
+	_, ok := h.rooms.byName[key]
 	h.rooms.RUnlock()
 	if ok {
 		return nil, ErrRoomExists
 	}
 	h.rooms.Lock()
-	_, ok = h.rooms.byName[name]
+	_, ok = h.rooms.byName[key]
 	if ok {
 		h.rooms.Unlock()
 		return nil, ErrRoomExists
 	}
-	r := h.newRoom(name)
-	h.rooms.byName[name] = r
+	r := h.newRoomSys(name, perm)
+	r.perm = perm
+	h.rooms.byName[key] = r
 	h.rooms.bySID[r.sid] = r
 	h.rooms.Unlock()
 	h.Logf("new room: %q", name)
 	return r, nil
 }
 
+// NewRoom creates a new public room with a given name.
+func (h *Hub) NewRoom(name string) (*Room, error) {
+	return h.newRoom(name, "")
+}
+
+// NewPrivateRoom creates a new private room. It cannot be entered by anyone except the owner.
+// It's the caller's responsibility to add users to this kind of room.
+func (h *Hub) NewPrivateRoom(name string) (*Room, error) {
+	return h.newRoom(name, "-")
+}
+
+// NewPermRoom creates a new private room that can be accessed by anyone with a given permission.
+func (h *Hub) NewPermRoom(name string, perm string) (*Room, error) {
+	return h.newRoom(name, perm)
+}
+
+// Room finds a room with a given name. It returns nil if room doesn't exist.
+// This function won't be able to retrieve the global chat. See GlobalChatRoom for this.
 func (h *Hub) Room(name string) *Room {
+	if len(name) == 0 {
+		return nil
+	}
+	key := roomKey(name)
 	h.rooms.RLock()
-	r := h.rooms.byName[name]
+	r := h.rooms.byName[key]
 	h.rooms.RUnlock()
 	return r
 }
 
+// GlobalChatRoom returns a global chat room that all users join by default when entering the hub.
+func (h *Hub) GlobalChatRoom() *Room {
+	return h.globalChat
+}
+
+// Rooms returns a list of all rooms that exist on the hub. It won't list the global chat.
+// This function returns all rooms regardless of user's permissions. Use RoomsFor to get a filtered list.
 func (h *Hub) Rooms() []*Room {
 	h.rooms.RLock()
 	defer h.rooms.RUnlock()
-	list := make([]*Room, len(h.rooms.byName))
+	list := make([]*Room, 0, len(h.rooms.byName))
 	for _, r := range h.rooms.byName {
 		list = append(list, r)
 	}
 	return list
+}
+
+// RoomsFor returns a list of all rooms that are accessible by the peer. It won't list the global chat.
+func (h *Hub) RoomsFor(p Peer) []*Room {
+	rooms := h.Rooms()
+	var out []*Room
+	for _, r := range rooms {
+		if r.CanJoin(p) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func (h *Hub) roomBySID(sid SID) *Room {
@@ -92,6 +151,7 @@ type Room struct {
 	h    *Hub
 	name string
 	sid  SID
+	perm string
 
 	lmu sync.RWMutex
 	log chatBuffer
@@ -104,10 +164,17 @@ func (r *Room) SID() SID {
 	return r.sid
 }
 
+// Name returns a room name.
 func (r *Room) Name() string {
 	return r.name
 }
 
+// IsPrivate reports if a room is private.
+func (r *Room) IsPrivate() bool {
+	return r.perm != ""
+}
+
+// Users returns the number of users currently in the room.
 func (r *Room) Users() int {
 	r.pmu.RLock()
 	n := len(r.peers)
@@ -115,6 +182,7 @@ func (r *Room) Users() int {
 	return n
 }
 
+// InRoom checks if the peer is already in this room.
 func (r *Room) InRoom(p Peer) bool {
 	r.pmu.RLock()
 	_, ok := r.peers[p]
@@ -122,6 +190,23 @@ func (r *Room) InRoom(p Peer) bool {
 	return ok
 }
 
+// CanJoin checks if the peer can access the room.
+func (r *Room) CanJoin(p Peer) bool {
+	if !r.IsPrivate() {
+		return true
+	}
+	u := p.User()
+	if u.IsOwner() {
+		return true
+	}
+	if r.perm != "" && u.HasPerm(r.perm) {
+		return true
+	}
+	// TODO(dennwc): invites
+	return r.InRoom(p)
+}
+
+// Peers returns a list of peers currently in the room.
 func (r *Room) Peers() []Peer {
 	r.pmu.RLock()
 	list := make([]Peer, 0, len(r.peers))
@@ -132,6 +217,7 @@ func (r *Room) Peers() []Peer {
 	return list
 }
 
+// Join adds the peer to the room. It will not run any additional checks. See CanJoin for this.
 func (r *Room) Join(p Peer) {
 	r.pmu.Lock()
 	_, ok := r.peers[p]
@@ -148,6 +234,7 @@ func (r *Room) Join(p Peer) {
 	}
 }
 
+// Leave removes the peer from the room.
 func (r *Room) Leave(p Peer) {
 	r.pmu.Lock()
 	_, ok := r.peers[p]
@@ -160,6 +247,7 @@ func (r *Room) Leave(p Peer) {
 	}
 }
 
+// SendChat sends chat message to the room.
 func (r *Room) SendChat(from Peer, m Message) {
 	m.Time = time.Now().UTC()
 	if m.Name == "" {
@@ -190,6 +278,7 @@ func (r *Room) SendChat(from Peer, m Message) {
 	}
 }
 
+// ReplayChat replays the chat log from this room to a given peer.
 func (r *Room) ReplayChat(to Peer, n int) {
 	if r.h.conf.ChatLog <= 0 {
 		return

@@ -63,11 +63,30 @@ func (h *Hub) OnJoined(fnc func(p Peer) bool) {
 	h.hooks.Unlock()
 }
 
+// OnPermJoined is an analog of OnJoined, but triggers only when a user with a specified permission joins.
+func (h *Hub) OnPermJoined(perm string, fnc func(p Peer) bool) {
+	h.OnJoined(func(p Peer) bool {
+		if !p.User().HasPerm(perm) {
+			return true
+		}
+		return fnc(p)
+	})
+}
+
 // OnLeave is triggered when the peer disconnects from the hub, after he was unregistered from the users list.
 func (h *Hub) OnLeave(fnc func(p Peer)) {
 	h.hooks.Lock()
 	h.hooks.onLeave = append(h.hooks.onLeave, fnc)
 	h.hooks.Unlock()
+}
+
+// OnPermLeave is an analog of OnLeave, but triggers only when a user with a specified permission leaves.
+func (h *Hub) OnPermLeave(perm string, fnc func(p Peer)) {
+	h.OnLeave(func(p Peer) {
+		if p.User().HasPerm(perm) {
+			fnc(p)
+		}
+	})
 }
 
 // OnGlobalChat is triggered when the message is sent in the global chat.
