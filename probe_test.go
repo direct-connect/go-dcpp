@@ -24,7 +24,9 @@ func TestProbe(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
+		c := c
 		t.Run(c.addr, func(t *testing.T) {
+			t.Parallel()
 			u, err := Probe(context.Background(), c.addr)
 			if err != nil {
 				t.Fatal(err)
