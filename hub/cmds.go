@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode"
@@ -605,18 +606,29 @@ func (h *Hub) cmdRedirectAll(p Peer, args string) error {
 	if err != nil {
 		return fmt.Errorf("an argument must be a valid URL: %q", addr)
 	}
-	n := 0
-	for _, p2 := range h.Peers() {
+	peers := h.Peers()
+	h.cmdOutput(p, fmt.Sprintf("redirecting %d users to %q...", len(peers), addr))
+	h.OpLogf("%s redirected %d users to %q", p.Name(), len(peers), addr)
+
+	var wg sync.WaitGroup
+	for _, p2 := range peers {
 		if p == p2 {
 			continue
 		} else if IsBot(p2) {
 			continue
 		}
-		_ = p2.Redirect(addr)
-		_ = p2.Close()
-		n++
+		p2 := p2
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = p2.Redirect(addr)
+			_ = p2.Close()
+		}()
 	}
-	h.cmdOutput(p, fmt.Sprintf("redirected %d users", n))
+	go func() {
+		wg.Wait()
+		h.cmdOutput(p, fmt.Sprintf("done redirecting %d users", len(peers)))
+	}()
 	return nil
 }
 
