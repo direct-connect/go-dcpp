@@ -198,7 +198,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 	}
 
 	// if configured, redirect connections to ADC
-	if h.getRedirectNMDCToTLS() {
+	if h.getRedirectNMDCToADC() {
 		proto := "adc://"
 		// account for currently set TLS redirects
 		if cinfo.Secure || h.getRedirectNMDCToTLS() || h.getRedirectADCToTLS() {
