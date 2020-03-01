@@ -119,7 +119,7 @@ func (h *Hub) adcHandshake(c *adc.Conn, cinfo *ConnInfo) (*adcPeer, error) {
 		_ = peer.Close()
 		return nil, err
 	}
-	if h.conf.ChatLogJoin != 0 {
+	if h.conf.ChatLogJoin != 0 && h.getGlobalChatEnabled() {
 		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
 	}
 	return peer, nil
@@ -554,6 +554,9 @@ func (h *Hub) adcBroadcast(p *adcp.BroadcastPacket, from *adcPeer) {
 	switch msg := p.Msg.(type) {
 	case adcp.ChatMessage:
 		if h.isCommand(from, msg.Text) {
+			return
+		}
+		if !h.getGlobalChatEnabled() {
 			return
 		}
 		h.globalChat.SendChat(from, Message{

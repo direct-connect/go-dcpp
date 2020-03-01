@@ -65,6 +65,9 @@ func (h *Hub) ServeIRC(conn net.Conn, cinfo *ConnInfo) error {
 			}
 			dst, msg := m.Params[0], m.Params[1]
 			if dst == ircHubChan {
+				if !h.getGlobalChatEnabled() {
+					return nil
+				}
 				h.globalChat.SendChat(peer, Message{Text: msg})
 			} else if dst := h.PeerByName(dst); dst != nil {
 				h.privateChat(peer, dst, Message{

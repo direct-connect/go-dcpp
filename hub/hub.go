@@ -69,6 +69,7 @@ func NewHub(conf Config) (*Hub, error) {
 	h.conf.Config = conf
 	h.conf.private = conf.Private
 	h.setZlibLevel(-1)
+	h.setGlobalChatEnabled(true) // TODO(dennwc): read from the config
 	if conf.FallbackEncoding != "" {
 		enc, err := htmlindex.Get(conf.FallbackEncoding)
 		if err != nil {
@@ -168,13 +169,15 @@ type Hub struct {
 		adcToTLS  safe.Bool
 	}
 
+	global     safe.Bool
 	globalChat *Room
 	opChat     *Room
 	rooms      rooms
-	plugins    plugins
-	hooks      hooks
-	bans       bans
-	profiles   profiles
+
+	plugins  plugins
+	hooks    hooks
+	bans     bans
+	profiles profiles
 }
 
 func (h *Hub) SetDatabase(db Database) {
@@ -211,6 +214,14 @@ func (h *Hub) setZlibLevel(level int) {
 		level = 9
 	}
 	atomic.StoreInt32(&h.zlib.level, int32(level))
+}
+
+func (h *Hub) getGlobalChatEnabled() bool {
+	return !h.global.Get()
+}
+
+func (h *Hub) setGlobalChatEnabled(v bool) {
+	h.global.Set(!v)
 }
 
 func (h *Hub) getRedirectNMDCToTLS() bool {

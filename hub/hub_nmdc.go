@@ -290,7 +290,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 	// notify other users about the new one
 	h.broadcastUserJoin(peer, list)
 
-	if h.conf.ChatLogJoin != 0 {
+	if h.conf.ChatLogJoin != 0 && h.getGlobalChatEnabled() {
 		h.globalChat.ReplayChat(peer, h.conf.ChatLogJoin)
 	}
 
@@ -567,6 +567,9 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			return errors.New("invalid name in the chat message")
 		}
 		if h.isCommand(peer, msg.Text) {
+			return nil
+		}
+		if !h.getGlobalChatEnabled() {
 			return nil
 		}
 		m := Message{

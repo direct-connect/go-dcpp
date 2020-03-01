@@ -15,6 +15,8 @@ const (
 	ConfigHubEmail   = "hub.email"
 	ConfigHubMOTD    = "hub.motd"
 	ConfigHubPrivate = "hub.private"
+
+	ConfigChatGlobalEnabled = "chat.global.enabled"
 )
 
 const (
@@ -143,6 +145,7 @@ func (h *Hub) ConfigKeys() []string {
 		ConfigHubWebsite,
 		ConfigHubEmail,
 		ConfigHubPrivate,
+		ConfigChatGlobalEnabled,
 		ConfigZlibLevel,
 		ConfigNMDCRedirectTLS,
 		ConfigNMDCRedirectADC,
@@ -184,6 +187,7 @@ func (h *Hub) GetConfig(key string) (interface{}, bool) {
 		}
 		return v, true
 	case ConfigHubPrivate,
+		ConfigChatGlobalEnabled,
 		ConfigNMDCRedirectTLS,
 		ConfigNMDCRedirectADC,
 		ConfigADCRedirectTLS:
@@ -293,6 +297,8 @@ func (h *Hub) setConfigBool(key string, val bool) {
 		return
 	}
 	switch key {
+	case ConfigChatGlobalEnabled:
+		h.setGlobalChatEnabled(val)
 	case ConfigNMDCRedirectTLS:
 		h.setRedirectNMDCToTLS(val)
 	case ConfigNMDCRedirectADC:
@@ -316,6 +322,8 @@ func (h *Hub) GetConfigBool(key string) (bool, bool) {
 	switch key {
 	case ConfigHubPrivate:
 		return h.IsPrivate(), true
+	case ConfigChatGlobalEnabled:
+		return h.getGlobalChatEnabled(), true
 	case ConfigNMDCRedirectTLS:
 		return h.getRedirectNMDCToTLS(), true
 	case ConfigNMDCRedirectADC:
