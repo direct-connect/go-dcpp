@@ -128,8 +128,8 @@ func (h *Hub) HardBlockIP(ip net.IP) {
 
 func (h *Hub) HardUnBlockIP(ip net.IP) {
 	key := MinIPKey(ip)
-	h.bans.blockKey(key)
-	h.saveBan(Ban{Key: key, Hard: true})
+	h.bans.unblockKey(key)
+	h.delBan(key)
 }
 
 func (h *Hub) hardBlockKey(k BanKey) {
@@ -141,6 +141,13 @@ func (h *Hub) saveBan(b Ban) {
 		return
 	}
 	_ = h.db.PutBans([]Ban{b})
+}
+
+func (h *Hub) delBan(k BanKey) {
+	if h.db == nil {
+		return
+	}
+	_ = h.db.DelBans([]BanKey{k})
 }
 
 func (h *Hub) reportAutoBlock(a net.Addr, reason error) {
