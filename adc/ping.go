@@ -43,6 +43,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		// TODO: some hubs will stop the handshake after sending the hub info
 		//       if this extension is specified
 		adc.FeaPING: true,
+		adc.FeaTCP4: true,
 
 		adc.FeaUCMD: true,
 		adc.FeaUCM0: true,

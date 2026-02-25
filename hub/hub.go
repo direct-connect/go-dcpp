@@ -118,7 +118,7 @@ func NewHub(conf Config, v *viper.Viper) (*Hub, error) {
 	h.rooms.init()
 	h.globalChat = h.newRoomSys("", "")
 	var err error
-	h.opChat, err = h.NewPermRoom(conf.OpChatName, PermRoomsOpChat)
+	h.opChat, err = h.NewPermRoom(conf.OpChatName, PermRoomsOpChat) // todo: has connection 1
 
 	if err != nil {
 		panic(err)
