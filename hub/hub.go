@@ -118,7 +118,8 @@ func NewHub(conf Config, v *viper.Viper) (*Hub, error) {
 	h.rooms.init()
 	h.globalChat = h.newRoomSys("", "")
 	var err error
-	h.opChat, err = h.NewPermRoom(conf.OpChatName, PermRoomsOpChat) // todo: has connection 1
+	// TODO: opchat has connection "1", possibly incorrectly parsed connection/status byte
+	h.opChat, err = h.NewPermRoom(conf.OpChatName, PermRoomsOpChat)
 
 	if err != nil {
 		panic(err)
@@ -299,9 +300,9 @@ type Stats struct {
 	OpChatName string       `json:"opchatname,omitempty"`
 	OpChatDesc string       `json:"opchatdesc,omitempty"`
 	Users    int            `json:"users"`
-	MaxUsers int            `json:"max-users,omitempty"`
+	MaxUsers int            `json:"max-users,omitempty"` // MB
 	Share    uint64         `json:"share"`
-	Shared   string         `json:"shared"`
+	Shared   string         `json:"shared"` // a human-readable version of Share
 	Enc      string         `json:"encoding,omitempty"`
 	Soft     types.Software `json:"soft"`
 	Uptime   uint64         `json:"uptime,omitempty"`
@@ -475,9 +476,7 @@ func (h *Hub) getUsers() int {
 }
 
 func (h *Hub) getShare() uint64 {
-	h.peers.RLock()
 	shar := uint64(atomic.LoadInt64(&h.peers.share) * shareDiv)
-	h.peers.RUnlock()
 	return shar
 }
 
@@ -507,7 +506,7 @@ func (h *Hub) getTextMOTD() string {
 		motd = h.conf.Topic
 	}
 
-	h.conf.RUnlock()
+	h.conf.RUnlock() // TODO: now that it has ReadFile, it might be worth deferring the RUnlock
 	return motd
 }
 
@@ -975,7 +974,7 @@ func (h *Hub) privateChat(from, to Peer, m Message) {
 }
 
 func byteToHuman(b uint64) string {
-	const unit = 1024 // todo: bits is 1000
+	const unit = 1024 // TODO: bits is 1000
 
 	if b < unit {
 		return fmt.Sprintf("%d B", b)
@@ -988,7 +987,7 @@ func byteToHuman(b uint64) string {
 		exp++
 	}
 
-	return fmt.Sprintf("%.2f %ciB", float64(b) / float64(div), "KMGTPE"[exp]) // todo: number of decimals, optional speed suffix
+	return fmt.Sprintf("%.2f %ciB", float64(b) / float64(div), "KMGTPE"[exp]) // TODO: number of decimals, optional speed suffix
 }
 
 func (h *Hub) replaceVars(peer Peer, data string) string {
@@ -999,7 +998,7 @@ func (h *Hub) replaceVars(peer Peer, data string) string {
 		"OWNER":   h.getOwner(),
 		"WEB":     h.getWebsite(),
 		"EMAIL":   h.getEmail(),
-		"USERS":   strconv.FormatInt(int64(h.getUsers()), 10),
+		"USERS":   strconv.Itoa(h.getUsers()),
 		"SHARE":   byteToHuman(h.getShare()),
 		"UPTIME":  h.fixUptime(h.Uptime().String()),
 		"APP":     version.HubName,
@@ -1027,7 +1026,7 @@ func (h *Hub) replaceVars(peer Peer, data string) string {
 	}
 
 	r := strings.NewReplacer(vars...)
-	return r.Replace(data) // strings.Replace(data, "%[HUB_NAME]", h.getName(), -1)
+	return r.Replace(data)
 }
 
 func (h *Hub) sendMOTD(peer Peer) error {

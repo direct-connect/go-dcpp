@@ -247,7 +247,7 @@ func init() {
 			Addr:             addr,
 			TLS:              tlsConf,
 			Keyprint:         kp,
-		}, confManager)
+		}, confManager) // TODO: this shouldnt have a dependency on viper, it might be better to pass required fields as a part of the config
 		if err != nil {
 			return err
 		}

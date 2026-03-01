@@ -185,7 +185,7 @@ func (db *tupleDatabase) createUsersV2(ctx context.Context, tx tuple.Tx) error {
 	return db.createTable(ctx, tx, tuple.Header{
 		Name: tableUsers,
 		Key: []tuple.KeyField{
-			{Name: "id", Type: values.UIntType{}, Auto: true}, // todo: create same for chat history
+			{Name: "id", Type: values.UIntType{}, Auto: true}, // TODO: create same for chat history
 		},
 		Data: []tuple.Field{
 			{Name: "name", Type: values.StringType{}},

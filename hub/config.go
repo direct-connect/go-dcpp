@@ -98,7 +98,8 @@ func (h *Hub) saveConfig(key string, val interface{}) {
 	}
 
 	confManager.Set(key, val)
-	confManager.WriteConfig(); // todo: check error
+	confManager.WriteConfig();
+	// TODO: instead of requiring viper, we can just pass SetConfigFunc func(k, v string) error
 }
 
 func (h *Hub) setConfigManager(v *viper.Viper) {

@@ -150,7 +150,7 @@ func (h *Hub) roomBySID(sid SID) *Room {
 type Room struct {
 	h    *Hub
 	name string
-	desc string // todo: actually use it
+	desc string // TODO: actually use it
 	sid  SID
 	perm string
 

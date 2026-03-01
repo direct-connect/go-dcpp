@@ -226,7 +226,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 
 	peer := newNMDC(h, cinfo, c, fea, nick, addr.IP)
 
-	if peer.fea.Has(nmdcp.ExtBotINFO) { // its a pinger
+	if peer.fea.Has(nmdcp.ExtBotINFO) { // it's a pinger - don't bother binding the nickname
 		cntPings.Add(1)
 		cntPingsNMDC.Add(1)
 		peer.fea.Set(nmdcp.ExtHubINFO)

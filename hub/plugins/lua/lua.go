@@ -63,7 +63,7 @@ func (p *plugin) Init(h *hub.Hub, path string) error {
 
 	h.RegisterCommand(hub.Command{
 		Menu: []string{"Load Lua script"},
-		Name: "luaload", Aliases: []string{"luaon"},
+		Name: "luaload", Aliases: []string{"luaon"}, // TODO: maybe namespace these commands? like lua.load, etc
 		Short: "Load Lua script",
 		Require: hub.PermOwner,
 		Func:  p.cmdLuaLoad,
@@ -104,7 +104,7 @@ func (p *plugin) cmdLuaLoad(peer hub.Peer, args string) error {
 		return nil
 	}
 
-	if !strings.Contains(path, string(os.PathSeparator)) {
+	if !filepath.IsAbs(path) {
 		path = filepath.Join("scripts", path)
 	}
 
@@ -139,7 +139,7 @@ func (p *plugin) cmdLuaUnload(peer hub.Peer, args string) error {
 		return nil
 	}
 
-	if !strings.Contains(path, string(os.PathSeparator)) {
+	if !filepath.IsAbs(path) {
 		path = filepath.Join("scripts", path)
 	}
 
@@ -166,7 +166,7 @@ func (p *plugin) cmdLuaReload(peer hub.Peer, args string) error {
 		return nil
 	}
 
-	if !strings.Contains(path, string(os.PathSeparator)) {
+	if !filepath.IsAbs(path) {
 		path = filepath.Join("scripts", path)
 	}
 
@@ -279,13 +279,20 @@ func (p *plugin) loadScript(path string) (*Script, error) {
 }
 
 func (p *plugin) unloadScript(path string) error {
-	if p.isScriptLoaded(path) { // todo: error checks
+	if p.isScriptLoaded(path) { // TODO: error checks
 		s := p.scripts[path]
 		s.mu.Lock()
 		s.s = nil
 		s.p = nil
 		s.mu.Unlock()
 		delete(p.scripts, path)
+		/*
+		TODO
+		Previously loadScript was only called once on init, and now users may send commands,
+		which will execute on a separate goroutine and mutate the map concurrently.
+		Thus, all operations on p.scripts would need to be protected by RWMutex.
+		Otherwise it might just crash.
+		*/
 	}
 
 	return nil

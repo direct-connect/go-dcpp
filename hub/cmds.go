@@ -202,7 +202,7 @@ func (h *Hub) initCommands() {
 		Func:    h.cmdStop,
 	})
 
-	// todo: restart
+	// TODO: restart
 
 	// Redirects
 	h.RegisterCommand(Command{
@@ -608,7 +608,7 @@ func (h *Hub) cmdListBanIP(p Peer, args string) error {
 	return nil
 }
 
-func (h *Hub) cmdStop(p Peer, args string) error { // todo: timer argument, ex: 1h, 5m
+func (h *Hub) cmdStop(p Peer, args string) error { // TODO: timer argument, ex: 1h, 5m
 	h.SendGlobalChat("Stopping hub")
 	return h.Close()
 }
