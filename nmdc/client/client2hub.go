@@ -229,7 +229,7 @@ func (c *Conn) OnUnhandled(fnc func(m nmdcp.Message) error) {
 }
 
 func (c *Conn) OnlinePeers() []*Peer {
-	c.peers.RUnlock()
+	c.peers.RLock()
 	defer c.peers.RUnlock()
 	list := make([]*Peer, 0, len(c.peers.byName))
 	for _, peer := range c.peers.byName {
