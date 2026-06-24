@@ -9,6 +9,7 @@ import (
 
 	"github.com/direct-connect/go-dc/adc"
 	"github.com/direct-connect/go-dc/adc/types"
+	"github.com/direct-connect/go-dcpp/version"
 )
 
 type PingHubInfo struct {
@@ -125,15 +126,17 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		return nil, err
 	}
 	user := adc.UserInfo{
-		Id:         pid.Hash(),
-		Pid:        &pid,
-		Name:       conf.Name,
-		Features:   ext,
-		Slots:      conf.Slots,
-		SlotsFree:  conf.Slots,
-		ShareSize:  int64(conf.ShareSize),
-		ShareFiles: conf.ShareFiles,
-		HubsNormal: conf.Hubs,
+		Id:          pid.Hash(),
+		Pid:         &pid,
+		Name:        conf.Name,
+		Features:    ext,
+		Slots:       conf.Slots,
+		SlotsFree:   conf.Slots,
+		ShareSize:   int64(conf.ShareSize),
+		ShareFiles:  conf.ShareFiles,
+		HubsNormal:  conf.Hubs,
+		Application: version.Name,
+		Version:     version.Vers,
 	}
 
 	err = c.WriteBroadcast(sid.SID, user)
