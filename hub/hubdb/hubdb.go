@@ -602,8 +602,8 @@ func (db *tupleDatabase) GetProfile(id string) (hub.Map, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected string profile data, got: %T", data[0])
 	}
-	m := make(hub.Map)
-	err = json.Unmarshal([]byte(s), m)
+	var m hub.Map
+	err = json.Unmarshal([]byte(s), &m)
 	if err != nil {
 		return nil, err
 	}
