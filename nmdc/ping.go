@@ -274,7 +274,7 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 	)
 	for {
 		msg, err := c.ReadMsg(time.Time{})
-		if err == io.EOF {
+		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
 			if listStarted || listEnd {
 				return &hub, nil
 			}
