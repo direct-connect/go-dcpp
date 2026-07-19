@@ -256,7 +256,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 
 	// do not lock for writes first
 	if !h.nameAvailable(name, nil) {
-		_ = peer.c.WriteOneMsg(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
+		_ = peer.c.WriteOneMsg(&nmdcp.ValidateDenide{Name: nmdcp.Name(nick)})
 		return nil, errNickTaken
 	}
 
@@ -264,7 +264,7 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 	// still, no one will see the user yet
 	unbind, ok := h.reserveName(name, nil, nil)
 	if !ok {
-		_ = peer.c.WriteOneMsg(&nmdcp.ValidateDenide{nmdcp.Name(nick)})
+		_ = peer.c.WriteOneMsg(&nmdcp.ValidateDenide{Name: nmdcp.Name(nick)})
 		return nil, errNickTaken
 	}
 
