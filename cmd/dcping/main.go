@@ -223,6 +223,8 @@ func init() {
 						}
 					}
 				}
+			} else if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				isOffline = true
 			}
 			var errCode int
 			if e, ok := err.(adcp.Error); ok {
