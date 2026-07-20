@@ -73,24 +73,20 @@ func TestHubEnterNMDC(t *testing.T) {
 	const delay = time.Second
 	start := time.Now()
 	const count = 5000
-	for i := 0; i < count; i++ {
-		i := i
-		wg.Add(2)
+	for i := range count {
 		hc, cc := newPipe(i)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer hc.Close()
 
 			err := h.ServeNMDC(hc, nil)
 			if err != nil && err != io.ErrClosedPipe {
-				err = fmt.Errorf("hub(%d): %v", i, err)
+				err = fmt.Errorf("hub(%d): %w", i, err)
 				log.Println(err)
 				setError(err)
 				return
 			}
-		}()
-		go func() {
-			defer wg.Done()
+		})
+		wg.Go(func() {
 			defer cc.Close()
 
 			c, err := nmdc.NewConn(cc)
@@ -104,7 +100,7 @@ func TestHubEnterNMDC(t *testing.T) {
 				Name: fmt.Sprintf("peer_%d", i),
 			})
 			if err != nil {
-				err = fmt.Errorf("client(%d): %v", i, err)
+				err = fmt.Errorf("client(%d): %w", i, err)
 				log.Println(err)
 				setError(err)
 				return
@@ -113,13 +109,13 @@ func TestHubEnterNMDC(t *testing.T) {
 
 			err = pc.SendChatMsg(fmt.Sprintf("msg %d", i))
 			if err != nil {
-				err = fmt.Errorf("client(%d): %v", i, err)
+				err = fmt.Errorf("client(%d): %w", i, err)
 				log.Println(err)
 				setError(err)
 				return
 			}
 			time.Sleep(delay)
-		}()
+		})
 	}
 	wg.Wait()
 	t.Logf("enter in %v", time.Since(start)-delay)

@@ -14,7 +14,6 @@ import (
 	"golang.org/x/text/encoding/htmlindex"
 
 	"github.com/direct-connect/go-dc/types"
-	"github.com/direct-connect/go-dcpp/internal/safe"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -164,12 +163,12 @@ type Hub struct {
 		level int32
 	}
 	redirect struct {
-		nmdcToTLS safe.Bool
-		nmdcToADC safe.Bool
-		adcToTLS  safe.Bool
+		nmdcToTLS atomic.Bool
+		nmdcToADC atomic.Bool
+		adcToTLS  atomic.Bool
 	}
 
-	global     safe.Bool
+	global     atomic.Bool
 	globalChat *Room
 	opChat     *Room
 	rooms      rooms
@@ -217,35 +216,35 @@ func (h *Hub) setZlibLevel(level int) {
 }
 
 func (h *Hub) getGlobalChatEnabled() bool {
-	return !h.global.Get()
+	return !h.global.Load()
 }
 
 func (h *Hub) setGlobalChatEnabled(v bool) {
-	h.global.Set(!v)
+	h.global.Store(!v)
 }
 
 func (h *Hub) getRedirectNMDCToTLS() bool {
-	return h.redirect.nmdcToTLS.Get()
+	return h.redirect.nmdcToTLS.Load()
 }
 
 func (h *Hub) getRedirectNMDCToADC() bool {
-	return h.redirect.nmdcToADC.Get()
+	return h.redirect.nmdcToADC.Load()
 }
 
 func (h *Hub) getRedirectADCToTLS() bool {
-	return h.redirect.adcToTLS.Get()
+	return h.redirect.adcToTLS.Load()
 }
 
 func (h *Hub) setRedirectNMDCToTLS(v bool) {
-	h.redirect.nmdcToTLS.Set(v)
+	h.redirect.nmdcToTLS.Store(v)
 }
 
 func (h *Hub) setRedirectNMDCToADC(v bool) {
-	h.redirect.nmdcToADC.Set(v)
+	h.redirect.nmdcToADC.Store(v)
 }
 
 func (h *Hub) setRedirectADCToTLS(v bool) {
-	h.redirect.adcToTLS.Set(v)
+	h.redirect.adcToTLS.Store(v)
 }
 
 type Stats struct {

@@ -146,7 +146,7 @@ type UserDatabase interface {
 	UpdateUser(name string, fnc func(u *UserRecord) (bool, error)) error
 }
 
-type Map map[string]interface{}
+type Map map[string]any
 
 func (m Map) Clone() Map {
 	m2 := make(Map, len(m))
@@ -216,7 +216,7 @@ func (h *Hub) validateUserName(name string) error {
 	if h.fallback != nil {
 		_, err := h.fallback.NewEncoder().String(name)
 		if err != nil {
-			return fmt.Errorf("invalid name: %v (%q)", err, name)
+			return fmt.Errorf("invalid name: %w (%q)", err, name)
 		}
 	}
 	return nil

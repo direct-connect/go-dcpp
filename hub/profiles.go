@@ -166,7 +166,7 @@ func (p *UserProfile) HasParent(id string) bool {
 	return false
 }
 
-func (p *UserProfile) Get(key string) (interface{}, bool) {
+func (p *UserProfile) Get(key string) (any, bool) {
 	for p != nil {
 		p.mu.RLock()
 		v, ok := p.m[key]

@@ -34,7 +34,7 @@ var Root = &cobra.Command{
 			DebugWriter:    dw,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to start Tor: %v", err)
+			return fmt.Errorf("failed to start Tor: %w", err)
 		}
 		Tor = t
 		return nil

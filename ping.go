@@ -3,7 +3,7 @@ package dc
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -27,16 +27,16 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 		conf.Name = "pinger_" + strconv.FormatInt(num, 16)
 	}
 	if conf.Hubs == 0 {
-		conf.Hubs = 1 + rand.Intn(10)
+		conf.Hubs = 1 + rand.IntN(10)
 	}
 	if conf.Slots == 0 {
 		conf.Slots = 5
 	}
 	if conf.ShareFiles == 0 {
-		conf.ShareFiles = 100 + rand.Intn(1000)
+		conf.ShareFiles = 100 + rand.IntN(1000)
 	}
 	if conf.ShareSize == 0 {
-		conf.ShareSize = uint64(100+rand.Intn(200)) * 1023 * 1023 * 1023
+		conf.ShareSize = uint64(100+rand.IntN(200)) * 1023 * 1023 * 1023
 	}
 
 	// probe first, if protocol is not specified

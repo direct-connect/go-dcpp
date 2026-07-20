@@ -127,7 +127,7 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, stri
 	var sup nmdcp.Supports
 	err = c.ReadMsgTo(deadline, &sup)
 	if err != nil {
-		return nil, "", fmt.Errorf("expected supports: %v", err)
+		return nil, "", fmt.Errorf("expected supports: %w", err)
 	}
 	for _, ext := range sup.Ext {
 		cntNMDCExtensions.WithLabelValues(ext).Add(1)
@@ -135,7 +135,7 @@ func (h *Hub) nmdcLock(deadline time.Time, c *nmdc.Conn) (nmdcp.Extensions, stri
 	var key nmdcp.Key
 	err = c.ReadMsgTo(deadline, &key)
 	if err != nil {
-		return nil, "", fmt.Errorf("expected key: %v", err)
+		return nil, "", fmt.Errorf("expected key: %w", err)
 	} else if key.Key != lock.Key().Key {
 		return nil, "", errors.New("wrong key")
 	}
@@ -331,7 +331,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		var pass nmdcp.MyPass
 		err = c.ReadMsgTo(deadline, &pass)
 		if err != nil {
-			return fmt.Errorf("expected password got: %v", err)
+			return fmt.Errorf("expected password got: %w", err)
 		}
 
 		ok, err := h.nmdcCheckUserPass(rec, string(pass.String))
@@ -385,7 +385,7 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	case *nmdcp.GetNickList:
 		err = c.ReadMsgTo(deadline, &peer.info.user)
 		if err != nil {
-			return fmt.Errorf("expected user info: %v", err)
+			return fmt.Errorf("expected user info: %w", err)
 		}
 	case *nmdcp.MyINFO:
 		// already read to peer.user
@@ -596,7 +596,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 			return nil
 		}
 		if err := peer.verifyAddr(msg.Address); err != nil {
-			return fmt.Errorf("ctm: %v", err)
+			return fmt.Errorf("ctm: %w", err)
 		}
 		if msg.Kind == nmdcp.CTMActive {
 			// TODO: token?
@@ -661,7 +661,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 	case *nmdcp.Search:
 		if msg.Address != "" {
 			if err := peer.verifyAddr(msg.Address); err != nil {
-				return fmt.Errorf("search: %v", err)
+				return fmt.Errorf("search: %w", err)
 			}
 		} else if msg.User != "" {
 			if string(msg.User) != peer.Name() {
@@ -672,7 +672,7 @@ func (h *Hub) nmdcHandle(peer *nmdcPeer, msg nmdcp.Message) error {
 		return nil
 	case *nmdcp.TTHSearchActive:
 		if err := peer.verifyAddr(msg.Address); err != nil {
-			return fmt.Errorf("search: %v", err)
+			return fmt.Errorf("search: %w", err)
 		}
 		h.nmdcHandleSearchTTH(peer, msg.TTH)
 		return nil
@@ -993,9 +993,7 @@ func (p *nmdcPeer) writer(timeout time.Duration) {
 
 	var buf2 []nmdcp.Message
 	resetBuf := func(buf []nmdcp.Message) {
-		for i := range buf {
-			buf[i] = nil
-		}
+		clear(buf)
 		buf2 = buf[:0]
 	}
 	logErr := func(err error) {

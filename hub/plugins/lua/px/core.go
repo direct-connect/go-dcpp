@@ -65,7 +65,7 @@ func (s *Script) setupCore() {
 		//"SendPmToUser":         s.luaSendPmToUser,
 		//"SetUserInfo":          s.luaSetUserInfo,
 	}
-	m := make(map[string]interface{}, len(strm)+len(funcm))
+	m := make(map[string]any, len(strm)+len(funcm))
 	for k, v := range strm {
 		m[k] = v
 	}
@@ -518,7 +518,7 @@ func (s *Script) luaGetUpTime(st *lua.State) int {
 	return 1
 }
 
-func (s *Script) luaUserArg(p hub.Peer, full bool) interface{} {
+func (s *Script) luaUserArg(p hub.Peer, full bool) any {
 	if p == nil {
 		return nil
 	}

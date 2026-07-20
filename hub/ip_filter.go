@@ -64,7 +64,7 @@ func (f *bans) run(done <-chan struct{}) {
 			return
 		case t := <-ticker.C:
 			tsec := t.Unix()
-			f.info.Range(func(key, vi interface{}) bool {
+			f.info.Range(func(key, vi any) bool {
 				v := vi.(*banInfo)
 				last := atomic.LoadInt64(&v.last)
 				if tsec-last > forgetAfterSec {
@@ -104,7 +104,7 @@ func (h *Hub) IsHardBlockedIP(ip net.IP) bool {
 }
 
 func (h *Hub) EachHardBlockedIP(fnc func(ip net.IP) bool) {
-	h.bans.blocked.Range(func(key, _ interface{}) bool {
+	h.bans.blocked.Range(func(key, _ any) bool {
 		k := key.(BanKey)
 		ip := k.ToIP()
 		if ip == nil {

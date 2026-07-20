@@ -1,11 +1,11 @@
-//+build linux
+//go:build linux
 
 package cmd
 
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,19 +42,19 @@ Restart=always
 WantedBy=multi-user.target`,
 		bin, path,
 	)
-	err := ioutil.WriteFile(filepath.Join(systemdPath, typ, name+".service"), []byte(conf), 0644)
+	err := os.WriteFile(filepath.Join(systemdPath, typ, name+".service"), []byte(conf), 0644)
 	if err != nil {
-		return fmt.Errorf("cannot write the service file: %v", err)
+		return fmt.Errorf("cannot write the service file: %w", err)
 	}
 	cmd := exec.Command("systemctl", "enable", name)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
-		return fmt.Errorf("cannot enable the service: %v", err)
+		return fmt.Errorf("cannot enable the service: %w", err)
 	}
 	cmd = exec.Command("systemctl", "start", name)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
-		return fmt.Errorf("cannot enable the service: %v", err)
+		return fmt.Errorf("cannot enable the service: %w", err)
 	}
 	fmt.Println("done")
 	return nil

@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+
 	"net"
 	"os"
 	"path/filepath"
@@ -60,15 +60,15 @@ func (p *plugin) startTor() error {
 	torDir := filepath.Join(p.path, torDir)
 	if _, err := os.Stat(torDir); os.IsNotExist(err) {
 		if err = os.MkdirAll(torDir, 0755); err != nil {
-			return fmt.Errorf("tor: failed to create directory: %v", err)
+			return fmt.Errorf("tor: failed to create directory: %w", err)
 		}
 	} else if err != nil {
 		return err
 	}
 	torrc := filepath.Join(torDir, "torrc")
 	if _, err := os.Stat(torrc); os.IsNotExist(err) {
-		if err = ioutil.WriteFile(torrc, nil, 0644); err != nil {
-			return fmt.Errorf("tor: failed to create torrc: %v", err)
+		if err = os.WriteFile(torrc, nil, 0644); err != nil {
+			return fmt.Errorf("tor: failed to create torrc: %w", err)
 		}
 	} else if err != nil {
 		return err
@@ -80,7 +80,7 @@ func (p *plugin) startTor() error {
 		DebugWriter:    os.Stderr,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to start Tor: %v", err)
+		return fmt.Errorf("failed to start Tor: %w", err)
 	}
 	p.tor = t
 	return nil
@@ -93,7 +93,7 @@ func (p *plugin) listenAndServe() error {
 
 	keyFile := filepath.Join(p.path, torDir, keyFile)
 	var key crypto.PrivateKey
-	if data, err := ioutil.ReadFile(keyFile); err == nil {
+	if data, err := os.ReadFile(keyFile); err == nil {
 		k, err := x509.ParsePKCS1PrivateKey(data)
 		if err != nil {
 			return err
@@ -111,12 +111,12 @@ func (p *plugin) listenAndServe() error {
 		Key:         key,
 	})
 	if err != nil {
-		return fmt.Errorf("tor: failed to start the service: %v", err)
+		return fmt.Errorf("tor: failed to start the service: %w", err)
 	}
 	if key == nil {
 		if k, ok := onion.Key.(*rsa.PrivateKey); ok {
 			data := x509.MarshalPKCS1PrivateKey(k)
-			err := ioutil.WriteFile(keyFile, data, 0600)
+			err := os.WriteFile(keyFile, data, 0600)
 			if err != nil {
 				return err
 			}

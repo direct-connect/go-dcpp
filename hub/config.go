@@ -2,7 +2,7 @@ package hub
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 )
 
@@ -64,7 +64,7 @@ func (h *Hub) MergeConfigPath(path string, m Map) {
 		switch v := v.(type) {
 		case Map:
 			h.MergeConfigPath(k, v)
-		case map[string]interface{}:
+		case map[string]any:
 			h.MergeConfigPath(k, Map(v))
 		default:
 			h.setConfig(k, v, false)
@@ -72,14 +72,14 @@ func (h *Hub) MergeConfigPath(path string, m Map) {
 	}
 }
 
-func (h *Hub) saveConfig(key string, val interface{}) {
+func (h *Hub) saveConfig(key string, val any) {
 	if _, ok := configIgnored[key]; ok {
 		return
 	}
 	// TODO: persist config
 }
 
-func (h *Hub) setConfigMap(key string, val interface{}) {
+func (h *Hub) setConfigMap(key string, val any) {
 	if _, ok := configIgnored[key]; ok {
 		return
 	}
@@ -91,14 +91,14 @@ func (h *Hub) setConfigMap(key string, val interface{}) {
 	h.conf.Unlock()
 }
 
-func (h *Hub) getConfigMap(key string) (interface{}, bool) {
+func (h *Hub) getConfigMap(key string) (any, bool) {
 	h.conf.RLock()
 	val, ok := h.conf.m[key]
 	h.conf.RUnlock()
 	return val, ok
 }
 
-func (h *Hub) setConfig(key string, val interface{}, save bool) {
+func (h *Hub) setConfig(key string, val any, save bool) {
 	if _, ok := configIgnored[key]; ok {
 		return
 	}
@@ -131,7 +131,7 @@ func (h *Hub) setConfig(key string, val interface{}, save bool) {
 	}
 }
 
-func (h *Hub) SetConfig(key string, val interface{}) {
+func (h *Hub) SetConfig(key string, val any) {
 	h.setConfig(key, val, true)
 }
 
@@ -159,11 +159,11 @@ func (h *Hub) ConfigKeys() []string {
 		keys = append(keys, k)
 	}
 	h.conf.RUnlock()
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys
 }
 
-func (h *Hub) GetConfig(key string) (interface{}, bool) {
+func (h *Hub) GetConfig(key string) (any, bool) {
 	if alias, ok := configAliases[key]; ok {
 		key = alias
 	}

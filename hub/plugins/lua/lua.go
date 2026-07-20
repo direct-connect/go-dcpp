@@ -89,7 +89,7 @@ func (p *plugin) loadScripts(path string) error {
 			p.h.Log("lua: loading script:", name)
 			s, err := p.loadScript(filepath.Join(path, name))
 			if err != nil {
-				return fmt.Errorf("lua: %v", err)
+				return fmt.Errorf("lua: %w", err)
 			}
 			pname := s.getString("script", "name")
 			vers := s.getString("script", "version")
@@ -127,10 +127,10 @@ func (p *plugin) Close() error {
 	return nil
 }
 
-type M = map[string]interface{}
+type M = map[string]any
 
 type UserData struct {
-	Ptr interface{}
+	Ptr any
 }
 
 type Script struct {
@@ -191,7 +191,7 @@ func (s *Script) popDur() time.Duration {
 	return d
 }
 
-func (s *Script) pushSlice(a []interface{}) {
+func (s *Script) pushSlice(a []any) {
 	s.s.CreateTable(len(a), 0)
 	for i, v := range a {
 		s.s.PushInteger(i + 1)
@@ -218,7 +218,7 @@ func (s *Script) pushRawFuncMap(m map[string]lua.Function) {
 	}
 }
 
-func (s *Script) pushMap(m map[string]interface{}) {
+func (s *Script) pushMap(m map[string]any) {
 	s.s.CreateTable(0, len(m))
 	gi := s.s.Top()
 	for k, v := range m {
@@ -231,7 +231,7 @@ func (s *Script) pushMap(m map[string]interface{}) {
 	}
 }
 
-func (s *Script) Push(v interface{}) {
+func (s *Script) Push(v any) {
 	switch v := v.(type) {
 	case UserData:
 		s.s.PushUserData(v.Ptr)
@@ -240,13 +240,13 @@ func (s *Script) Push(v interface{}) {
 		}
 	case lua.Function:
 		s.s.PushGoFunction(v)
-	case map[string]interface{}:
+	case map[string]any:
 		s.pushMap(v)
 	case map[string]lua.Function:
 		s.pushRawFuncMap(v)
 	case map[string]string:
 		s.pushStringMap(v)
-	case []interface{}:
+	case []any:
 		s.pushSlice(v)
 	case string:
 		s.s.PushString(v)
@@ -272,13 +272,13 @@ func (s *Script) Push(v interface{}) {
 		// TODO: reflect
 		data, _ := json.Marshal(v)
 		s.h.Logf("TODO: lua.pushJSON(%T -> %q)", v, string(data))
-		var m map[string]interface{}
+		var m map[string]any
 		_ = json.Unmarshal(data, &m)
 		s.pushMap(m)
 	}
 }
 
-func (s *Script) Set(k string, o interface{}) {
+func (s *Script) Set(k string, o any) {
 	s.Push(o)
 	s.s.SetGlobal(k)
 }
@@ -332,15 +332,15 @@ func (s *Script) pushPeer(p hub.Peer) {
 
 type Func struct {
 	s   *Script
-	f   interface{}
+	f   any
 	ret int
 }
 
-func (f *Func) CallRet(ret func(st *lua.State), args ...interface{}) {
+func (f *Func) CallRet(ret func(st *lua.State), args ...any) {
 	f.s.luaCallRet(f.f, f.ret, ret, args...)
 }
 
-func (f *Func) Call(args ...interface{}) {
+func (f *Func) Call(args ...any) {
 	if f.ret != 0 {
 		panic("use CallRet to handle returns")
 	}
@@ -356,7 +356,7 @@ func (s *Script) ToFunc(index int, ret int) *Func {
 	return s.ToFuncOn(s.s, index, ret)
 }
 
-func (s *Script) luaCallRet(fnc interface{}, ret int, post func(st *lua.State), args ...interface{}) {
+func (s *Script) luaCallRet(fnc any, ret int, post func(st *lua.State), args ...any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.s.PushLightUserData(fnc)
@@ -369,7 +369,7 @@ func (s *Script) luaCallRet(fnc interface{}, ret int, post func(st *lua.State), 
 	}
 }
 
-func (s *Script) luaCall(fnc interface{}, ret int, args ...interface{}) {
+func (s *Script) luaCall(fnc any, ret int, args ...any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.s.PushLightUserData(fnc)
@@ -401,7 +401,7 @@ func (s *Script) setupGlobals() {
 			return 1
 		},
 		"users": func(_ *lua.State) int {
-			var out []interface{}
+			var out []any
 			for _, p := range s.h.Peers() {
 				out = append(out, p)
 			}

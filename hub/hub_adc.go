@@ -2,14 +2,16 @@ package hub
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	mrand "math/rand/v2"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	adcp "github.com/direct-connect/go-dc/adc"
@@ -17,7 +19,6 @@ import (
 	"github.com/direct-connect/go-dc/tiger"
 	dctypes "github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/adc"
-	"github.com/direct-connect/go-dcpp/internal/safe"
 )
 
 const searchTimeout = time.Minute
@@ -704,7 +705,7 @@ func (h *Hub) adcHandleResult(peer *adcPeer, to Peer, res *adcp.SearchResult) {
 		delete(peer.search.tokens, res.Token)
 		peer.search.Unlock()
 	} else {
-		s.last.SetNow()
+		s.last.Store(time.Now().UnixNano())
 	}
 }
 
@@ -756,7 +757,7 @@ func (p *adcPeer) Searchable() bool {
 }
 
 type adcSearchToken struct {
-	last safe.Time
+	last atomic.Int64
 	s    Search
 }
 
@@ -1253,7 +1254,7 @@ func (s *adcSearch) Close() error {
 func (p *adcPeer) gcTokens() {
 	now := time.Now()
 	for token, s := range p.search.tokens {
-		if now.Sub(s.last.Get()) > searchTimeout {
+		if now.Sub(time.Unix(0, s.last.Load())) > searchTimeout {
 			delete(p.search.tokens, token)
 			_ = s.s.Close()
 		}
@@ -1261,7 +1262,7 @@ func (p *adcPeer) gcTokens() {
 }
 
 func (p *adcPeer) searchToken(out Search) string {
-	token := strconv.FormatUint(rand.Uint64(), 16)
+	token := strconv.FormatUint(mrand.Uint64(), 16)
 	p.search.Lock()
 	defer p.search.Unlock()
 	if p.search.tokens == nil {
@@ -1270,7 +1271,7 @@ func (p *adcPeer) searchToken(out Search) string {
 		p.gcTokens()
 	}
 	s := &adcSearchToken{s: out}
-	s.last.SetNow()
+	s.last.Store(time.Now().UnixNano())
 	p.search.tokens[token] = s
 	return token
 }

@@ -3,10 +3,10 @@ package updates
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/direct-connect/go-dcpp/hub"
-	"github.com/direct-connect/go-dcpp/internal/safe"
 	"github.com/direct-connect/go-dcpp/version"
 )
 
@@ -25,8 +25,8 @@ type hubUpdatesChecker struct {
 	h *hub.Hub
 
 	built   time.Time
-	veryOld safe.Bool
-	latest  safe.Time
+	veryOld atomic.Bool
+	latest  atomic.Int64
 }
 
 func (*hubUpdatesChecker) Name() string {
@@ -46,7 +46,7 @@ func (p *hubUpdatesChecker) Init(h *hub.Hub, path string) error {
 	}
 	h.OnJoined(func(peer hub.Peer) bool {
 		if !peer.User().IsOwner() {
-			if p.veryOld.Get() {
+			if p.veryOld.Load() {
 				p.complainToUser(peer)
 			}
 			return true
@@ -59,8 +59,8 @@ func (p *hubUpdatesChecker) Init(h *hub.Hub, path string) error {
 		defer ticker.Stop()
 		for range ticker.C {
 			if r, _ := p.check(); r != nil {
-				if !p.veryOld.Get() && time.Since(p.built) > complainToAll {
-					p.veryOld.Set(true)
+				if !p.veryOld.Load() && time.Since(p.built) > complainToAll {
+					p.veryOld.Store(true)
 				}
 			}
 		}
@@ -77,7 +77,7 @@ func (p *hubUpdatesChecker) check() (*hub.ReleaseInfo, error) {
 	} else if r == nil {
 		return nil, nil
 	}
-	p.latest.Set(r.Time)
+	p.latest.Store(r.Time.UnixNano())
 	return r, nil
 }
 

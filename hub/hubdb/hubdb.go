@@ -46,7 +46,7 @@ func Open(typ, path string) (hub.Database, error) {
 	db := &tupleDatabase{db: tuplekv.New(kdb)}
 	err = db.openTables()
 	if err != nil {
-		return nil, fmt.Errorf("cannot open tables: %v", err)
+		return nil, fmt.Errorf("cannot open tables: %w", err)
 	}
 	return db, nil
 }
@@ -83,7 +83,7 @@ func (db *tupleDatabase) openTables() error {
 func (db *tupleDatabase) createTable(ctx context.Context, tx tuple.Tx, h tuple.Header) error {
 	_, err := tx.CreateTable(ctx, h)
 	if err != nil {
-		return fmt.Errorf("cannot create table '%s': %v", h.Name, err)
+		return fmt.Errorf("cannot create table '%s': %w", h.Name, err)
 	}
 	return nil
 }

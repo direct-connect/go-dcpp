@@ -2,8 +2,6 @@ package hub
 
 import (
 	"errors"
-	"net"
-	"os"
 	"strconv"
 	"strings"
 	"syscall"
@@ -35,28 +33,16 @@ func isTooManyFDs(err error) bool {
 	if err == nil {
 		return false
 	}
-	switch e := err.(type) {
-	case *net.OpError:
-		return isTooManyFDs(e.Err)
-	case *os.SyscallError:
-		return isTooManyFDs(e.Err)
-	case syscall.Errno:
-		switch e {
-		case syscall.EMFILE, syscall.ENFILE:
-			return true
-		}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EMFILE || errno == syscall.ENFILE
 	}
 	return strings.Contains(err.Error(), "too many open files")
 }
 
 func isProtocolErr(err error) bool {
-	switch err.(type) {
-	case *ErrUnknownProtocol:
-		return true
-	case *nmdc.ErrProtocolViolation:
-		return true
-	case *nmdc.ErrUnexpectedCommand:
-		return true
-	}
-	return false
+	var e1 *ErrUnknownProtocol
+	var e2 *nmdc.ErrProtocolViolation
+	var e3 *nmdc.ErrUnexpectedCommand
+	return errors.As(err, &e1) || errors.As(err, &e2) || errors.As(err, &e3)
 }

@@ -49,14 +49,14 @@ func runClient(t *tor.Tor, torHub, host string) error {
 
 	dialer, err := t.Dialer(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create onion layer: %v", err)
+		return fmt.Errorf("failed to create onion layer: %w", err)
 	}
 
 	onion, err := t.Listen(ctx, &tor.ListenConf{
 		RemotePorts: []int{torClientPort},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create onion service: %v", err)
+		return fmt.Errorf("failed to create onion service: %w", err)
 	}
 	defer onion.Close()
 

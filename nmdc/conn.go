@@ -72,7 +72,7 @@ func DialContext(ctx context.Context, addr string) (*Conn, error) {
 		})
 		if err = sconn.Handshake(); err != nil {
 			_ = sconn.Close()
-			return nil, fmt.Errorf("TLS handshake failed: %v", err)
+			return nil, fmt.Errorf("TLS handshake failed: %w", err)
 		}
 		conn = sconn
 		// verify keyprint if it's set in the URL

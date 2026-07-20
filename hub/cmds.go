@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +8,8 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
-	"sort"
+	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +26,7 @@ type Command struct {
 	Short   string
 	Long    string
 	Require string
-	Func    interface{}
+	Func    any
 	run     func(p Peer, args string)
 	opt     cmdOptions
 }
@@ -233,9 +233,9 @@ func (h *Hub) cmdHelp(p Peer, args string) error {
 		}
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
-	buf := bytes.NewBuffer(nil)
+	var buf strings.Builder
 	buf.WriteString("available commands:\n\n")
 	for _, name := range names {
 		c := h.cmds.byName[name]
@@ -391,7 +391,7 @@ func (h *Hub) cmdLeave(p Peer, args string) error {
 
 func (h *Hub) cmdRooms(p Peer, args string) error {
 	list := h.RoomsFor(p)
-	buf := bytes.NewBuffer(nil)
+	var buf strings.Builder
 	buf.WriteString("available chat rooms:\n")
 	for _, r := range list {
 		buf.WriteString(r.Name() + "\n")
@@ -400,14 +400,14 @@ func (h *Hub) cmdRooms(p Peer, args string) error {
 	return nil
 }
 
-func (h *Hub) cmdConfigEcho(p Peer, key string, val interface{}) {
-	buf := bytes.NewBuffer(nil)
+func (h *Hub) cmdConfigEcho(p Peer, key string, val any) {
+	var buf strings.Builder
 	buf.WriteString(key)
 	buf.WriteString(" = ")
 	if s, ok := val.(string); ok {
 		buf.WriteString(strconv.Quote(s))
 	} else {
-		fmt.Fprint(buf, val)
+		fmt.Fprint(&buf, val)
 	}
 	h.cmdOutputM(p, Message{Text: buf.String(), Me: true})
 }
@@ -466,7 +466,7 @@ func (h *Hub) cmdConfigSet(p Peer, key, val string) error {
 
 func (h *Hub) cmdConfigGet(p Peer, args RawCmd) error {
 	if args == "" {
-		buf := bytes.NewBuffer(nil)
+		var buf strings.Builder
 		buf.WriteString("config:\n")
 		for _, k := range h.ConfigKeys() {
 			buf.WriteString(k)
@@ -475,7 +475,7 @@ func (h *Hub) cmdConfigGet(p Peer, args RawCmd) error {
 			if s, ok := v.(string); ok {
 				buf.WriteString(strconv.Quote(s))
 			} else {
-				fmt.Fprint(buf, v)
+				fmt.Fprint(&buf, v)
 			}
 			buf.WriteByte('\n')
 		}
@@ -573,7 +573,7 @@ func (h *Hub) cmdUnBanIP(p Peer, args string) error {
 }
 
 func (h *Hub) cmdListBanIP(p Peer, args string) error {
-	buf := bytes.NewBuffer(nil)
+	var buf strings.Builder
 	buf.WriteString("blocked IPs:\n")
 	h.EachHardBlockedIP(func(ip net.IP) bool {
 		buf.WriteString(ip.String() + "\n")
@@ -618,12 +618,10 @@ func (h *Hub) cmdRedirectAll(p Peer, args string) error {
 			continue
 		}
 		p2 := p2
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_ = p2.Redirect(addr)
 			_ = p2.Close()
-		}()
+		})
 	}
 	go func() {
 		wg.Wait()
@@ -694,11 +692,11 @@ func (h *Hub) cmdOutput(peer Peer, out string) {
 	h.cmdOutputM(peer, Message{Text: out})
 }
 
-func (h *Hub) cmdOutputf(peer Peer, format string, args ...interface{}) {
+func (h *Hub) cmdOutputf(peer Peer, format string, args ...any) {
 	h.cmdOutput(peer, fmt.Sprintf(format, args...))
 }
 
-func (h *Hub) cmdOutputJSON(peer Peer, out interface{}) {
+func (h *Hub) cmdOutputJSON(peer Peer, out any) {
 	data, _ := json.MarshalIndent(out, "", "  ")
 	h.cmdOutput(peer, string(data))
 }
@@ -798,7 +796,7 @@ func (h *Hub) cmdParsePeer(text string) (Peer, string, error) {
 	return peer, rest, nil
 }
 
-func (h *Hub) toCommandFunc(o interface{}, opt *cmdOptions) CommandFunc {
+func (h *Hub) toCommandFunc(o any, opt *cmdOptions) CommandFunc {
 	if fnc, ok := o.(CommandFunc); ok {
 		return fnc
 	}
@@ -816,7 +814,7 @@ func (h *Hub) toCommandFunc(o interface{}, opt *cmdOptions) CommandFunc {
 	argc := rt.NumIn()
 	hasRaw := false
 	argt := make([]reflect.Type, 0, argc)
-	for i := 0; i < argc; i++ {
+	for i := range argc {
 		t := rt.In(i)
 		if selfInd < 0 && t == reflPeer {
 			selfInd = i
@@ -854,7 +852,7 @@ func (h *Hub) toCommandFunc(o interface{}, opt *cmdOptions) CommandFunc {
 				continue
 			}
 			var (
-				v   interface{}
+				v   any
 				err error
 			)
 			switch t {
@@ -873,7 +871,7 @@ func (h *Hub) toCommandFunc(o interface{}, opt *cmdOptions) CommandFunc {
 			}
 			if err != nil {
 				i -= argOffs
-				return fmt.Errorf("arg %d: %v", i+1, err)
+				return fmt.Errorf("arg %d: %w", i+1, err)
 			}
 			in = append(in, reflect.ValueOf(v))
 		}
@@ -961,18 +959,14 @@ func (h *Hub) ListCommands(u *User) []*Command {
 		}
 		command = append(command, c)
 	}
-	sort.Slice(command, func(i, j int) bool {
-		a, b := command[i], command[j]
-		l := len(a.Menu)
-		if len(a.Menu) > len(b.Menu) {
-			l = len(b.Menu)
-		}
+	slices.SortFunc(command, func(a, b *Command) int {
+		l := min(len(a.Menu), len(b.Menu))
 		for n := 0; n <= l; n++ {
-			if a.Menu[n] != b.Menu[n] {
-				return a.Menu[n] < b.Menu[n]
+			if c := cmp.Compare(a.Menu[n], b.Menu[n]); c != 0 {
+				return c
 			}
 		}
-		return len(a.Menu) <= len(b.Menu)
+		return cmp.Compare(len(a.Menu), len(b.Menu))
 	})
 	return command
 }

@@ -49,7 +49,7 @@ func runHub(t *tor.Tor, localHub string) error {
 		RemotePorts: []int{torHubPort},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create onion service: %v", err)
+		return fmt.Errorf("failed to create onion service: %w", err)
 	}
 	defer onion.Close()
 

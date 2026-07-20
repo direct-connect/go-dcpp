@@ -70,11 +70,10 @@ func getLatestVersion(ctx context.Context, force bool) (*ReleaseInfo, error) {
 		repoName = "go-dcpp"
 		endpoint = "https://api.github.com/repos/" + orgName + "/" + repoName + "/releases/latest"
 	)
-	req, err := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(ctx)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

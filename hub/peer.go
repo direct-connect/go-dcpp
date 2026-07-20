@@ -4,8 +4,7 @@ import (
 	"context"
 	"net"
 	"sync"
-
-	"github.com/direct-connect/go-dcpp/internal/safe"
+	"sync/atomic"
 )
 
 type connAddr interface {
@@ -123,10 +122,10 @@ type BasePeer struct {
 	hub     *Hub
 	cinfo   *ConnInfo
 	user    *User
-	offline safe.Bool
+	offline atomic.Bool
 
 	sid  SID
-	name safe.String
+	name atomic.Value
 
 	close struct {
 		sync.Mutex
@@ -156,15 +155,19 @@ func (p *BasePeer) ConnInfo() *ConnInfo {
 }
 
 func (p *BasePeer) setName(name string) {
-	p.name.Set(name)
+	p.name.Store(name)
 }
 
 func (p *BasePeer) Name() string {
-	return p.name.Get()
+	v := p.name.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
 }
 
 func (p *BasePeer) Online() bool {
-	return !p.offline.Get()
+	return !p.offline.Load()
 }
 
 func (p *BasePeer) SID() SID {
@@ -193,7 +196,7 @@ func (p *BasePeer) closeWith(pr Peer, closers ...func() error) error {
 		p.hub.callOnLeave(pr)
 	}()
 	close(p.close.done)
-	p.offline.Set(true)
+	p.offline.Store(true)
 	var first error
 	for _, fnc := range closers {
 		if err := fnc(); err != nil {

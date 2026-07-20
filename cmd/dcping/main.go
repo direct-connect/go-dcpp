@@ -152,7 +152,7 @@ func init() {
 		var (
 			mu    sync.Mutex
 			w     io.Writer = os.Stdout
-			enc   func(interface{}) error
+			enc   func(any) error
 			flush func() error
 		)
 		switch *pingOut {
@@ -170,7 +170,7 @@ func init() {
 			if *pingOut == "xml-line" {
 				e.Headers(false)
 			}
-			enc = func(o interface{}) error {
+			enc = func(o any) error {
 				return e.WriteHub(o.(hublist.Hub))
 			}
 			flush = e.Close
@@ -178,7 +178,7 @@ func init() {
 			return fmt.Errorf("unsupported format: %q", *pingOut)
 		}
 		cenc := enc
-		enc = func(o interface{}) error {
+		enc = func(o any) error {
 			mu.Lock()
 			defer mu.Unlock()
 			return cenc(o)
@@ -321,10 +321,8 @@ func init() {
 		var wg sync.WaitGroup
 		jobs := make(chan string, *pingNum)
 		errc := make(chan error, 1)
-		for i := 0; i < *pingNum; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range *pingNum {
+			wg.Go(func() {
 				for addr := range jobs {
 					if err := pingOne(addr); err != nil {
 						select {
@@ -333,7 +331,7 @@ func init() {
 						}
 					}
 				}
-			}()
+			})
 		}
 
 		for _, addr := range args {

@@ -102,7 +102,7 @@ func readConfig(create bool) (*Config, hub.Map, error) {
 	if err := viper.Unmarshal(&c); err != nil {
 		return nil, nil, err
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := viper.Unmarshal(&m); err != nil {
 		return nil, nil, err
 	}

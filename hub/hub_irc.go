@@ -105,7 +105,7 @@ func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 
 		m, err := c.ReadMessage()
 		if err != nil {
-			return nil, fmt.Errorf("expected nick: %v", err)
+			return nil, fmt.Errorf("expected nick: %w", err)
 		} else if m.Command != "NICK" || len(m.Params) != 1 {
 			return nil, fmt.Errorf("expected nick, got: %#v", m)
 		}
@@ -115,7 +115,7 @@ func (h *Hub) ircHandshake(conn net.Conn, cinfo *ConnInfo) (*ircPeer, error) {
 			// first time we expect the USER command as well
 			m, err = c.ReadMessage()
 			if err != nil {
-				return nil, fmt.Errorf("expected user: %v", err)
+				return nil, fmt.Errorf("expected user: %w", err)
 			} else if m.Command != "USER" || len(m.Params) != 4 {
 				return nil, fmt.Errorf("expected user, got: %#v", m)
 			}

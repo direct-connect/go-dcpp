@@ -76,7 +76,7 @@ func (c *Conn) ReadValidateNick(deadline time.Time) (*nmdc.ValidateNick, error) 
 	var nick nmdc.ValidateNick
 	err := c.ReadMsgTo(deadline, &nick)
 	if err != nil {
-		return nil, fmt.Errorf("expected validate: %v", err)
+		return nil, fmt.Errorf("expected validate: %w", err)
 	}
 	return &nick, nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"testing"
 	"unicode"
 )
@@ -26,8 +26,14 @@ func TestTEGenerate(t *testing.T) {
 	for name, typ := range resp.Columns {
 		cols = append(cols, [2]string{name, typ})
 	}
-	sort.Slice(cols, func(i, j int) bool {
-		return cols[i][0] < cols[j][0]
+	slices.SortFunc(cols, func(a, b [2]string) int {
+		if a[0] < b[0] {
+			return -1
+		}
+		if a[0] > b[0] {
+			return 1
+		}
+		return 0
 	})
 	const fname = "te_home_gen.go"
 	f, err := os.Create(fname)
@@ -48,7 +54,7 @@ func TestTEGenerate(t *testing.T) {
 		case "string":
 			f.WriteString("string")
 		default:
-			f.WriteString("interface{}")
+			f.WriteString("any")
 		}
 		f.WriteString(" `json:\"" + col[0] + "\"`\n")
 	}
