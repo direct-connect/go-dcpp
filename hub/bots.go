@@ -95,7 +95,7 @@ func (h *Hub) NewBot(name string, soft types.Software) (*Bot, error) {
 }
 
 func (h *Hub) NewBotDesc(name, desc, email string, soft types.Software) (*Bot, error) {
-	return h.newBot(name, desc, email, UserBot, soft)
+	return h.newBot(name, desc, email, UserOpBot, soft)
 }
 
 type botPeer struct {

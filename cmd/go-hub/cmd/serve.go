@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"io/ioutil"
 	"runtime"
 	"strconv"
 
@@ -46,19 +47,37 @@ var initCmd = &cobra.Command{
 	Short: "configure the hub",
 }
 
+var confManager *viper.Viper // pointer to config manager
+
 type Config struct {
-	Name    string `yaml:"name"`
-	Desc    string `yaml:"desc"`
-	Owner   string `yaml:"owner"`
-	Website string `yaml:"website"`
-	Email   string `yaml:"email"`
-	MOTD    string `yaml:"motd"`
-	Private bool   `yaml:"private"`
+	Hub     struct {
+		Name    string `yaml:"name"`
+		Desc    string `yaml:"desc"`
+		Owner   string `yaml:"owner"`
+		Website string `yaml:"website"`
+		Email   string `yaml:"email"`
+		Icon    string `yaml:"icon"`
+		Logo    string `yaml:"logo"`
+		MOTD    string `yaml:"motd"`
+		Private bool   `yaml:"private"`
+	} `yaml:"hub"`
+
+	Bot     struct {
+		Name string     `yaml:"name"`
+		Desc string     `yaml:"desc"`
+	} `yaml:"bot"`
+
+	OpChat     struct {
+		Name string     `yaml:"name"`
+		Desc string     `yaml:"desc"`
+	} `yaml:"opchat"`
+
 	Serve   struct {
 		Host string     `yaml:"host"`
 		Port int        `yaml:"port"`
 		TLS  *TLSConfig `yaml:"tls"`
 	} `yaml:"serve"`
+
 	Chat struct {
 		Encoding string `yaml:"encoding"`
 		Log      struct {
@@ -66,10 +85,12 @@ type Config struct {
 			Join int `yaml:"join"`
 		}
 	} `yaml:"chat"`
+
 	Database struct {
 		Type string `yaml:"type"`
 		Path string `yaml:"path"`
 	} `yaml:"database"`
+
 	Plugins struct {
 		Path string `yaml:"path"`
 	} `yaml:"plugins"`
@@ -78,51 +99,80 @@ type Config struct {
 const defaultConfig = "hub.yml"
 
 func initConfig(path string) error {
-	return viper.WriteConfigAs(path)
+	return confManager.WriteConfigAs(path)
 }
 
 func readConfig(create bool) (*Config, hub.Map, error) {
-	err := viper.ReadInConfig()
+	err := confManager.ReadInConfig()
 	if err == nil {
-		log.Printf("loaded config: %s\n", viper.ConfigFileUsed())
+		log.Printf("loaded config: %s\n", confManager.ConfigFileUsed())
 	}
 	if _, ok := err.(viper.ConfigFileNotFoundError); ok && create {
 		if err = initConfig(defaultConfig); err != nil {
 			return nil, nil, err
 		}
-		err = viper.ReadInConfig()
+		err = confManager.ReadInConfig()
 		if err == nil {
-			log.Println("initialized config:", viper.ConfigFileUsed())
+			log.Println("initialized config:", confManager.ConfigFileUsed())
 		}
 	}
 	if err != nil {
 		return nil, nil, err
 	}
 	var c Config
-	if err := viper.Unmarshal(&c); err != nil {
+	if err := confManager.Unmarshal(&c); err != nil {
 		return nil, nil, err
 	}
 	var m map[string]interface{}
-	if err := viper.Unmarshal(&m); err != nil {
+	if err := confManager.Unmarshal(&m); err != nil {
 		return nil, nil, err
 	}
 	return &c, hub.Map(m), nil
 }
 
 func init() {
-	viper.AddConfigPath(".")
+	confManager = viper.New()
+	confManager.AddConfigPath(".")
+
 	if runtime.GOOS != "windows" {
-		viper.AddConfigPath("/etc/go-hub")
+		confManager.AddConfigPath("/etc/go-hub")
 	}
-	viper.SetConfigName("hub")
-	viper.SetDefault("motd", "Welcome!")
-	viper.SetDefault("private", false)
-	viper.SetDefault("chat.encoding", "cp1251")
-	viper.SetDefault("chat.log.max", 50)
-	viper.SetDefault("chat.log.join", 10)
-	viper.SetDefault("database.type", "bolt")
-	viper.SetDefault("database.path", "hub.db")
-	viper.SetDefault("plugins.path", "plugins")
+
+	motd := "motd.txt" // motd file name
+	confManager.SetConfigName("hub")
+	confManager.SetDefault("hub.motd", motd)
+	confManager.SetDefault("hub.icon", "icon.png")
+	confManager.SetDefault("hub.private", false)
+	confManager.SetDefault("chat.encoding", "cp1251")
+	confManager.SetDefault("chat.log.max", 50)
+	confManager.SetDefault("chat.log.join", 10)
+	confManager.SetDefault("database.type", "bolt")
+	confManager.SetDefault("database.path", "hub.db")
+	confManager.SetDefault("plugins.path", "plugins")
+
+	if _, err := os.Stat(motd); os.IsNotExist(err) { // create motd
+		err = ioutil.WriteFile(motd, []byte(`
+
+ .:: Welcome %[USER_NAME] to %[HUB_NAME]
+
+ .:: Hub information ::.
+
+ .:: Online users: %[HUB_USERS]
+ .:: Total share: %[HUB_SHARE]
+ .:: Uptime: %[HUB_UPTIME]
+
+ .:: Your information ::.
+
+ .:: IP address: %[USER_ADDR]
+ .:: Share size: %[USER_SHARE]
+
+ .:: Don't forget to add this hub to favorites: /fav
+`), 0600)
+
+		if err != nil {
+			log.Printf("Failed to create %s: %v\n", motd, err)
+		}
+	}
 
 	initCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := initConfig(defaultConfig); err != nil {
@@ -139,15 +189,15 @@ func init() {
 	fPProf := flags.Bool("pprof", false, "enable profiler endpoint")
 
 	flags.String("name", "GoHub", "name of the hub")
-	viper.BindPFlag("name", flags.Lookup("name"))
+	confManager.BindPFlag("hub.name", flags.Lookup("name"))
 	flags.String("desc", "Hybrid hub", "description of the hub")
-	viper.BindPFlag("desc", flags.Lookup("desc"))
+	confManager.BindPFlag("hub.desc", flags.Lookup("desc"))
 	flags.String("host", "127.0.0.1", "host or IP to sign TLS certs for")
-	viper.BindPFlag("serve.host", flags.Lookup("host"))
+	confManager.BindPFlag("serve.host", flags.Lookup("host"))
 	flags.Int("port", 1411, "port to listen on")
-	viper.BindPFlag("serve.port", flags.Lookup("port"))
+	confManager.BindPFlag("serve.port", flags.Lookup("port"))
 	flags.String("plugins", "plugins", "directory for hub plugins")
-	viper.BindPFlag("plugins.path", flags.Lookup("plugins"))
+	confManager.BindPFlag("plugins.path", flags.Lookup("plugins"))
 	Root.AddCommand(serveCmd)
 
 	serveCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -162,8 +212,8 @@ func init() {
 			return err
 		}
 		if noTLS {
-			viper.Set("serve.tls", conf.Serve.TLS)
-			if err = viper.WriteConfig(); err != nil {
+			confManager.Set("serve.tls", conf.Serve.TLS)
+			if err = confManager.WriteConfig(); err != nil {
 				return err
 			}
 		}
@@ -178,20 +228,26 @@ func init() {
 			fmt.Println("fallback encoding:", conf.Chat.Encoding)
 		}
 		h, err := hub.NewHub(hub.Config{
-			Name:             conf.Name,
-			Desc:             conf.Desc,
-			Owner:            conf.Owner,
-			Website:          conf.Website,
-			Email:            conf.Email,
-			MOTD:             conf.MOTD,
-			Private:          conf.Private,
+			Name:             conf.Hub.Name,
+			Desc:             conf.Hub.Desc,
+			Owner:            conf.Hub.Owner,
+			Website:          conf.Hub.Website,
+			Email:            conf.Hub.Email,
+			Icon:             conf.Hub.Icon,
+			Logo:             conf.Hub.Logo,
+			MOTD:             conf.Hub.MOTD,
+			Private:          conf.Hub.Private,
+			BotName:          conf.Bot.Name,
+			BotDesc:          conf.Bot.Desc,
+			OpChatName:       conf.OpChat.Name,
+			OpChatDesc:       conf.OpChat.Desc,
 			FallbackEncoding: conf.Chat.Encoding,
 			ChatLog:          conf.Chat.Log.Max,
 			ChatLogJoin:      conf.Chat.Log.Join,
 			Addr:             addr,
 			TLS:              tlsConf,
 			Keyprint:         kp,
-		})
+		}, confManager) // TODO: this shouldnt have a dependency on viper, it might be better to pass required fields as a part of the config
 		if err != nil {
 			return err
 		}
@@ -286,6 +342,7 @@ http://%s%s
 		go func() {
 			<-ch
 			log.Println("stopping server")
+			h.SendGlobalChat("Stopping hub")
 			_ = h.Close()
 		}()
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+
+	"github.com/spf13/viper"
 )
 
 const (
@@ -13,8 +15,14 @@ const (
 	ConfigHubOwner   = "hub.owner"
 	ConfigHubWebsite = "hub.website"
 	ConfigHubEmail   = "hub.email"
+	ConfigHubIcon    = "hub.icon"
+	ConfigHubLogo    = "hub.logo"
 	ConfigHubMOTD    = "hub.motd"
 	ConfigHubPrivate = "hub.private"
+	ConfigBotName    = "bot.name"
+	ConfigBotDesc    = "bot.desc"
+	ConfigOpChatName = "opchat.name"
+	ConfigOpChatDesc = "opchat.desc"
 
 	ConfigChatGlobalEnabled = "chat.global.enabled"
 )
@@ -26,15 +34,23 @@ const (
 	ConfigADCRedirectTLS  = "adc.redirect.tls"
 )
 
+var confManager *viper.Viper // pointer to config manager
+
 var configAliases = map[string]string{
-	"name":    ConfigHubName,
-	"desc":    ConfigHubDesc,
-	"topic":   ConfigHubTopic,
-	"owner":   ConfigHubOwner,
-	"website": ConfigHubWebsite,
-	"email":   ConfigHubEmail,
-	"motd":    ConfigHubMOTD,
-	"private": ConfigHubPrivate,
+	"hubname":    ConfigHubName,
+	"hubdesc":    ConfigHubDesc,
+	"hubtopic":   ConfigHubTopic,
+	"hubowner":   ConfigHubOwner,
+	"hubwebsite": ConfigHubWebsite,
+	"hubemail":   ConfigHubEmail,
+	"hubicon":    ConfigHubIcon,
+	"hublogo":    ConfigHubLogo,
+	"botname": ConfigBotName,
+	"botdesc": ConfigBotDesc,
+	"opchatname": ConfigOpChatName,
+	"opchatdesc": ConfigOpChatDesc,
+	"hubmotd":    ConfigHubMOTD,
+	"hubprivate": ConfigHubPrivate,
 }
 
 // configIgnored is a list of ignored config keys that can only be set in the config file.
@@ -76,7 +92,18 @@ func (h *Hub) saveConfig(key string, val interface{}) {
 	if _, ok := configIgnored[key]; ok {
 		return
 	}
-	// TODO: persist config
+
+	if alias, ok := configAliases[key]; ok {
+		key = alias
+	}
+
+	confManager.Set(key, val)
+	confManager.WriteConfig();
+	// TODO: instead of requiring viper, we can just pass SetConfigFunc func(k, v string) error
+}
+
+func (h *Hub) setConfigManager(v *viper.Viper) {
+	confManager = v
 }
 
 func (h *Hub) setConfigMap(key string, val interface{}) {
@@ -144,6 +171,12 @@ func (h *Hub) ConfigKeys() []string {
 		ConfigHubOwner,
 		ConfigHubWebsite,
 		ConfigHubEmail,
+		ConfigHubIcon,
+		ConfigHubLogo,
+		ConfigBotName,
+		ConfigBotDesc,
+		ConfigOpChatName,
+		ConfigOpChatDesc,
 		ConfigHubPrivate,
 		ConfigChatGlobalEnabled,
 		ConfigZlibLevel,
@@ -174,7 +207,13 @@ func (h *Hub) GetConfig(key string) (interface{}, bool) {
 		ConfigHubMOTD,
 		ConfigHubOwner,
 		ConfigHubWebsite,
-		ConfigHubEmail:
+		ConfigHubEmail,
+		ConfigHubIcon,
+		ConfigHubLogo,
+		ConfigBotName,
+		ConfigBotDesc,
+		ConfigOpChatName,
+		ConfigOpChatDesc:
 		v, ok := h.GetConfigString(key)
 		if !ok {
 			return nil, false
@@ -217,17 +256,23 @@ func (h *Hub) setConfigString(key string, val string) {
 	case ConfigHubMOTD:
 		h.setMOTD(val)
 	case ConfigHubOwner:
-		h.conf.Lock()
-		h.conf.Owner = val
-		h.conf.Unlock()
+		h.setOwner(val)
 	case ConfigHubWebsite:
-		h.conf.Lock()
-		h.conf.Website = val
-		h.conf.Unlock()
+		h.setWebsite(val)
 	case ConfigHubEmail:
-		h.conf.Lock()
-		h.conf.Email = val
-		h.conf.Unlock()
+		h.setEmail(val)
+	case ConfigHubIcon:
+		h.setIcon(val)
+	case ConfigHubLogo:
+		h.setLogo(val)
+	case ConfigBotName:
+		h.setBotName(val)
+	case ConfigBotDesc:
+		h.setBotDesc(val)
+	case ConfigOpChatName:
+		h.setOpChatName(val)
+	case ConfigOpChatDesc:
+		h.setOpChatDesc(val)
 	default:
 		h.setConfigMap(key, val)
 	}
@@ -246,35 +291,32 @@ func (h *Hub) GetConfigString(key string) (string, bool) {
 	case ConfigHubName:
 		return h.getName(), true
 	case ConfigHubDesc:
-		h.conf.RLock()
-		v := h.conf.Owner
-		h.conf.RUnlock()
-		return v, true
+		return h.getDesc(), true
 	case ConfigHubTopic:
 		h.conf.RLock()
 		v := h.conf.Topic
 		h.conf.RUnlock()
 		return v, true
 	case ConfigHubMOTD:
-		h.conf.RLock()
-		v := h.conf.MOTD
-		h.conf.RUnlock()
-		return v, true
+		return h.getMOTD(), true
 	case ConfigHubOwner:
-		h.conf.RLock()
-		v := h.conf.Owner
-		h.conf.RUnlock()
-		return v, true
+		return h.getOwner(), true
 	case ConfigHubWebsite:
-		h.conf.RLock()
-		v := h.conf.Website
-		h.conf.RUnlock()
-		return v, true
+		return h.getWebsite(), true
 	case ConfigHubEmail:
-		h.conf.RLock()
-		v := h.conf.Email
-		h.conf.RUnlock()
-		return v, true
+		return h.getEmail(), true
+	case ConfigHubIcon:
+		return h.getIcon(), true
+	case ConfigHubLogo:
+		return h.getLogo(), true
+	case ConfigBotName:
+		return h.getBotName(), true
+	case ConfigBotDesc:
+		return h.getBotDesc(), true
+	case ConfigOpChatName:
+		return h.getOpChatName(), true
+	case ConfigOpChatDesc:
+		return h.getOpChatDesc(), true
 	default:
 		v, ok := h.getConfigMap(key)
 		if !ok || v == nil {

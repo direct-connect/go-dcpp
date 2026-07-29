@@ -142,8 +142,15 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 			KeyPrints: hub.KeyPrints,
 			Enc:       "utf-8",
 			Website:   hub.Website,
+			Network:   hub.Network,
 			Owner:     hub.Owner,
 			Uptime:    uint64(hub.Uptime),
+			UsersLimit: int(hub.UsersLimit),
+			MinSlots:   int(hub.MinSlots),
+			MinShare:   uint64(hub.MinShare),
+			MaxHubsUser: int(hub.MaxHubsUser),
+			MaxHubsReg:  int(hub.MaxHubsReg),
+			MaxHubsOp:  int(hub.MaxHubsOp),
 			Server: &Software{
 				Name:    hub.Application,
 				Version: hub.Version,
@@ -158,8 +165,16 @@ func Ping(ctx context.Context, addr string, conf *PingConfig) (*HubInfo, error) 
 			info.Share += uint64(u.ShareSize)
 			user := HubUser{
 				Name:  string(u.Name),
+				Ip4:  string(u.Ip4),
 				Files: u.ShareFiles,
+				Slots: u.Slots,
+				Upload: string(u.MaxUpload),
+				HubsUse: u.HubsNormal,
+				HubsReg: u.HubsRegistered,
+				HubsOp: u.HubsOperator,
 				Share: uint64(u.ShareSize),
+				Type: int(u.Type),
+				Desc: u.Desc,
 				Email: u.Email,
 				Client: &Software{
 					Name:    u.Application,
@@ -185,6 +200,7 @@ type HubInfo struct {
 	Icon      string    `json:"icon,omitempty" xml:"Icon,attr,omitempty"`
 	Owner     string    `json:"owner,omitempty" xml:"Owner,attr,omitempty"`
 	Website   string    `json:"website,omitempty" xml:"Website,attr,omitempty"`
+	Network   string    `json:"network,omitempty" xml:"Network,attr,omitempty"`
 	Email     string    `json:"email,omitempty" xml:"Email,attr,omitempty"`
 	Enc       string    `json:"encoding,omitempty" xml:"Encoding,attr,omitempty"`
 	Server    *Software `json:"soft,omitempty" xml:"Software,omitempty"`
@@ -193,14 +209,28 @@ type HubInfo struct {
 	Files     uint64    `json:"files,omitempty" xml:"Files,attr,omitempty"`
 	Share     uint64    `json:"share,omitempty" xml:"Shared,attr,omitempty"`
 	Redirect  string    `json:"redirect,omitempty" xml:"Redirect,attr,omitempty"`
+	UsersLimit int      `json:"userlimit,omitempty" xml:"UserLimit,attr,omitempty"`
+	MinSlots   int      `json:"minslots,omitempty" xml:"MinSlots,attr,omitempty"`
+	MinShare  uint64    `json:"minshare,omitempty" xml:"MinShare,attr,omitempty"`
+	MaxHubsUser int     `json:"maxhubsuse,omitempty" xml:"MaxHubsUse,attr,omitempty"`
+	MaxHubsReg  int     `json:"maxhubsreg,omitempty" xml:"MaxHubsReg,attr,omitempty"`
+	MaxHubsOp   int     `json:"maxhubsop,omitempty" xml:"MaxHubsOp,attr,omitempty"`
 	UserList  []HubUser `json:"userlist,omitempty" xml:"User,attr,omitempty"`
 }
 
 type HubUser struct {
 	Name   string    `json:"name" xml:"Name,attr"`
 	Client *Software `json:"soft,omitempty" xml:"Software,omitempty"`
+	Ip4    string    `json:"ip4,omitempty" xml:"IP4,attr,omitempty"`
 	Files  int       `json:"files,omitempty" xml:"Files,attr,omitempty"`
+	Slots  int       `json:"slots,omitempty" xml:"Slots,attr,omitempty"`
+	Upload string    `json:"upload,omitempty" xml:"Upload,attr,omitempty"`
+	HubsUse int      `json:"hubsuse,omitempty" xml:"HubsUse,attr,omitempty"`
+	HubsReg int      `json:"hubsreg,omitempty" xml:"HubsReg,attr,omitempty"`
+	HubsOp int       `json:"hubsop,omitempty" xml:"HubsOp,attr,omitempty"`
 	Share  uint64    `json:"share,omitempty" xml:"Shared,attr,omitempty"`
+	Type   int       `json:"type,omitempty" xml:"Type,attr,omitempty"`
+	Desc   string    `json:"desc,omitempty" xml:"Description,attr,omitempty"`
 	Email  string    `json:"email,omitempty" xml:"Email,attr,omitempty"`
 }
 

@@ -62,12 +62,21 @@ const (
 func (h *Hub) initCommands() {
 	h.cmds.byName = make(map[string]*Command)
 	h.cmds.names = make(map[string]struct{})
+
 	h.RegisterCommand(Command{
 		Menu: []string{"Help"},
 		Name: "help", Aliases: []string{"h"},
 		Short: "show the list of commands or a help for a specific command",
 		Func:  h.cmdHelp,
 	})
+
+	h.RegisterCommand(Command{
+		Menu: []string{"Show MOTD"},
+		Name: "motd",
+		Short: "Show MOTD",
+		Func:  h.cmdMOTD,
+	})
+
 	h.RegisterCommand(Command{
 		Name: "history", Aliases: []string{"log"},
 		Short: "replay chat log history",
@@ -183,6 +192,18 @@ func (h *Hub) initCommands() {
 		Func:    h.cmdListBanIP,
 	})
 
+	// hub control
+	h.RegisterCommand(Command{
+		Name:    "stop",
+		Aliases: []string{"quit"},
+		Short:   "Stop hub",
+		Menu:    []string{"Stop hub"},
+		Require: PermOwner,
+		Func:    h.cmdStop,
+	})
+
+	// TODO: restart
+
 	// Redirects
 	h.RegisterCommand(Command{
 		Name:    "redirect",
@@ -249,6 +270,10 @@ func (h *Hub) cmdHelp(p Peer, args string) error {
 	}
 	h.cmdOutput(p, buf.String())
 	return nil
+}
+
+func (h *Hub) cmdMOTD(p Peer, args string) error {
+	return h.sendMOTD(p)
 }
 
 func (h *Hub) cmdChatLog(p Peer, args string) error {
@@ -581,6 +606,11 @@ func (h *Hub) cmdListBanIP(p Peer, args string) error {
 	})
 	h.cmdOutput(p, buf.String())
 	return nil
+}
+
+func (h *Hub) cmdStop(p Peer, args string) error { // TODO: timer argument, ex: 1h, 5m
+	h.SendGlobalChat("Stopping hub")
+	return h.Close()
 }
 
 func (h *Hub) cmdRedirectUser(p, p2 Peer, args string) error {

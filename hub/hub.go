@@ -4,14 +4,17 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"strings"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
+	"github.com/spf13/viper"
 
 	"github.com/direct-connect/go-dc/types"
 	"github.com/direct-connect/go-dcpp/internal/safe"
@@ -26,17 +29,24 @@ type Config struct {
 	Owner            string
 	Website          string
 	Email            string
+	Icon             string
+	Logo             string
+	BotName          string
+	BotDesc          string
+	OpChatName       string
+	OpChatDesc       string
 	Private          bool
 	Keyprint         string
 	Soft             types.Software
 	MOTD             string
+	TextMOTD         string
 	ChatLog          int
 	ChatLogJoin      int
 	FallbackEncoding string
 	TLS              *tls.Config
 }
 
-func NewHub(conf Config) (*Hub, error) {
+func NewHub(conf Config, v *viper.Viper) (*Hub, error) {
 	if conf.Name == "" {
 		conf.Name = "GoHub"
 	}
@@ -58,14 +68,38 @@ func NewHub(conf Config) (*Hub, error) {
 	if conf.Topic == "" {
 		conf.Topic = conf.Desc
 	}
-	if conf.MOTD == "" {
-		conf.MOTD = "Welcome!"
+
+	if conf.BotName == "" {
+		conf.BotName = "GoBot"
 	}
+
+	if conf.BotDesc == "" {
+		conf.BotDesc = "Hub security"
+	}
+
+	if conf.OpChatName == "" {
+		conf.OpChatName = "GoChat"
+	}
+
+	if conf.OpChatDesc == "" {
+		conf.OpChatDesc = "Operator room"
+	}
+
+	if conf.MOTD == "" {
+		conf.MOTD = "motd.txt"
+	}
+
+	if conf.Icon == "" {
+		conf.Icon = "icon.png"
+	}
+
 	h := &Hub{
 		created: time.Now(),
 		closed:  make(chan struct{}),
 		tls:     conf.TLS,
 	}
+
+	h.setConfigManager(v)
 	h.conf.Config = conf
 	h.conf.private = conf.Private
 	h.setZlibLevel(-1)
@@ -84,16 +118,19 @@ func NewHub(conf Config) (*Hub, error) {
 	h.rooms.init()
 	h.globalChat = h.newRoomSys("", "")
 	var err error
-	h.opChat, err = h.NewPermRoom("OpChat", PermRoomsOpChat)
+	// TODO: opchat has connection "1", possibly incorrectly parsed connection/status byte
+	h.opChat, err = h.NewPermRoom(conf.OpChatName, PermRoomsOpChat)
+
 	if err != nil {
 		panic(err)
 	}
+
 	h.OnPermJoined(PermRoomsOpChat, func(p Peer) bool {
 		h.opChat.Join(p)
 		return true
 	})
 
-	h.hubUser, err = h.newBot(conf.Name, conf.Desc, conf.Email, UserHub, conf.Soft)
+	h.hubUser, err = h.newBot(conf.BotName, conf.BotDesc, conf.Email, UserOpHub, conf.Soft)
 	if err != nil {
 		return nil, err
 	}
@@ -253,17 +290,23 @@ type Stats struct {
 	Desc     string         `json:"desc,omitempty"`
 	Addr     []string       `json:"addr,omitempty"`
 	Private  bool           `json:"private,omitempty"`
-	Icon     string         `json:"icon,omitempty"`
 	Owner    string         `json:"owner,omitempty"`
 	Website  string         `json:"website,omitempty"`
 	Email    string         `json:"email,omitempty"`
+	Icon     string         `json:"icon,omitempty"`
+	Logo     string         `json:"logo,omitempty"`
+	BotName  string         `json:"botname,omitempty"`
+	BotDesc  string         `json:"botdesc,omitempty"`
+	OpChatName string       `json:"opchatname,omitempty"`
+	OpChatDesc string       `json:"opchatdesc,omitempty"`
 	Users    int            `json:"users"`
-	MaxUsers int            `json:"max-users,omitempty"`
-	Share    uint64         `json:"share"`               // MB
-	MaxShare uint64         `json:"max-share,omitempty"` // MB
+	MaxUsers int            `json:"max-users,omitempty"` // MB
+	Share    uint64         `json:"share"`
+	Shared   string         `json:"shared"` // a human-readable version of Share
 	Enc      string         `json:"encoding,omitempty"`
 	Soft     types.Software `json:"soft"`
 	Uptime   uint64         `json:"uptime,omitempty"`
+	Uptimes  string         `json:"uptimes,omitempty"`
 	Keyprint string         `json:"-"`
 }
 
@@ -278,29 +321,47 @@ func (h *Hub) Uptime() time.Duration {
 	return time.Since(h.created)
 }
 
+func (h *Hub) fixUptime(u string) string {
+	up := u
+
+	if i := strings.LastIndexByte(up, '.'); i > 0 {
+		up = up[:i] + "s"
+	}
+
+	return up
+}
+
 func (h *Hub) Stats() Stats {
-	h.peers.RLock()
-	users := len(h.peers.byName)
-	h.peers.RUnlock()
 	h.conf.RLock()
+	shar := h.getShare()
+
 	st := Stats{
 		Name:     h.conf.Name,
 		Desc:     h.conf.Desc,
 		Owner:    h.conf.Owner,
 		Website:  h.conf.Website,
 		Email:    h.conf.Email,
+		Icon:     h.conf.Icon,
+		Logo:     h.conf.Logo,
+		BotName:  h.conf.BotName,
+		BotDesc:  h.conf.BotDesc,
+		OpChatName: h.conf.OpChatName,
+		OpChatDesc: h.conf.OpChatDesc,
 		Private:  h.conf.Private,
-		Icon:     "icon.png",
-		Users:    users,
-		Share:    uint64(atomic.LoadInt64(&h.peers.share)),
+		Users:    h.getUsers(),
+		Share:    shar,
+		Shared:   byteToHuman(shar),
 		Enc:      "utf-8",
 		Soft:     h.conf.Soft,
 		Keyprint: h.conf.Keyprint,
 		Uptime:   uint64(h.Uptime().Seconds()),
+		Uptimes:  h.fixUptime(h.Uptime().String()),
 	}
+
 	if h.conf.Addr != "" {
 		st.Addr = append(st.Addr, h.conf.Addr)
 	}
+
 	h.conf.RUnlock()
 	st.Addr = append(st.Addr, h.addrs...)
 	return st
@@ -327,6 +388,41 @@ func (h *Hub) getName() string {
 	return name
 }
 
+func (h *Hub) getDesc() string {
+	h.conf.RLock()
+	desc := h.conf.Desc
+	h.conf.RUnlock()
+	return desc
+}
+
+func (h *Hub) getBotName() string {
+	h.conf.RLock()
+	name := h.conf.BotName
+	h.conf.RUnlock()
+	return name
+}
+
+func (h *Hub) getBotDesc() string {
+	h.conf.RLock()
+	desc := h.conf.BotDesc
+	h.conf.RUnlock()
+	return desc
+}
+
+func (h *Hub) getOpChatName() string {
+	h.conf.RLock()
+	name := h.conf.OpChatName
+	h.conf.RUnlock()
+	return name
+}
+
+func (h *Hub) getOpChatDesc() string {
+	h.conf.RLock()
+	desc := h.conf.OpChatDesc
+	h.conf.RUnlock()
+	return desc
+}
+
 func (h *Hub) getTopic() string {
 	h.conf.RLock()
 	topic := h.conf.Topic
@@ -337,24 +433,114 @@ func (h *Hub) getTopic() string {
 	return topic
 }
 
+func (h *Hub) getOwner() string {
+	h.conf.RLock()
+	own := h.conf.Owner
+	h.conf.RUnlock()
+	return own
+}
+
+func (h *Hub) getWebsite() string {
+	h.conf.RLock()
+	web := h.conf.Website
+	h.conf.RUnlock()
+	return web
+}
+
+func (h *Hub) getEmail() string {
+	h.conf.RLock()
+	web := h.conf.Email
+	h.conf.RUnlock()
+	return web
+}
+
+func (h *Hub) getIcon() string {
+	h.conf.RLock()
+	icon := h.conf.Icon
+	h.conf.RUnlock()
+	return icon
+}
+
+func (h *Hub) getLogo() string {
+	h.conf.RLock()
+	logo := h.conf.Logo
+	h.conf.RUnlock()
+	return logo
+}
+
+func (h *Hub) getUsers() int {
+	h.peers.RLock()
+	num := len(h.peers.byName)
+	h.peers.RUnlock()
+	return num
+}
+
+func (h *Hub) getShare() uint64 {
+	shar := uint64(atomic.LoadInt64(&h.peers.share) * shareDiv)
+	return shar
+}
+
 func (h *Hub) getMOTD() string {
 	h.conf.RLock()
 	motd := h.conf.MOTD
+	h.conf.RUnlock()
+	return motd
+}
+
+func (h *Hub) getTextMOTD() string {
+	h.conf.RLock()
+	motd := ""
+
+	if h.conf.TextMOTD != "" {
+		motd = h.conf.TextMOTD
+	} else if data, err := ioutil.ReadFile(h.conf.MOTD); err == nil { // read only once
+		motd = string(data)
+		h.conf.TextMOTD = motd
+	}
+
 	if motd == "" {
 		motd = h.conf.Desc
 	}
+
 	if motd == "" {
 		motd = h.conf.Topic
 	}
-	h.conf.RUnlock()
+
+	h.conf.RUnlock() // TODO: now that it has ReadFile, it might be worth deferring the RUnlock
 	return motd
+}
+
+func (h *Hub) setBotName(name string) {
+	h.conf.Lock()
+	h.conf.BotName = name
+	h.conf.Unlock()
+	// TODO: rename the hub bot
+}
+
+func (h *Hub) setBotDesc(desc string) {
+	h.conf.Lock()
+	h.conf.BotDesc = desc
+	h.conf.Unlock()
+}
+
+func (h *Hub) setOpChatName(name string) {
+	h.conf.Lock()
+	h.conf.OpChatName = name
+	h.conf.Unlock()
+	// TODO: rename the opchat
+}
+
+func (h *Hub) setOpChatDesc(desc string) {
+	h.conf.Lock()
+	h.conf.OpChatDesc = desc
+	h.conf.Unlock()
 }
 
 func (h *Hub) setName(name string) {
 	h.conf.Lock()
 	h.conf.Name = name
 	h.conf.Unlock()
-	// TODO: rename the hub bot
+	// TODO: rename the hub
 }
 
 func (h *Hub) setDesc(desc string) {
@@ -370,6 +556,36 @@ func (h *Hub) setTopic(topic string) {
 	h.broadcastTopic(topic)
 }
 
+func (h *Hub) setOwner(own string) {
+	h.conf.Lock()
+	h.conf.Owner = own
+	h.conf.Unlock()
+}
+
+func (h *Hub) setWebsite(web string) {
+	h.conf.Lock()
+	h.conf.Website = web
+	h.conf.Unlock()
+}
+
+func (h *Hub) setEmail(mail string) {
+	h.conf.Lock()
+	h.conf.Email = mail
+	h.conf.Unlock()
+}
+
+func (h *Hub) setIcon(icon string) {
+	h.conf.Lock()
+	h.conf.Icon = icon
+	h.conf.Unlock()
+}
+
+func (h *Hub) setLogo(logo string) {
+	h.conf.Lock()
+	h.conf.Logo = logo
+	h.conf.Unlock()
+}
+
 func (h *Hub) setMOTD(motd string) {
 	h.conf.Lock()
 	h.conf.MOTD = motd
@@ -378,11 +594,7 @@ func (h *Hub) setMOTD(motd string) {
 
 func (h *Hub) poweredBy() string {
 	soft := h.getSoft()
-	uptime := h.Uptime().String()
-	if i := strings.LastIndexByte(uptime, '.'); i > 0 {
-		uptime = uptime[:i] + "s"
-	}
-	return strings.Join([]string{"Powered by", soft.Name, soft.Version, "(uptime:", uptime + ")"}, " ")
+	return strings.Join([]string{"Powered by", soft.Name, soft.Version, "(uptime:", h.fixUptime(h.Uptime().String()) + ")"}, " ")
 }
 
 func (h *Hub) ListenAndServe(addr string) error {
@@ -761,8 +973,64 @@ func (h *Hub) privateChat(from, to Peer, m Message) {
 	_ = to.PrivateMsg(from, m)
 }
 
+func byteToHuman(b uint64) string {
+	const unit = 1024 // TODO: bits is 1000
+
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+
+	div, exp := uint64(unit), 0
+
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	return fmt.Sprintf("%.2f %ciB", float64(b) / float64(div), "KMGTPE"[exp]) // TODO: number of decimals, optional speed suffix
+}
+
+func (h *Hub) replaceVars(peer Peer, data string) string {
+	var hubTrigVars = map[string]string{ // hub variables, todo: add more
+		"NAME":    h.getName(),
+		"DESC":    h.getDesc(),
+		"TOPIC":   h.getTopic(),
+		"OWNER":   h.getOwner(),
+		"WEB":     h.getWebsite(),
+		"EMAIL":   h.getEmail(),
+		"USERS":   strconv.Itoa(h.getUsers()),
+		"SHARE":   byteToHuman(h.getShare()),
+		"UPTIME":  h.fixUptime(h.Uptime().String()),
+		"APP":     version.HubName,
+		"VERS":    version.Vers,
+	}
+
+	var userTrigVars = map[string]string{ // user variables, todo: add more
+		"ADDR":    addrString(peer.RemoteAddr()),
+		"NAME":    peer.Name(),
+		"DESC":    peer.UserInfo().Desc,
+		"EMAIL":   peer.UserInfo().Email,
+		"SHARE":   byteToHuman(peer.UserInfo().Share),
+	}
+
+	var vars []string
+
+	for k, v := range hubTrigVars {
+		vars = append(vars, "%[HUB_" + k + "]")
+		vars = append(vars, v)
+	}
+
+	for k, v := range userTrigVars {
+		vars = append(vars, "%[USER_" + k + "]")
+		vars = append(vars, v)
+	}
+
+	r := strings.NewReplacer(vars...)
+	return r.Replace(data)
+}
+
 func (h *Hub) sendMOTD(peer Peer) error {
-	return peer.HubChatMsg(Message{Text: h.getMOTD()})
+	return peer.HubChatMsg(Message{Text: h.replaceVars(peer, h.getTextMOTD())})
 }
 
 func (h *Hub) leave(peer Peer, sid SID, notify []Peer) {
@@ -830,6 +1098,8 @@ const (
 	UserNormal = UserKind(iota)
 	UserHub
 	UserBot
+	UserOpHub
+	UserOpBot
 )
 
 type UserInfo struct {

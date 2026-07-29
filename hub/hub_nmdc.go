@@ -226,31 +226,53 @@ func (h *Hub) nmdcHandshake(c *nmdc.Conn, cinfo *ConnInfo) (*nmdcPeer, error) {
 
 	peer := newNMDC(h, cinfo, c, fea, nick, addr.IP)
 
-	if peer.fea.Has(nmdcp.ExtBotINFO) {
+	if peer.fea.Has(nmdcp.ExtBotINFO) { // it's a pinger - don't bother binding the nickname
 		cntPings.Add(1)
 		cntPingsNMDC.Add(1)
-		// it's a pinger - don't bother binding the nickname
 		peer.fea.Set(nmdcp.ExtHubINFO)
-
 		err = h.nmdcAccept(peer)
+
 		if err != nil {
 			return nil, err
 		}
+
 		var bot nmdcp.BotINFO
+
 		if err := c.ReadMsgTo(deadline, &bot); err != nil {
 			return nil, err
 		}
+
 		st := h.Stats()
-		err = c.WriteMsg(&nmdcp.HubINFO{
+
+		if st.Icon != "" { // seticon
+			err = c.WriteMsg(&nmdcp.SetIcon{String: nmdcp.String(st.Icon)})
+
+			if err == nil {
+				err = c.Flush()
+			}
+		}
+
+		if st.Logo != "" { // setlogo
+			err = c.WriteMsg(&nmdcp.SetLogo{String: nmdcp.String(st.Logo)})
+
+			if err == nil {
+				err = c.Flush()
+			}
+		}
+
+		err = c.WriteMsg(&nmdcp.HubINFO{ // hubinfo
 			Name:     st.Name,
 			Desc:     st.Desc,
 			Host:     st.DefaultAddr(),
 			Soft:     st.Soft,
+			Owner:    st.Owner,
 			Encoding: "UTF-8",
 		})
+
 		if err == nil {
 			err = c.Flush()
 		}
+
 		return nil, err
 	}
 
@@ -306,9 +328,17 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	deadline := time.Now().Add(time.Second * 5)
 
 	c := peer.c
+	name := h.getName()
+	topic := h.getTopic()
+
+	if topic != "" {
+		name += " - " + topic
+	}
+
 	err := c.WriteMsg(&nmdcp.HubName{
-		String: nmdcp.String(h.getName()),
+		String: nmdcp.String(name),
 	})
+
 	if err != nil {
 		return err
 	}
@@ -407,10 +437,13 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 		return err
 	}
 	err = peer.HubChatMsg(Message{Text: h.poweredBy()})
+
 	if err != nil {
 		return err
 	}
+
 	err = h.sendMOTD(peer)
+
 	if err != nil {
 		return err
 	}
@@ -435,30 +468,44 @@ func (h *Hub) nmdcAccept(peer *nmdcPeer) error {
 	if err != nil {
 		return err
 	}
+
 	var ops, bots nmdcp.Names
+
 	if u := peer.User(); u != nil && u.Has(FlagOpIcon) {
 		ops = append(ops, peer.Name())
 	}
+
 	for _, p := range peers {
 		if u := p.User(); u != nil && u.Has(FlagOpIcon) {
 			ops = append(ops, p.Name())
 		}
+
+		info := p.UserInfo()
+
+		if info.Kind == UserOpBot || info.Kind == UserOpHub {
+			ops = append(ops, p.Name())
+		}
+
 		if peer.ext.botlist {
-			if info := p.UserInfo(); info.Kind == UserBot || info.Kind == UserHub {
+			if info.Kind == UserBot || info.Kind == UserHub || info.Kind == UserOpBot || info.Kind == UserOpHub {
 				bots = append(bots, p.Name())
 			}
 		}
 	}
+
 	err = c.WriteMsg(&nmdcp.OpList{Names: ops})
+
 	if err != nil {
 		return err
 	}
+
 	if peer.ext.botlist && len(bots) != 0 {
 		err = c.WriteMsg(&nmdcp.BotList{Names: bots})
 		if err != nil {
 			return err
 		}
 	}
+
 	if peer.ext.userip2 {
 		err = c.WriteMsg(&nmdcp.UserIP{
 			List: []nmdcp.UserAddress{{
@@ -1163,9 +1210,11 @@ func (u UserInfo) toNMDC() nmdcp.MyINFO {
 	}
 	conn := "100"                // TODO
 	mode := nmdcp.UserModeActive // TODO
-	if u.Kind == UserBot || u.Kind == UserHub {
+
+	if u.Kind == UserBot || u.Kind == UserHub || u.Kind == UserOpBot || u.Kind == UserOpHub {
 		conn = "" // empty conn indicates a bot
 	}
+
 	return nmdcp.MyINFO{
 		Name:           u.Name,
 		Client:         u.App,
@@ -1475,7 +1524,7 @@ func (p *nmdcPeer) HubChatMsg(m Message) error {
 		return errConnectionClosed
 	}
 	if m.Name == "" {
-		m.Name = p.hub.getName()
+		m.Name = p.hub.getBotName()
 	}
 	if m.Me && !strings.HasPrefix(m.Text, "/me") {
 		m.Text = "/me " + m.Text

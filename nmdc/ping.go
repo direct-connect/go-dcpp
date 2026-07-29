@@ -355,11 +355,11 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (_ *HubInfo, gerr e
 				Mode:           nmdc.UserModeActive,
 				HubsNormal:     conf.Hubs,
 				HubsRegistered: 1,
-				HubsOperator:   0,
+				HubsOperator:   2,
 				Slots:          conf.Slots,
 				ShareSize:      conf.Share,
 				Conn:           "100",
-				Flag:           nmdc.FlagStatusServer,
+				Flag:           nmdc.FlagStatusNormal,
 			})
 			if err != nil {
 				return &hub, err

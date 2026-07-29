@@ -150,6 +150,7 @@ func (h *Hub) roomBySID(sid SID) *Room {
 type Room struct {
 	h    *Hub
 	name string
+	desc string // TODO: actually use it
 	sid  SID
 	perm string
 
@@ -167,6 +168,10 @@ func (r *Room) SID() SID {
 // Name returns a room name.
 func (r *Room) Name() string {
 	return r.name
+}
+
+func (r *Room) Desc() string {
+	return r.desc
 }
 
 // IsPrivate reports if a room is private.

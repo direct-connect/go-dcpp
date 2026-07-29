@@ -56,3 +56,5 @@ require (
 )
 
 replace github.com/Shopify/go-lua => github.com/direct-connect/go-lua v0.0.0-20190505214648-cdda08bfc989
+
+replace github.com/direct-connect/go-dc => ../go-dc

@@ -96,6 +96,18 @@ func (h *Hub) stopPlugins() {
 	}
 }
 
+func (h *Hub) isPluginLoaded(n string) bool {
+	for _, p := range h.plugins.loaded {
+		name := p.Name()
+
+		if name == n {
+			return true
+		}
+	}
+
+	return false
+}
+
 // LoadPluginsInDir loads all plugins in a specified directory. Should be called before Start.
 //
 // Details about building Go plugins can be found here: https://golang.org/pkg/plugin/

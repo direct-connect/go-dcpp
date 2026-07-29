@@ -9,6 +9,7 @@ import (
 
 	"github.com/direct-connect/go-dc/adc"
 	"github.com/direct-connect/go-dc/adc/types"
+	"github.com/direct-connect/go-dcpp/version"
 )
 
 type PingHubInfo struct {
@@ -42,7 +43,8 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 
 		// TODO: some hubs will stop the handshake after sending the hub info
 		//       if this extension is specified
-		//adc.FeaPING: true,
+		adc.FeaPING: true,
+		adc.FeaTCP4: true,
 
 		adc.FeaUCMD: true,
 		adc.FeaUCM0: true,
@@ -52,6 +54,10 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		adc.FeaONID: true,
 		adc.FeaASCH: true,
 		adc.FeaNAT0: true,
+		//adc.FeaADCS: true,
+		//adc.FeaADC0: true,
+		//adc.FeaBLO0: true,
+		//adc.FeaSIPR: true,
 		// TODO: anything else?
 	}
 
@@ -120,15 +126,17 @@ func Ping(ctx context.Context, addr string, conf PingConfig) (*PingHubInfo, erro
 		return nil, err
 	}
 	user := adc.UserInfo{
-		Id:         pid.Hash(),
-		Pid:        &pid,
-		Name:       conf.Name,
-		Features:   ext,
-		Slots:      conf.Slots,
-		SlotsFree:  conf.Slots,
-		ShareSize:  int64(conf.ShareSize),
-		ShareFiles: conf.ShareFiles,
-		HubsNormal: conf.Hubs,
+		Id:          pid.Hash(),
+		Pid:         &pid,
+		Name:        conf.Name,
+		Features:    ext,
+		Slots:       conf.Slots,
+		SlotsFree:   conf.Slots,
+		ShareSize:   int64(conf.ShareSize),
+		ShareFiles:  conf.ShareFiles,
+		HubsNormal:  conf.Hubs,
+		Application: version.Name,
+		Version:     version.Vers,
 	}
 
 	err = c.WriteBroadcast(sid.SID, user)
